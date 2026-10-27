@@ -116,20 +116,59 @@ async function installModule(kind) {
   const modules = {
     edge: ['edge-tts'],
     modern: ['winrt-Windows.Media.SpeechSynthesis', 'winrt-Windows.Storage.Streams'],
-    recognition: ['vosk']
+    windows: ['winrt-Windows.Media.SpeechSynthesis', 'winrt-Windows.Storage.Streams']
   };
   if (!Object.prototype.hasOwnProperty.call(modules, kind)) throw new Error('Unknown module');
   await ensureVirtualEnvironment();
   await runProcess(VENV_PY, ['-m', 'pip', 'install', '--disable-pip-version-check', ...modules[kind]], 300000);
-  if (kind === 'recognition') {
-    const modelDir = path.join(app.getPath('userData'), 'voice-models');
-    await job('vosk', 'install-model', { modelDir }, { timeout: 300000 });
-  }
   return { installed: kind };
 }
 
 function validateEngine(engine) {
-  if (!['sapi', 'modern', 'edge'].includes(engine)) throw new Error('Unsupported speech engine.');
+  if (!['sapi', 'modern', 'edge', 'windows'].includes(engine)) throw new Error('Unsupported speech engine.');
+}
+
+
+async function availableWindowsVoices() {
+  const classic = await job('sapi', 'voices', {}, { timeout: 30000 });
+  const voices = (classic.voices || []).map(v => ({
+    ...v, id: 'sapi:' + v.id,
+    name: v.name + ' · Windows Classic',
+    source: 'sapi', playable: true
+  }));
+  const notes = [];
+  try {
+    const modern = await job('modern', 'voices', {}, { timeout: 30000 });
+    for (const v of (modern.voices || [])) {
+      voices.push({
+        ...v, id: 'modern:' + v.id,
+        name: v.name + ' · Windows Modern',
+        source: 'modern', playable: true
+      });
+    }
+  } catch (err) {
+    notes.push('Install Windows Modern support for more application-accessible voices.');
+  }
+  for (const v of (classic.narratorVoices || [])) {
+    const name = String(v.name || '');
+    // Do not pretend Narrator-only voice packages are usable by a public TTS API.
+    if (!voices.some(x => x.name.toLowerCase().includes(name.toLowerCase()))) {
+      voices.push({
+        id: 'narrator:' + String(v.id || name),
+        name: name + ' · Narrator-only (not playable in this app)',
+        language: v.language || '',
+        source: 'narrator', playable: false
+      });
+    }
+  }
+  voices.sort((a, b) => Number(b.playable) - Number(a.playable) || a.name.localeCompare(b.name));
+  return {
+    voices,
+    hint: 'Windows voices found: ' + voices.filter(x => x.playable).length +
+      ' app-accessible, ' + voices.filter(x => !x.playable).length + ' Narrator-only.' +
+      (notes.length ? ' ' + notes.join(' ') : ''),
+    notes
+  };
 }
 
 async function createWindow() {
@@ -139,7 +178,7 @@ async function createWindow() {
     minWidth: 790,
     minHeight: 650,
     backgroundColor: '#090e19',
-    title: 'C.O.D.Y. Voice Lab v0.3',
+    title: 'C.O.D.Y. Voice Lab v0.4',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(ROOT, 'preload.js'),
@@ -162,6 +201,10 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('voices:list', async (_e, engine) => {
     validateEngine(engine);
+    if (engine === 'windows') {
+      try { return await availableWindowsVoices(); }
+      catch (err) { return { voices: [], error: err.message }; }
+    }
     if (engine === 'edge' && !fs.existsSync(VENV_PY)) {
       return { voices: EDGE_STARTERS, hint: 'Install Edge support to fetch the full online voice list.' };
     }
@@ -175,8 +218,17 @@ app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('voices:speak', async (_e, req) => {
-    const { engine, voice, text, speed } = req || {};
+    let { engine, voice, text, speed } = req || {};
     validateEngine(engine);
+    if (engine === 'windows') {
+      if (typeof voice !== 'string') throw new Error('Please select a Windows voice.');
+      if (voice.startsWith('narrator:')) {
+        throw new Error('This natural voice is installed for Narrator but Windows does not expose it for third-party speech synthesis. Choose an accessible voice or Edge Neural.');
+      }
+      if (voice.startsWith('modern:')) { engine = 'modern'; voice = voice.slice(7); }
+      else if (voice.startsWith('sapi:')) { engine = 'sapi'; voice = voice.slice(5); }
+      else throw new Error('Unknown Windows voice type. Refresh the voice list.');
+    }
     if (typeof text !== 'string' || !text.trim() || text.length > MAX_TEXT) {
       throw new Error('Enter between 1 and ' + MAX_TEXT + ' characters.');
     }
@@ -189,11 +241,6 @@ app.whenReady().then(async () => {
   ipcMain.handle('voices:stop', async () => {
     if (speakingProcess) { speakingProcess.kill(); speakingProcess = null; }
     return { stopped: true };
-  });
-  ipcMain.handle('mic:transcribe', async (_e, encodedWav) => {
-    if (typeof encodedWav !== 'string' || encodedWav.length > 14 * 1024 * 1024) throw new Error('Recording too long.');
-    const modelDir = path.join(app.getPath('userData'), 'voice-models');
-    return job('vosk', 'transcribe', { wavBase64: encodedWav, modelDir }, { timeout: 120000 });
   });
   await createWindow();
 });
