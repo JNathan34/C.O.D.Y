@@ -1,0 +1,14 @@
+{
+  "name": "cody-voice-lab",
+  "version": "0.3.0",
+  "private": true,
+  "description": "C.O.D.Y. speech and microphone testing laboratory",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check main.js && node --check preload.js && node --check renderer.js"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0"
+  }
+}
