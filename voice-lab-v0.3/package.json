@@ -1,6 +1,6 @@
 {
   "name": "cody-voice-lab",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "C.O.D.Y. speech and microphone testing laboratory",
   "main": "main.js",
