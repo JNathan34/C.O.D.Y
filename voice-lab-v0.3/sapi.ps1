@@ -19,7 +19,7 @@ try {
                 }
             )
             $json = @{ voices = $voices } | ConvertTo-Json -Depth 5 -Compress
-            [System.IO.File]::WriteAllText([string]$job.resultPath, $json, [System.Text.Encoding]::UTF8)
+            [System.IO.File]::WriteAllText([string]$job.resultPath, $json, (New-Object System.Text.UTF8Encoding($false)))
         } elseif ($Action -eq 'speak') {
             if (![string]::IsNullOrWhiteSpace([string]$job.voice)) {
                 $synth.SelectVoice([string]$job.voice)
