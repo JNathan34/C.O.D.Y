@@ -19,19 +19,19 @@ jobs:
       - name: Verify JavaScript syntax
         shell: pwsh
         run: |
-          node --check voice-lab-v0.3/main.js
-          node --check voice-lab-v0.3/preload.js
-          node --check voice-lab-v0.3/renderer.js
+          node --check voice-lab-v0.4/main.js
+          node --check voice-lab-v0.4/preload.js
+          node --check voice-lab-v0.4/renderer.js
       - name: Verify Python syntax
         shell: pwsh
-        run: python -m py_compile voice-lab-v0.3/speech.py
+        run: python -m py_compile voice-lab-v0.4/speech.py
       - name: Verify PowerShell syntax
         shell: pwsh
         run: |
           $tokens = $null
           $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path "voice-lab-v0.3/sapi.ps1").Path,
+            (Resolve-Path "voice-lab-v0.4/sapi.ps1").Path,
             [ref]$tokens,
             [ref]$errors
           ) | Out-Null
