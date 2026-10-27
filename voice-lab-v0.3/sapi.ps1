@@ -18,7 +18,44 @@ try {
                     }
                 }
             )
-            $json = @{ voices = $voices } | ConvertTo-Json -Depth 5 -Compress
+            # Windows Narrator natural voices are packaged separately from SAPI/WinRT.
+            # These entries are diagnostic only; do not claim they are playable.
+            $narratorVoices = @()
+            try {
+                $packages = @(Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object {
+                    $_.Name -match '(?i)MicrosoftWindows[.]Voice[.]'
+                })
+                foreach ($pkg in $packages) {
+                    if ([string]$pkg.Name -match '(?i)Voice[.]([a-z]{2}-[a-z]{2})[.]([a-z][a-z0-9]*)(?:[.]|$)') {
+                        $culture = $Matches[1]
+                        $who = $Matches[2]
+                        $description = 'Microsoft ' + $who + ' (Natural)'
+                        $narratorVoices += [pscustomobject]@{
+                            id = [string]$pkg.Name
+                            name = $description
+                            language = $culture
+                        }
+                    }
+                }
+            } catch { }
+            # Some Narrator voices expose metadata in OneCore registry, not SAPI.
+            try {
+                $tokens = @(Get-ChildItem -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Speech_OneCore\Voices\Tokens' -ErrorAction SilentlyContinue)
+                foreach ($token in $tokens) {
+                    $key = [string]$token.PSChildName
+                    if ($key -match '(?i)(Ryan|Andrew|Ava|Sonia|Jenny|Aria).*Natural|Natural.*(Ryan|Andrew|Ava|Sonia|Jenny|Aria)') {
+                        $n = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
+                        if (-not @($narratorVoices | Where-Object { $_.name -match $n }).Count) {
+                            $narratorVoices += [pscustomobject]@{
+                                id = $key
+                                name = 'Microsoft ' + $n + ' (Natural)'
+                                language = ''
+                            }
+                        }
+                    }
+                }
+            } catch { }
+            $json = @{ voices = $voices; narratorVoices = $narratorVoices } | ConvertTo-Json -Depth 6 -Compress
             [System.IO.File]::WriteAllText([string]$job.resultPath, $json, [System.Text.UTF8Encoding]::new($false))
         } elseif ($Action -eq 'speak') {
             if (![string]::IsNullOrWhiteSpace([string]$job.voice)) {
