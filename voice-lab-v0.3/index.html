@@ -13,7 +13,7 @@
       <div class="brand-icon">◉</div>
       <div>
         <div class="eyebrow">C.O.D.Y. EXPERIMENTS</div>
-        <h1>Voice Lab <span>0.3</span></h1>
+        <h1>Voice Lab <span>0.4</span></h1>
       </div>
       <div class="status-chip"><span class="status-dot"></span>LOCAL TEST APP</div>
     </header>
@@ -22,7 +22,7 @@
         <div>
           <div class="eyebrow cyan">VOICE SYNTHESIS</div>
           <h2>Find C.O.D.Y.'s voice.</h2>
-          <p>Compare Edge Neural against installed Windows voices. Then try speaking to it.</p>
+          <p>Compare online Edge Neural with application-accessible Windows voices, discover Narrator-only voices, and try Windows voice typing.</p>
         </div>
         <div id="visualiser" class="visualiser" aria-hidden="true">
           <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
@@ -33,6 +33,7 @@
           <div class="panel-heading"><h3>Speech output</h3><span>01</span></div>
           <label for="engine">Engine</label>
           <select id="engine">
+            <option value="windows">Windows · all discoverable voices</option>
             <option value="edge">Edge Neural · online</option>
             <option value="modern">Windows Modern · installed voices</option>
             <option value="sapi">Windows Classic · SAPI voices</option>
@@ -46,6 +47,7 @@
             <button id="refreshVoices" class="tiny textbtn">↻ Refresh voices</button>
           </div>
           <select id="voice"><option value="">Loading voices…</option></select>
+          <p id="voiceExplain" class="voice-help" aria-live="polite">Choose a voice to see its compatibility.</p>
           <div class="settings-grid">
             <div>
               <div class="setting-title"><label for="speed">Speed</label><span id="speedValue">1.00×</span></div>
@@ -70,18 +72,18 @@
             <button id="micButton" class="mic-button" aria-label="Start listening">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 10.5a7 7 0 0 0 14 0M12 17.5V22M8.5 22h7"/></svg>
             </button>
-            <h3 id="micHeading">Ready to listen</h3>
-            <p id="micHelp">Press the microphone to start recording.</p>
+            <h3 id="micHeading">Windows voice typing</h3>
+            <p id="micHelp">Click the mic, press Win + H, speak, then click the mic again to finish.</p>
           </div>
           <div id="micMeter" class="mic-meter"><div></div></div>
           <div class="inline stt-row">
-            <div><div class="mini-label">RECOGNITION</div><div class="muted">Offline with Vosk</div></div>
-            <button id="installMic" class="tiny outline">Install recognition</button>
+            <div><div class="mini-label">RECOGNITION</div><div class="muted">Windows voice typing · internet required · no Vosk/Python</div></div>
+            <button id="installMic" class="tiny outline">How to use</button>
           </div>
           <label for="transcript">What C.O.D.Y. heard</label>
-          <textarea id="transcript" readonly placeholder="Your recognised speech will appear here…"></textarea>
+          <textarea id="transcript" spellcheck="true" placeholder="Click the microphone, press Win + H, and dictate into this box…"></textarea>
           <label class="checkbox-label"><input type="checkbox" id="speakBack" checked> Speak back what I said</label>
-          <div class="note">This tests listening and speaking only. ChatGPT conversation isn't connected in Voice Lab yet.</div>
+          <div class="note">Windows voice typing uses Win + H. Voice Lab does not control the Windows dictation toolbar. ChatGPT is not connected yet.</div>
           <div class="inline action-row"><button class="outline" id="copyTranscript">Copy transcript</button><button class="outline" id="useTranscript">Use as speech text</button></div>
         </section>
       </div>
