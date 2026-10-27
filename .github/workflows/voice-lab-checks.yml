@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - voice-lab-v0.3
+      - voice-lab-v0.4
   workflow_dispatch:
 jobs:
   syntax:
