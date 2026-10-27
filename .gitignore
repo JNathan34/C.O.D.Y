@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.yarn/cache/
+vendor/
+
+# Build outputs
+dist/
+build/
+out/
+release/
+releases/
+coverage/
+*.asar
+*.exe
+*.msi
+*.appx
+*.msix
+*.nupkg
+*.dmg
+
+# Local ZIP handoffs / archives
+*.zip
+*.7z
+*.rar
+
+# Credentials and local settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+secrets/
+credentials/
+user-data/
+userdata/
+*.sqlite
+*.db
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+.cache/
+*.tmp
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
