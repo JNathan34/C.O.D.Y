@@ -5,7 +5,7 @@ Experimental Windows **Electron** application for testing Edge Neural speech, in
 ## Run
 
 1. Download the `voice-lab-v0.4` branch ZIP and extract it.
-2. Open the `voice-lab-v0.3` application subfolder (retained from the previous branch for compatibility) and run `start.bat`.
+2. Open the `voice-lab-v0.4` application subfolder and run `start.bat`.
 3. Node.js (LTS) is required. `start.bat` installs Electron automatically if needed.
 4. Select **Windows · all discoverable voices**, **Edge Neural**, **Windows Modern** or **Windows Classic**.
 5. Windows Classic works without Python; for Edge Neural and Windows Modern, install Python 3.11+ in an architecture-compatible environment and click **Install support**. If Python or WinRT is unavailable, the Windows combined list still displays Classic voices.
