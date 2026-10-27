@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; script-src 'self'; style-src 'self'; media-src 'self' data:; connect-src 'self'; img-src 'self' data:">
+  <title>C.O.D.Y. Voice Lab</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand-icon">◉</div>
+      <div>
+        <div class="eyebrow">C.O.D.Y. EXPERIMENTS</div>
+        <h1>Voice Lab <span>0.3</span></h1>
+      </div>
+      <div class="status-chip"><span class="status-dot"></span>LOCAL TEST APP</div>
+    </header>
+    <main>
+      <section class="intro">
+        <div>
+          <div class="eyebrow cyan">VOICE SYNTHESIS</div>
+          <h2>Find C.O.D.Y.'s voice.</h2>
+          <p>Compare Edge Neural against installed Windows voices. Then try speaking to it.</p>
+        </div>
+        <div id="visualiser" class="visualiser" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </section>
+      <div class="columns">
+        <section class="panel">
+          <div class="panel-heading"><h3>Speech output</h3><span>01</span></div>
+          <label for="engine">Engine</label>
+          <select id="engine">
+            <option value="edge">Edge Neural · online</option>
+            <option value="modern">Windows Modern · installed voices</option>
+            <option value="sapi">Windows Classic · SAPI voices</option>
+          </select>
+          <div class="inline info-row">
+            <div id="engineNote">Neural online voice. Requires Python support.</div>
+            <button id="installEngine" class="tiny outline">Install support</button>
+          </div>
+          <div class="inline voices-head">
+            <label for="voice">Voice</label>
+            <button id="refreshVoices" class="tiny textbtn">↻ Refresh voices</button>
+          </div>
+          <select id="voice"><option value="">Loading voices…</option></select>
+          <div class="settings-grid">
+            <div>
+              <div class="setting-title"><label for="speed">Speed</label><span id="speedValue">1.00×</span></div>
+              <input id="speed" type="range" min="0.60" max="1.50" step="0.05" value="1">
+            </div>
+            <div>
+              <div class="setting-title"><label for="volume">Volume</label><span id="volumeValue">100%</span></div>
+              <input id="volume" type="range" min="0" max="100" step="5" value="100">
+            </div>
+          </div>
+          <label for="speechText">Text to speak</label>
+          <textarea id="speechText" maxlength="2000" spellcheck="true">Hello! I'm Cody, your desktop AI assistant. This is a test of my new voice. How do I sound?</textarea>
+          <div class="inline action-row">
+            <button id="speakBtn" class="primary"><span>▶</span> Speak text</button>
+            <button id="stopBtn" class="outline">■ Stop</button>
+            <button id="replayBtn" class="outline">↺ Replay</button>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-heading"><h3>Microphone input</h3><span>02</span></div>
+          <div class="mic-center">
+            <button id="micButton" class="mic-button" aria-label="Start listening">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 10.5a7 7 0 0 0 14 0M12 17.5V22M8.5 22h7"/></svg>
+            </button>
+            <h3 id="micHeading">Ready to listen</h3>
+            <p id="micHelp">Press the microphone to start recording.</p>
+          </div>
+          <div id="micMeter" class="mic-meter"><div></div></div>
+          <div class="inline stt-row">
+            <div><div class="mini-label">RECOGNITION</div><div class="muted">Offline with Vosk</div></div>
+            <button id="installMic" class="tiny outline">Install recognition</button>
+          </div>
+          <label for="transcript">What C.O.D.Y. heard</label>
+          <textarea id="transcript" readonly placeholder="Your recognised speech will appear here…"></textarea>
+          <label class="checkbox-label"><input type="checkbox" id="speakBack" checked> Speak back what I said</label>
+          <div class="note">This tests listening and speaking only. ChatGPT conversation isn't connected in Voice Lab yet.</div>
+          <div class="inline action-row"><button class="outline" id="copyTranscript">Copy transcript</button><button class="outline" id="useTranscript">Use as speech text</button></div>
+        </section>
+      </div>
+      <section class="bottom">
+        <span id="status">Ready. Select a voice and test speech.</span>
+        <span id="detail">Windows · Electron · local microphone</span>
+      </section>
+    </main>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>
