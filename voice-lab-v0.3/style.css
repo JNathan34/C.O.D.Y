@@ -67,3 +67,11 @@ input[type="range"]{width:100%;accent-color:#37b9fa;cursor:pointer}
 .bottom #detail{font-size:10px;color:#6d8299;text-align:right}
 .bottom.error{border-color:#80373b;color:#ffa2a8}
 @media(max-width:810px){.shell{padding:20px}.columns{grid-template-columns:1fr}.intro{padding:18px}.intro h2{font-size:20px}.visualiser{display:none}.bottom{flex-direction:column;align-items:flex-start}}
+
+/* Voice capability message for Windows/Narrator compatibility */
+.voice-help {
+  color: #90a8c9;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 7px 0 15px;
+}
