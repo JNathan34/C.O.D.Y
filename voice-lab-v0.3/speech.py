@@ -1,24 +1,13 @@
 #!/usr/bin/env python3
-"""Small, purpose-limited speech backend for C.O.D.Y. Voice Lab.
+"""Small, purpose-limited Edge Neural and Windows WinRT backend for C.O.D.Y. Voice Lab.
 
 The Electron process invokes only known commands and passes JSON through a local
 temporary file. There is no shell evaluation or arbitrary command execution.
 """
 import asyncio
-import base64
-import io
 import json
-import os
 from pathlib import Path
-import shutil
 import sys
-import tempfile
-import urllib.request
-import wave
-import zipfile
-
-MODEL_NAME = "vosk-model-small-en-us-0.15"
-MODEL_URL = f"https://alphacephei.com/vosk/models/{MODEL_NAME}.zip"
 
 
 def write_result(job, data):
@@ -90,81 +79,6 @@ async def modern_speak(job):
     Path(job["audioPath"]).write_bytes(data)
 
 
-def install_model(job):
-    target = Path(job["modelDir"]).resolve()
-    target.mkdir(parents=True, exist_ok=True)
-    model = target / MODEL_NAME
-    if (model / "am" / "final.mdl").exists():
-        write_result(job, {"installed": True, "existing": True})
-        return
-
-    # Download only from the pinned model URL, never from model-generated text.
-    with tempfile.TemporaryDirectory(prefix="cody-voskm-") as staging:
-        zip_file = Path(staging) / "model.zip"
-        with urllib.request.urlopen(MODEL_URL, timeout=75) as response:
-            if not response.url.startswith("https://alphacephei.com/"):
-                raise RuntimeError("Unexpected model download redirect.")
-            total = 0
-            with zip_file.open("wb") as out:
-                while True:
-                    chunk = response.read(1024 * 256)
-                    if not chunk:
-                        break
-                    total += len(chunk)
-                    if total > 90_000_000:
-                        raise RuntimeError("Model download exceeds allowed size.")
-                    out.write(chunk)
-
-        # Limit uncompressed archive size and prohibit path traversal.
-        with zipfile.ZipFile(zip_file) as archive:
-            total_size = sum(i.file_size for i in archive.infolist())
-            if total_size > 400_000_000:
-                raise RuntimeError("Model archive is unexpectedly large.")
-            for info in archive.infolist():
-                name = info.filename.replace("\\", "/")
-                if not name.startswith(MODEL_NAME + "/"):
-                    raise RuntimeError("Unexpected file in voice-model archive.")
-                if ".." in Path(name).parts:
-                    raise RuntimeError("Unsafe path in voice-model archive.")
-            archive.extractall(staging)
-
-        unpacked = Path(staging) / MODEL_NAME
-        if not (unpacked / "am" / "final.mdl").exists():
-            raise RuntimeError("Incomplete Vosk model archive.")
-        if model.exists():
-            shutil.rmtree(model)
-        shutil.move(str(unpacked), str(model))
-
-    write_result(job, {"installed": True, "existing": False})
-
-
-def transcribe(job):
-    from vosk import Model, KaldiRecognizer, SetLogLevel
-    SetLogLevel(-1)
-    model_dir = Path(job["modelDir"]) / MODEL_NAME
-    if not (model_dir / "am" / "final.mdl").exists():
-        raise RuntimeError("Click 'Install microphone recognition' first.")
-    raw = base64.b64decode(job["wavBase64"], validate=True)
-    with wave.open(io.BytesIO(raw), "rb") as wav_file:
-        if wav_file.getnchannels() != 1 or wav_file.getsampwidth() != 2:
-            raise RuntimeError("Microphone recording must be 16-bit mono WAV.")
-        rate = wav_file.getframerate()
-        if rate < 8000 or rate > 48000:
-            raise RuntimeError("Unsupported microphone sample rate.")
-        if wav_file.getnframes() > rate * 50:
-            raise RuntimeError("Recording is too long (50-second limit).")
-        rec = KaldiRecognizer(Model(str(model_dir)), rate)
-        parts = []
-        while True:
-            frames = wav_file.readframes(4096)
-            if not frames:
-                break
-            if rec.AcceptWaveform(frames):
-                parts.append(json.loads(rec.Result()).get("text", ""))
-        parts.append(json.loads(rec.FinalResult()).get("text", ""))
-        write_result(job, {"text": " ".join(t for t in parts if t).strip()})
-
-
 async def main():
     if len(sys.argv) != 4:
         raise ValueError("Usage: speech.py <action> <engine> <json-job>")
@@ -178,10 +92,6 @@ async def main():
         modern_voices(job)
     elif (action, engine) == ("speak", "modern"):
         await modern_speak(job)
-    elif (action, engine) == ("install-model", "vosk"):
-        install_model(job)
-    elif (action, engine) == ("transcribe", "vosk"):
-        transcribe(job)
     else:
         raise ValueError("Unsupported speech operation.")
 
