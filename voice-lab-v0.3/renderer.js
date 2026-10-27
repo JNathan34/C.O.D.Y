@@ -247,7 +247,10 @@ $('useTranscript').addEventListener('click', () => {
   notify('Transcript copied into the speech text field.');
 });
 
-ui.engine.value = ['edge','modern','sapi','windows'].includes(localStorage.getItem('cody-engine'))
-  ? localStorage.getItem('cody-engine') : 'windows';
+// Existing v0.3 users previously defaulted to Modern's short list;
+ // migrate that saved selection to the merged Windows catalogue.
+const savedEngine = localStorage.getItem('cody-engine');
+ui.engine.value = savedEngine === 'modern' ? 'windows'
+  : ['edge','sapi','windows'].includes(savedEngine) ? savedEngine : 'windows';
 updateRanges();
 loadVoices();
