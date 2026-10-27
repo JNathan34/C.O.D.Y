@@ -16,6 +16,8 @@ let lastAudioUrl = null;
 let operationToken = 0;
 let recording = null;
 let loadingVoices = 0;
+let voiceCatalog = [];
+let dictationActive = false;
 
 function notify(text, isError = false) {
   ui.status.textContent = text;
@@ -23,13 +25,18 @@ function notify(text, isError = false) {
 }
 function busySpeaking(on) {
   ui.visualiser.classList.toggle('active', Boolean(on));
-  ui.speak.disabled = Boolean(on);
+  ui.speak.disabled = Boolean(on) || ui.voice.selectedOptions[0]?.dataset?.playable === 'false';
 }
 function noteForEngine() {
   const e = ui.engine.value;
   if (e === 'edge') {
     $('engineNote').textContent = 'Online neural voices. First install Python support.';
     ui.install.hidden = false;
+    ui.install.textContent = 'Install support';
+  } else if (e === 'windows') {
+    $('engineNote').textContent = 'Merged Classic + Modern voices; Narrator-only voices may be detected but cannot always be used to speak.';
+    ui.install.hidden = false;
+    ui.install.textContent = 'Enable Modern support';
   } else if (e === 'modern') {
     $('engineNote').textContent = 'Installed Microsoft voices exposed via Windows modern speech API.';
     ui.install.hidden = false;
@@ -43,12 +50,14 @@ async function loadVoices() {
   const token = ++loadingVoices;
   const engine = ui.engine.value;
   noteForEngine();
+  voiceCatalog = [];
   ui.voice.replaceChildren(new Option('Loading installed voices…', ''));
   notify('Checking available voices…');
   try {
     const data = await window.cody.listVoices(engine);
     if (token !== loadingVoices) return;
     const voices = Array.isArray(data.voices) ? data.voices : [];
+    voiceCatalog = voices;
     ui.voice.replaceChildren();
     if (!voices.length) {
       ui.voice.add(new Option('No voices available — install support or refresh', ''));
@@ -59,12 +68,35 @@ async function loadVoices() {
     for (const v of voices) {
       const label = v.name || v.id;
       const option = new Option(label, v.id);
+      option.dataset.playable = v.playable === false ? 'false' : 'true';
       ui.voice.add(option);
     }
     const preferred = saved || (engine === 'edge' ? 'en-GB-RyanNeural' : '');
     if (preferred && voices.some(v => v.id === preferred)) ui.voice.value = preferred;
+    else {
+      const firstAvailable = voices.find(v => v.playable !== false);
+      if (firstAvailable) ui.voice.value = firstAvailable.id;
+    }
+    updateVoiceExplanation();
     notify(data.hint ? data.hint : 'Found ' + voices.length + ' available voices.');
   } catch (e) { notify('Could not get voices: ' + e.message, true); }
+}
+
+function updateVoiceExplanation() {
+  const selected = voiceCatalog.find(v => v.id === ui.voice.value);
+  const output = $('voiceExplain');
+  const isNarratorOnly = selected && selected.playable === false;
+  if (isNarratorOnly) {
+    output.textContent = 'Installed for Narrator, but this voice is NOT exposed to this app for synthesis. Select an available Windows voice or try the Edge Neural equivalent online.';
+    ui.speak.disabled = true;
+  } else {
+    output.textContent = selected?.source === 'sapi'
+      ? 'Playable locally through Windows Classic (SAPI).'
+      : selected?.source === 'modern'
+      ? 'Playable locally through Windows Modern (WinRT).'
+      : 'This voice can be tested with the selected engine.';
+    ui.speak.disabled = false;
+  }
 }
 
 function stopAudio() {
@@ -96,6 +128,10 @@ async function playUrl(url, token) {
 async function speak() {
   const text = ui.text.value.trim();
   if (!text) { notify('Type something for C.O.D.Y. to say.', true); return; }
+  if (ui.voice.selectedOptions[0]?.dataset?.playable === 'false') {
+    notify('That voice belongs to Narrator and cannot be spoken by the public Windows TTS API.', true);
+    return;
+  }
   stopAudio();
   const token = operationToken;
   busySpeaking(true);
@@ -128,7 +164,10 @@ ui.engine.addEventListener('change', () => {
   localStorage.setItem('cody-engine', ui.engine.value);
   loadVoices();
 });
-ui.voice.addEventListener('change', () => localStorage.setItem('cody-voice:' + ui.engine.value, ui.voice.value));
+ui.voice.addEventListener('change', () => {
+  localStorage.setItem('cody-voice:' + ui.engine.value, ui.voice.value);
+  updateVoiceExplanation();
+});
 ui.speed.addEventListener('input', updateRanges);
 ui.volume.addEventListener('input', updateRanges);
 $('refreshVoices').addEventListener('click', loadVoices);
@@ -157,149 +196,45 @@ ui.install.addEventListener('click', async () => {
   finally { ui.install.disabled = false; }
 });
 
-ui.installMic.addEventListener('click', async () => {
-  ui.installMic.disabled = true;
-  notify('Installing offline recognition and downloading its English model…');
-  try {
-    await window.cody.install('recognition');
-    notify('Microphone recognition installed. Click the microphone to speak.');
-    ui.installMic.textContent = 'Installed';
-  } catch (e) { notify('Recognition install failed: ' + e.message, true); }
-  finally { ui.installMic.disabled = false; }
+
+// Windows' built-in Win + H dictation works without the unsupported Vosk
+// wheel on some Windows ARM64/Python configurations. The user owns the
+// native dictation toolbar and its microphone permissions.
+ui.installMic.addEventListener('click', () => {
+  notify('Click the microphone button, then press Windows + H to start voice typing. Speak into the editable transcript field, stop dictation in the Windows toolbar, then click the microphone again to finish.');
 });
 
-function combineSamples(chunks) {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const samples = new Float32Array(total);
-  let start = 0;
-  for (const chunk of chunks) { samples.set(chunk, start); start += chunk.length; }
-  return samples;
+function setDictationState(active) {
+  dictationActive = active;
+  ui.micButton.classList.toggle('recording', active);
+  ui.micButton.setAttribute('aria-label', active ? 'Finish dictation' : 'Start dictation');
+  ui.micHeading.textContent = active ? 'Voice typing ready' : 'Windows voice typing';
+  ui.micHelp.textContent = active
+    ? 'Press Win + H and speak. Stop in the Windows toolbar, then click this button again.'
+    : 'Click the mic, press Win + H, speak, then click the mic again to finish.';
 }
 
-function resample(samples, fromRate, toRate = 16000) {
-  const count = Math.round(samples.length * toRate / fromRate);
-  const out = new Float32Array(count);
-  for (let i = 0; i < count; i++) {
-    const from = i * fromRate / toRate;
-    const left = Math.floor(from), right = Math.min(left + 1, samples.length - 1);
-    const fraction = from - left;
-    out[i] = (samples[left] || 0) * (1 - fraction) + (samples[right] || 0) * fraction;
-  }
-  return out;
-}
-
-function wavBytes(samples, sampleRate = 16000) {
-  const bytes = new ArrayBuffer(44 + samples.length * 2);
-  const view = new DataView(bytes);
-  function ascii(at, str) { for (let i = 0; i < str.length; i++) view.setUint8(at + i, str.charCodeAt(i)); }
-  ascii(0, 'RIFF'); view.setUint32(4, bytes.byteLength - 8, true);
-  ascii(8, 'WAVE'); ascii(12, 'fmt '); view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-  ascii(36, 'data'); view.setUint32(40, samples.length * 2, true);
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(44 + i * 2, s < 0 ? s * 32768 : s * 32767, true);
-  }
-  return new Uint8Array(bytes);
-}
-
-function bytesBase64(bytes) {
-  let binary = '';
-  const block = 0x2000;
-  for (let i = 0; i < bytes.length; i += block) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + block));
-  }
-  return btoa(binary);
-}
-
-function setRecordingState(on) {
-  ui.micButton.classList.toggle('recording', on);
-  ui.micButton.setAttribute('aria-label', on ? 'Stop listening and transcribe' : 'Start listening');
-  ui.micHeading.textContent = on ? 'Listening…' : 'Ready to listen';
-  ui.micHelp.textContent = on ? 'Speak naturally, then click the microphone again.' : 'Press the microphone to start recording.';
-}
-
-async function startListening() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    notify('Microphone capture is not supported in this environment.', true);
+ui.micButton.addEventListener('click', async () => {
+  if (!dictationActive) {
+    stopAudio();
+    setDictationState(true);
+    ui.transcript.focus();
+    notify('Transcript field focused. Press Win + H to begin Windows voice typing (internet required).');
     return;
   }
-  try {
-    stopAudio(); // Avoid transcribing our own voice.
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
-      video: false
-    });
-    const context = new AudioContext();
-    const source = context.createMediaStreamSource(stream);
-    const processor = context.createScriptProcessor(4096, 1, 1);
-    const chunks = [];
-    recording = { stream, context, source, processor, chunks, sampleRate: context.sampleRate };
-    processor.onaudioprocess = event => {
-      if (!recording) return;
-      const data = event.inputBuffer.getChannelData(0);
-      chunks.push(new Float32Array(data));
-      const output = event.outputBuffer.getChannelData(0);
-      output.fill(0); // Never play microphone input through speakers.
-      let energy = 0;
-      for (let i = 0; i < data.length; i += 8) energy += data[i] * data[i];
-      ui.meter.style.width = Math.min(100, Math.sqrt(energy / (data.length / 8)) * 240) + '%';
-      if (chunks.length * 4096 / context.sampleRate > 45) queueMicrotask(stopListening);
-    };
-    source.connect(processor);
-    processor.connect(context.destination);
-    setRecordingState(true);
-    notify('Recording locally. Click the microphone again to transcribe.');
-  } catch (e) {
-    notify('Microphone unavailable: ' + e.message + '. Check Windows microphone permissions.', true);
-  }
-}
-
-async function stopListening() {
-  if (!recording) return;
-  const current = recording;
-  recording = null;
-  setRecordingState(false);
-  ui.meter.style.width = '0%';
-  current.processor.disconnect();
-  current.source.disconnect();
-  current.processor.onaudioprocess = null;
-  current.stream.getTracks().forEach(t => t.stop());
-  await current.context.close();
-  const samples = combineSamples(current.chunks);
-  if (samples.length < current.sampleRate * 0.35) {
-    notify('Recording was too short. Try again.', true);
+  setDictationState(false);
+  const spoken = ui.transcript.value.trim();
+  if (!spoken) {
+    notify('No words detected yet. Press Win + H while the transcript field is focused.', true);
     return;
   }
-  ui.micButton.disabled = true;
-  ui.micHeading.textContent = 'Transcribing…';
-  notify('Recognising speech offline…');
-  try {
-    const wav = wavBytes(resample(samples, current.sampleRate, 16000));
-    const result = await window.cody.transcribe(bytesBase64(wav));
-    const transcript = (result.text || '').trim();
-    ui.transcript.value = transcript;
-    ui.micHeading.textContent = 'Recognised';
-    if (!transcript) {
-      notify('I did not recognise any words. Speak clearly and try again.');
-      return;
-    }
-    notify('Heard: ' + transcript);
-    if ($('speakBack').checked) {
-      ui.text.value = transcript;
-      await speak();
-    }
-  } catch (e) {
-    ui.micHeading.textContent = 'Recognition unavailable';
-    notify('Recognition failed: ' + e.message, true);
-  } finally {
-    ui.micButton.disabled = false;
+  notify('Transcript ready: ' + spoken);
+  if ($('speakBack').checked) {
+    ui.text.value = spoken;
+    await speak();
   }
-}
+});
 
-ui.micButton.addEventListener('click', () => recording ? stopListening() : startListening());
 $('copyTranscript').addEventListener('click', async () => {
   if (!ui.transcript.value) return;
   try {
@@ -312,7 +247,7 @@ $('useTranscript').addEventListener('click', () => {
   notify('Transcript copied into the speech text field.');
 });
 
-ui.engine.value = ['edge','modern','sapi'].includes(localStorage.getItem('cody-engine'))
-  ? localStorage.getItem('cody-engine') : 'edge';
+ui.engine.value = ['edge','modern','sapi','windows'].includes(localStorage.getItem('cody-engine'))
+  ? localStorage.getItem('cody-engine') : 'windows';
 updateRanges();
 loadVoices();
