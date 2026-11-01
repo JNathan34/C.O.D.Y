@@ -20,7 +20,7 @@ replaces the complete packaged app, including its bundled engine.
 ## Release a version
 
 1. Increase `version` in `frontend/original-cody/package.json`. Use a stable
-   version greater than the published release, for example `0.15.2`.
+   version greater than the published release, for example `0.15.3`.
 2. Quit the development app and run `Build-CODY-Standalone.bat`. This builds the
    native engine and both Windows architectures, then produces the NSIS setup
    and update manifest in `dist/standalone-VERSION`. This command never publishes.
@@ -34,9 +34,11 @@ replaces the complete packaged app, including its bundled engine.
 5. Review release notes and assets on GitHub and publish the draft as a normal
    release. Do not mark it as a prerelease. Drafts are invisible to the updater.
 
-Always upload `latest.yml` alongside the executable, plus `latest-arm64.yml` if
-generated. The publisher includes these automatically. Installers contain both
-x64 and ARM64 application payloads. Keep all assets on older releases available.
+Always upload `latest.yml` alongside both architecture-specific executables.
+The publisher verifies that both installers are listed and includes them
+automatically. Each installer contains one application architecture; the updater
+selects the matching file from the shared manifest. Keep assets on older releases
+available, including the pinned native build-input archive.
 Users need no GitHub login or token to receive public releases.
 
 ## Verification

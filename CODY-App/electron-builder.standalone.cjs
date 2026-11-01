@@ -9,7 +9,7 @@ module.exports={
  files:['src/**/*','assets/**/*','windows/**/*','ui/**/*','node_modules/**/*','package.json','!**/tests/**/*'],
  extraResources:[{from:path.join(root,'run/current'),to:'native-engine',filter:['**/*','!**/*.log','!**/*.pdb']}],
  asarUnpack:['windows/**/*','src/voice/*.ps1','src/voice/*.py'],
- win:{icon:path.join(root,'frontend/original-cody/assets/brand/cody.ico'),target:[{target:'nsis',arch:['x64','arm64']}],signExecutable:false,artifactName:'C.O.D.Y-Setup-${version}.${ext}'},
- nsis:{oneClick:false,perMachine:false,useZip:true,differentialPackage:false,preCompressedFileExtensions:[],allowToChangeInstallationDirectory:true,createDesktopShortcut:true,createStartMenuShortcut:true,shortcutName:'C.O.D.Y',include:path.join(root,'build/installer/standalone.nsh'),deleteAppDataOnUninstall:false,runAfterFinish:true},
+ win:{icon:path.join(root,'frontend/original-cody/assets/brand/cody.ico'),target:[{target:'nsis',arch:['x64','arm64']}],signExecutable:false,artifactName:'C.O.D.Y-Setup-${version}-${arch}.${ext}'},
+ nsis:{buildUniversalInstaller:false,oneClick:false,perMachine:false,useZip:true,differentialPackage:false,preCompressedFileExtensions:[],allowToChangeInstallationDirectory:true,createDesktopShortcut:true,createStartMenuShortcut:true,shortcutName:'C.O.D.Y',include:path.join(root,'build/installer/standalone.nsh'),deleteAppDataOnUninstall:false,runAfterFinish:true},
  afterPack:path.join(root,'tools/audit-standalone.cjs')
 };

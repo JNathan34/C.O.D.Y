@@ -30,7 +30,7 @@ Older installations without the updater need one manual installation of 0.15.1 o
 
 ## Current limits
 
-- Windows desktop is the supported platform. The setup contains x64 and ARM64 application payloads; some native components run as x64 on ARM Windows.
+- Windows desktop is the supported platform. Choose the x64 installer for Intel/AMD or the ARM64 installer for ARM/Snapdragon; some native components run as x64 on ARM Windows.
 - The installer is unsigned. Windows can display an unknown publisher.
 - AI, browser and network features need their respective accounts or connections.
 - Computer actions and sensor data depend on Windows access and available providers.

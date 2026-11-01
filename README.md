@@ -13,12 +13,12 @@
 
 C.O.D.Y. brings chat, voice controls and background tasks into an animated desktop island. It combines an Electron interface with a bundled Windows engine for computer controls, screen capture, browser connections and visual tools.
 
-**Current release: 0.15.1 · Windows x64 and ARM64 · Early development**
+**Current release: 0.15.2 · Windows x64 and ARM64 · Early development**
 
 ## Install
 
 1. Open the [latest release](https://github.com/JNathan34/C.O.D.Y/releases/latest).
-2. Download **C.O.D.Y-Setup-0.15.1.exe** and run it. Setup selects the application architecture for your PC.
+2. Choose **C.O.D.Y-Setup-0.15.2-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.2-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
 3. Open C.O.D.Y., connect your preferred AI service and review the app permissions.
 
 The installer is currently unsigned. Windows may show its publisher as unknown. AI providers require their own accounts; provider subscriptions and paid usage are not included.
@@ -38,14 +38,15 @@ Once this version is installed, **Settings → Updates** can check GitHub, downl
 
 Features depend on Windows permissions, account access and connected services. The [getting-started guide](docs/GETTING-STARTED.md) covers setup and current limits.
 
-## What changed in 0.15.1
+## What changed in 0.15.2
 
-- GitHub-based application updates with check, download and restart controls.
+- Separate x64 and ARM64 installers, so each download contains only the version needed for your PC.
+- GitHub updates select the installer matching the running app’s architecture.
 - Correct duration metadata for newly saved screen recordings.
 - C.O.D.Y Pro branding in the account usage card.
 - Current source, tests, build tools and versioned native build inputs published together.
 
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.1.md) and the [changelog](CHANGELOG.md).
+See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.2.md) and the [changelog](CHANGELOG.md).
 
 ## Develop
 
@@ -61,7 +62,7 @@ powershell -NoProfile -File tools/restore-build-inputs.ps1
 .\Start-Development.bat
 ```
 
-The restore command downloads the versioned native runtime and installer prerequisites from this release and verifies their SHA-256 checksum before extraction. Large runtime files are release assets rather than Git history. The native build also downloads pinned wake-word dependencies and verifies their checksums.
+The restore command downloads the versioned native runtime and installer prerequisites from the pinned release and verifies their SHA-256 checksum before extraction. Large runtime files are release assets rather than Git history. The native build also downloads pinned wake-word dependencies and verifies their checksums.
 
 Run the frontend checks with:
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.2 — 1 November 2026
+
+- Separate Windows x64 and ARM64 setup executables replace the combined installer.
+- Shared update metadata lists both installers; the updater selects the matching architecture.
+- Existing native build prerequisites remain pinned to the verified 0.15.1 archive.
+
 ## 0.15.1 — 1 November 2026
 
 ### Added

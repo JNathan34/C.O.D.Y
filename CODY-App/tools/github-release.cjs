@@ -3,7 +3,7 @@ const fs=require('node:fs'),fsp=require('node:fs/promises'),path=require('node:p
 const yaml=require('js-yaml');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
-async function inspectRelease(directory,version){
+async function inspectRelease(directory,version,{architectures=[]}={}){
   const names=await fsp.readdir(directory);
   const manifests=names.filter(name=>/^latest(?:-arm64)?\.yml$/.test(name));
   if(!manifests.includes('latest.yml'))throw Error('Missing latest.yml. Build the NSIS installer first.');
@@ -23,6 +23,7 @@ async function inspectRelease(directory,version){
       if(names.includes(filename+'.blockmap'))assets.add(filename+'.blockmap');
     }
   }
+  for(const arch of architectures)if(!assets.has(`C.O.D.Y-Setup-${version}-${arch}.exe`))throw Error(`Missing ${arch} installer in update metadata.`);
   const buildInputs=`C.O.D.Y-Build-Inputs-${version}.zip`;
   if(names.includes(buildInputs)){
     const manifest=JSON.parse(await fsp.readFile(path.join(root,'build-inputs.json'),'utf8'));
@@ -39,7 +40,7 @@ async function main(){
   if(!['--check','--draft'].includes(mode))throw Error('Use --check or --draft.');
   const version=require('../frontend/original-cody/package.json').version;
   if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('Use a stable major.minor.patch version.');
-  const directory=path.join(root,'dist','standalone-'+version),assets=await inspectRelease(directory,version);
+  const directory=path.join(root,'dist','standalone-'+version),assets=await inspectRelease(directory,version,{architectures:['x64','arm64']});
   console.log('Validated v'+version+': '+assets.map(asset=>asset.name).join(', '));
   if(mode==='--check')return;
   const login=process.env.GH_TOKEN||process.env.GITHUB_TOKEN?null:spawnSync(process.env.GH_CLI||'gh',['auth','token'],{encoding:'utf8',windowsHide:true});

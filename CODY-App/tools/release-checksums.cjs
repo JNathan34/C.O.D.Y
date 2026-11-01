@@ -3,7 +3,7 @@ const fs=require('node:fs'),fsp=require('node:fs/promises'),path=require('node:p
 const {inspectRelease}=require('./github-release.cjs');
 (async()=>{
   const version=require('../frontend/original-cody/package.json').version,directory=path.resolve(__dirname,'../dist/standalone-'+version);
-  const assets=await inspectRelease(directory,version),lines=[];
+  const assets=await inspectRelease(directory,version,{architectures:['x64','arm64']}),lines=[];
   for(const asset of assets.filter(asset=>asset.name!=='SHA256SUMS.txt')){
     const hash=crypto.createHash('sha256');for await(const bytes of fs.createReadStream(asset.path))hash.update(bytes);
     lines.push(hash.digest('hex')+'  '+asset.name);
