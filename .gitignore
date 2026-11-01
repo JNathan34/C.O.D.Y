@@ -54,3 +54,29 @@ temp/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# C.O.D.Y native outputs and local runtimes
+**/bin/
+**/obj/
+CODY-App/pristine/
+CODY-App/run/
+CODY-App/reports/
+CODY-App/reference/
+CODY-App/work/wake-dotnet/
+CODY-App/work/wake-lab/
+CODY-App/work/sherpa-onnx-*/
+CODY-App/work/*model*.tar.*
+*.onnx
+*.tar.bz2
+*.pdb
+*.dll
+*.wav
+*.mp4
+*.mp3
+
+# Keep installer source while excluding generated staging and prerequisites
+!CODY-App/build/
+CODY-App/build/*
+!CODY-App/build/installer/
+CODY-App/build/installer/*
+!CODY-App/build/installer/standalone.nsh

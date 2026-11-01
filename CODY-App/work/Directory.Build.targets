@@ -1,0 +1,9 @@
+<Project>
+  <!-- Recovered assemblies already contain their generated interop sources.
+       Regenerating those types creates duplicate WinRT ABI declarations. -->
+  <Target Name="UseRecoveredInteropSources" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" />
+    </ItemGroup>
+  </Target>
+</Project>

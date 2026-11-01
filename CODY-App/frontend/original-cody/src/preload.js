@@ -1,0 +1,53 @@
+'use strict';
+const {contextBridge,ipcRenderer}=require('electron');
+const allowedEvents=new Set(['updates-state','status','diagnostic','auth-changed','chats-changed','settings-changed','message-added','message-delta','message-replace','activity','usage','busy','approval','window-state','quota','web-status','firefox-status','voice-hotkey']);
+contextBridge.exposeInMainWorld('cody',{
+  updates:{state:()=>ipcRenderer.invoke('updates-state'),check:()=>ipcRenderer.invoke('updates-check'),download:()=>ipcRenderer.invoke('updates-download'),install:()=>ipcRenderer.invoke('updates-install'),configure:value=>ipcRenderer.invoke('updates-configure',value),releases:()=>ipcRenderer.invoke('updates-releases')},
+  state:()=>ipcRenderer.invoke('state'),
+  backends:{status:()=>ipcRenderer.invoke('backend-status'),refresh:()=>ipcRenderer.invoke('backend-refresh')},
+  memory:{status:()=>ipcRenderer.invoke('memory-status'),search:(query,sourceId)=>ipcRenderer.invoke('memory-search',query,sourceId),configure:(id,patch)=>ipcRenderer.invoke('memory-source',id,patch),removeSource:id=>ipcRenderer.invoke('memory-delete-source',id),remove:id=>ipcRenderer.invoke('memory-delete-record',id),update:(id,text)=>ipcRenderer.invoke('memory-update',id,text),save:value=>ipcRenderer.invoke('memory-save',value),import:()=>ipcRenderer.invoke('memory-import'),export:()=>ipcRenderer.invoke('memory-export'),codexList:cursor=>ipcRenderer.invoke('memory-codex-list',cursor),codexImport:id=>ipcRenderer.invoke('memory-codex-import',id)},
+  newChat:()=>ipcRenderer.invoke('new-chat'),
+  selectChat:id=>ipcRenderer.invoke('select-chat',id),
+  deleteChat:id=>ipcRenderer.invoke('delete-chat',id),
+  saveSettings:s=>ipcRenderer.invoke('save-settings',s),
+  browseFolder:()=>ipcRenderer.invoke('browse-folder'),
+  connect:()=>ipcRenderer.invoke('connect'),
+  account:()=>ipcRenderer.invoke('account'),
+  signIn:()=>ipcRenderer.invoke('sign-in'),
+  rateLimits:()=>ipcRenderer.invoke('rate-limits'),
+  openChatGPT:()=>ipcRenderer.invoke('open-chatgpt'),
+  webStatus:()=>ipcRenderer.invoke('web-status'),
+  webSignIn:()=>ipcRenderer.invoke('web-sign-in'),
+  sendMessage:args=>ipcRenderer.invoke('send-message',args),
+  stop:()=>ipcRenderer.invoke('stop-turn'),
+  voice:{
+    voices:engine=>ipcRenderer.invoke('voice-voices',engine),
+    install:engine=>ipcRenderer.invoke('voice-install',engine),
+    cancel:()=>ipcRenderer.invoke('voice-cancel'),
+    status:()=>ipcRenderer.invoke('voice-status'),
+    configure:settings=>ipcRenderer.invoke('voice-configure',settings),
+    transcribe:audio=>ipcRenderer.invoke('voice-transcribe',audio),
+    synthesize:text=>ipcRenderer.invoke('voice-synthesize',{text})
+  },
+  annotations:{
+    settings:()=>ipcRenderer.invoke('annotations-settings'),
+    configure:patch=>ipcRenderer.invoke('annotations-configure',patch),
+    clear:()=>ipcRenderer.invoke('annotations-clear'),
+    demo:()=>ipcRenderer.invoke('annotations-demo'),
+    speech:phase=>ipcRenderer.invoke('annotations-speech',phase)
+  },
+  visuals:{state:()=>ipcRenderer.invoke('visuals-state'),configure:patch=>ipcRenderer.invoke('visuals-configure',patch),demo:()=>ipcRenderer.invoke('visuals-demo'),clear:()=>ipcRenderer.invoke('visuals-clear'),clearAll:()=>ipcRenderer.invoke('visuals-clear-all')},
+  control:{
+    firefoxStatus:()=>ipcRenderer.invoke('firefox-status'),
+    firefoxTest:()=>ipcRenderer.invoke('firefox-smoke-test'),
+    catalog:()=>ipcRenderer.invoke('computer-catalog'),
+    audit:()=>ipcRenderer.invoke('computer-audit'),
+    emergencyStop:()=>ipcRenderer.invoke('computer-emergency-stop'),
+    permissions:()=>ipcRenderer.invoke('computer-permissions'),
+    configure:settings=>ipcRenderer.invoke('computer-configure',settings),
+    execute:(action,args={})=>ipcRenderer.invoke('computer-execute',{action,args})
+  },
+  approve:(id,decision)=>ipcRenderer.invoke('approval-decision',id,decision),
+  windowAction:a=>ipcRenderer.invoke('window-action',a),
+  on:(event,callback)=>{if(!allowedEvents.has(event))throw Error('Unknown event');const listener=(_,value)=>callback(value);ipcRenderer.on(event,listener);return()=>ipcRenderer.removeListener(event,listener);}
+});

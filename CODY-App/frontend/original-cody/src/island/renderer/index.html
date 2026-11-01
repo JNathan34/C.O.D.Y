@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self'; style-src 'self'; img-src 'self' data: https:; media-src 'self' blob: data:; connect-src 'self';">
+  <title>C.O.D.Y</title>
+  <link rel="icon" href="../../../assets/brand/cody-32.png" type="image/png">
+  <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="assistant.css">
+<link rel="stylesheet" href="rock-paper-scissors.css">
+<link rel="stylesheet" href="screen-capture.css">
+<link rel="stylesheet" href="attachments.css">
+<link rel="stylesheet" href="background-tasks.css"><link rel="stylesheet" href="plugins.css">
+</head>
+<body data-state="idle" data-expression="normal" data-size="medium" data-motion="normal" data-reveal="hidden" data-style="liquid">
+<main class="overlay-shell">
+  <!-- No title attribute: the desktop island NEVER produces browser hover tooltips. -->
+  <div class="island" id="island" role="button" tabindex="0" aria-label="Open C.O.D.Y. quick panel">
+    <svg class="island-shape" id="island-shape" viewBox="0 0 216 32" preserveAspectRatio="none" aria-hidden="true">
+      <path id="island-path" d="M0 0 H216 C205 0 201 7 199 13 C195 26 189 32 175 32 H41 C27 32 21 26 17 13 C15 7 11 0 0 0 Z" fill="#000"/>
+    </svg>
+    <div class="mascot" aria-hidden="true">
+      <div class="media-music-notes" aria-hidden="true">
+        <span class="music-note music-note-left"></span>
+        <span class="music-note music-note-high"></span>
+        <span class="music-note music-note-low"></span>
+      </div>
+      <!-- The original ring never moves, rotates, stretches or glows. Its colour crossfades. -->
+      <div class="ring-layers">
+        <img class="ring" id="ring-idle" src="assets/cody-ring-idle.png" alt="" draggable="false">
+        <img class="ring" id="ring-listening" src="assets/cody-ring-listening.png" alt="" draggable="false">
+        <img class="ring" id="ring-thinking" src="assets/cody-ring-thinking.png" alt="" draggable="false">
+        <img class="ring" id="ring-speaking" src="assets/cody-ring-speaking.png" alt="" draggable="false">
+        <img class="ring" id="ring-error" src="assets/cody-ring-error.png" alt="" draggable="false">
+        <img class="ring" id="ring-offline" src="assets/cody-ring-offline.png" alt="" draggable="false">
+        <img class="ring" id="ring-restored" src="assets/cody-ring-restored.png" alt="" draggable="false">
+      </div>
+      <div class="symbol-layer face is-active" id="symbol-idle">
+        <div class="face-mask">
+          <div id="face-gaze">
+            <div class="eyes" id="face-eyes">
+              <img class="original-eye left-eye" src="assets/cody-eye-left-original.png" alt="" draggable="false">
+              <img class="original-eye right-eye" src="assets/cody-eye-right-original.png" alt="" draggable="false">
+            </div>
+          </div>
+          <svg class="alternate-face" viewBox="0 0 591 573" preserveAspectRatio="xMidYMid meet">
+            <g class="face-surprised"><ellipse cx="210" cy="295" rx="24" ry="30"/><ellipse cx="383" cy="295" rx="24" ry="30"/></g>
+            <g class="face-confused"><path d="M174 286 Q207 269 241 292 M350 292 Q382 266 416 285"/><circle cx="214" cy="313" r="9"/><circle cx="385" cy="311" r="9"/></g>
+            <g class="face-smug"><path d="M173 303 Q214 284 249 304 M344 296 Q386 260 417 287"/></g>
+            <!-- Oversized emoji stickers now live OUTSIDE face-mask, below. -->
+            <g class="face-sleep-eyes"><path d="M174 291 Q210 322 246 291 M347 291 Q383 322 419 291"/></g>
+            <g class="face-sleep-mouth"><path d="M270 361 Q296 378 322 361"/></g>
+            <g class="face-shy"><path d="M164 299 Q207 265 248 301 M347 301 Q389 266 429 299"/><circle cx="158" cy="345" r="13" class="cheek"/><circle cx="440" cy="345" r="13" class="cheek"/></g>
+          </svg>
+        </div>
+        <!-- Facial stickers intentionally extend beyond the mascot's segmented ring.
+             They must not be clipped to the inner face circle. -->
+        <div class="emoji-overlays" aria-hidden="true">
+<svg class="emoji-sticker sleep-sticker" viewBox="0 0 100 100" aria-hidden="true">
+            <g class="sleep-z"><text x="67" y="57">z</text><text x="83" y="43">Z</text><text x="101" y="32">Z</text></g>
+          </svg>
+        </div>
+      </div>
+      <div class="symbol-layer activity-symbol" id="symbol-listening" aria-label="Listening">
+        <div class="waveform"><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="symbol-layer activity-symbol" id="symbol-thinking" aria-label="Thinking">
+        <div class="thinking-dots"><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="symbol-layer activity-symbol" id="symbol-speaking" aria-label="Speaking">
+        <div class="waveform"><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="symbol-layer activity-symbol" id="symbol-error"><span class="error-symbol">×</span></div>
+      <div class="symbol-layer activity-symbol wifi-symbol" id="symbol-offline" aria-label="Wi-Fi disconnected">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle class="wifi-node" cx="32" cy="43" r="3"/>
+          <path class="wifi-arc wifi-first" d="M27 37 Q32 32 37 37"/>
+          <path class="wifi-arc wifi-second" d="M23 32 Q32 23 41 32"/>
+          <path class="wifi-arc wifi-third" d="M19 27 Q32 14 45 27"/>
+        </svg>
+      </div>
+      <div class="symbol-layer activity-symbol wifi-symbol" id="symbol-restored" aria-label="Wi-Fi restored">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle class="wifi-node" cx="32" cy="43" r="3"/>
+          <path class="wifi-arc wifi-first" d="M27 37 Q32 32 37 37"/>
+          <path class="wifi-arc wifi-second" d="M23 32 Q32 23 41 32"/>
+          <path class="wifi-arc wifi-third" d="M19 27 Q32 14 45 27"/>
+        </svg>
+      </div>
+      <div class="morph-dot" id="morph-dot"></div>
+    </div>
+    <button id="island-timer" class="island-timer" type="button" hidden aria-label="Timer"><span id="island-timer-icon" aria-hidden="true"></span><span id="island-timer-value" role="timer">00:00</span></button>
+    <div id="island-info" class="island-info" hidden>
+      <span id="island-recording-dot" class="island-recording-dot" aria-hidden="true" hidden></span><span id="island-info-icon" aria-hidden="true"></span><img id="island-media-art" alt="" hidden><div class="island-info-copy"><span id="island-info-text"></span><span id="island-info-detail"></span></div>
+      <div id="island-recording-controls" class="island-recording-controls" role="group" aria-label="Screen recording controls" hidden><button id="island-recording-pause" type="button" aria-label="Pause screen recording" title="Pause recording"></button><button id="island-recording-stop" type="button" aria-label="Stop and save screen recording" title="Stop and save"></button></div>
+      <div id="island-rps-controls" class="island-rps-controls" role="group" aria-label="Choose rock, paper or scissors" hidden><button type="button" data-rps-move="rock" aria-label="Rock" title="Rock">🪨</button><button type="button" data-rps-move="paper" aria-label="Paper" title="Paper">📃</button><button type="button" data-rps-move="scissors" aria-label="Scissors" title="Scissors">✂️</button></div>
+      <div id="island-media-controls" class="island-media-controls" hidden><button id="island-media-previous" type="button" aria-label="Previous media item"></button><button id="island-media-toggle" type="button" aria-label="Play or pause media"></button><button id="island-media-next" type="button" aria-label="Next media item"></button></div>
+    </div>
+    <div id="file-drop-hint" hidden>Drop files here<small>Then ask C.O.D.Y. about them</small></div>
+    <section class="quick-panel" id="quick-panel" aria-label="C.O.D.Y. assistant" aria-hidden="true" inert>
+      <header class="panel-header">
+        <div class="panel-header-actions">
+          <button id="panel-tasks" class="icon-button" type="button" aria-label="Background tasks" title="Background tasks"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m6 9 1.5 1.5L10 8M13 9h5m-12 6h4m3 0h5"/></svg><span id="task-count" hidden></span></button>
+          <button id="panel-settings" class="icon-button" type="button" aria-label="Settings" title="Settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.25"/><path d="M10.2 2.8h3.6l.6 2.1 1.8.75 1.9-1.05 2.55 2.55-1.05 1.9.75 1.8 2.1.6v3.6l-2.1.6-.75 1.8 1.05 1.9-2.55 2.55-1.9-1.05-1.8.75-.6 2.1h-3.6l-.6-2.1-1.8-.75-1.9 1.05-2.55-2.55 1.05-1.9-.75-1.8-2.1-.6v-3.6l2.1-.6.75-1.8-1.05-1.9 2.55-2.55 1.9 1.05 1.8-.75z" transform="translate(0 -1) scale(1 .99)"/></svg>
+          </button>
+          <button id="new-chat" class="icon-button" type="button" aria-label="New conversation" title="New conversation">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="m10 14 8.5-8.5a2 2 0 0 1 2.8 2.8L12.8 16.8 9 17.8z"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="view-stack">
+        <section class="panel-view chat-view is-current" id="view-chat" aria-label="Chat" aria-hidden="false">
+          <div class="conversation" id="conversation" role="log" aria-label="Conversation" aria-live="polite">
+            <div class="empty-state" id="empty-state">
+              <h2>What can I help with?</h2>
+              <div class="suggestions">
+                <button class="suggestion" type="button" data-suggestion="Open Notepad on my PC">Open an app <span aria-hidden="true">↗</span></button>
+                <button class="suggestion" type="button" data-suggestion="Help me find a file on my PC">Find a file <span aria-hidden="true">↗</span></button>
+                <button class="suggestion" type="button" data-suggestion="Explain something I don't understand">Explain something <span aria-hidden="true">↗</span></button>
+                <button class="suggestion" type="button" data-suggestion="Help me with a coding project">Help me code <span aria-hidden="true">↗</span></button>
+              </div>
+            </div>
+            <div id="chat-messages" class="chat-messages"></div>
+          </div>
+          <div class="composer-area">
+            <div class="composer">
+              <div id="attachment-list" class="attachment-list" aria-label="Attached files" hidden></div>
+              <label for="quick-input" class="sr-only">Message C.O.D.Y.</label>
+              <textarea id="quick-input" placeholder="Message C.O.D.Y." rows="1" spellcheck="true"></textarea>
+              <div class="composer-bottom">
+                <button id="panel-mic" class="icon-button mic-button" type="button" aria-label="Start listening" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v4m-4 0h8"/></svg>
+                </button>
+                <button id="core-speaker" class="icon-button" type="button" title="Speak typed replies" aria-label="Speak typed replies">◖))</button><button id="attach-files" class="icon-button" type="button" aria-label="Attach files" title="Attach files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 11-8.5 8.5a6 6 0 0 1-8.5-8.5L13 2a4 4 0 0 1 5.7 5.7L9.5 17a2 2 0 0 1-2.8-2.8L15 6"/></svg></button><span id="mic-status" class="mic-status" aria-live="polite"></span>
+                <button id="core-stop" class="send-button" type="button" aria-label="Stop response" hidden>Stop</button>
+                <button id="panel-send" class="send-button" type="button" aria-label="Send message" disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>
+                </button>
+              </div>
+            </div>
+            <p id="integration-note" class="integration-note" aria-live="polite"></p>
+          </div>
+        </section>
+        <section class="panel-view history-view" id="view-history" aria-label="Conversation history" aria-hidden="true" inert><aside class="history-sidebar" aria-label="Chat history"><button id="history-new" class="light-action" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-7M16 3l5 5M9 15l2-6L18 2a2 2 0 0 1 3 3l-7 7-5 3Z"/></svg><span>New chat</span></button><label class="sr-only" for="history-search">Search chats</label><input id="history-search" type="search" placeholder="Search chats…"><nav id="history-list" aria-label="Previous conversations"></nav><button id="history-close" class="history-close" type="button">Back to compact chat</button></aside><div id="history-conversation" class="history-conversation"></div></section>
+        <section class="panel-view tasks-view" id="view-tasks" aria-label="Background tasks" aria-hidden="true" inert>
+          <header class="tasks-heading"><h2>Background tasks</h2><span id="tasks-summary" role="status">Connecting…</span></header>
+          <div class="tasks-content"><div id="tasks-list" class="tasks-list" aria-label="Tasks"></div><article class="task-detail" hidden><div class="task-detail-toolbar"><button id="task-back" type="button" class="task-back">← All tasks</button><span id="task-status"></span></div><h3 id="task-title">Background task</h3><div class="task-detail-scroll"><p id="task-progress"></p><p id="task-question" hidden></p><div id="task-response" class="task-markdown"></div><div id="task-outputs"></div></div><footer class="task-detail-footer"><div class="task-actions"><button id="task-open-result" type="button" class="light-action" hidden>Open result ↗</button><button id="task-open-chat" type="button" class="task-secondary" disabled>Open chat</button><button id="task-stop" type="button" class="task-secondary" disabled>Stop task</button></div><form id="task-message-form"><label class="sr-only" for="task-message">Message this task</label><textarea id="task-message" placeholder="Add instructions or answer Cody…" maxlength="12000" rows="2" disabled></textarea><button id="task-message-send" type="submit" class="light-action" disabled>Send</button></form><p id="task-error" role="status"></p></footer></article></div>
+        </section>
+        <section class="panel-view settings-view" id="view-settings" aria-label="Settings" aria-hidden="true" inert>
+          <nav class="settings-nav" aria-label="Settings categories">
+            <div class="nav-group-caption">PREFERENCES</div>
+            <button class="nav-item selected" data-tab="general" type="button"><span class="nav-glyph">⚙</span>General</button>
+            <button class="nav-item" data-tab="voice" type="button"><span class="nav-glyph">◖))</span>Voice</button>
+            <button class="nav-item" data-tab="microphone" type="button"><span class="nav-glyph">♩</span>Microphone</button>
+            <button class="nav-item" data-tab="appearance" type="button"><span class="nav-glyph">◈</span>Appearance</button>
+            <button class="nav-item" data-tab="shortcuts" type="button"><span class="nav-glyph">⌘</span>Shortcuts</button>
+            <button class="nav-item" data-tab="cursor" type="button"><span class="nav-glyph">➤</span>Cursor</button>
+            <button class="nav-item" data-tab="behaviour" type="button"><span class="nav-glyph"></span>Behaviour</button>
+            <div class="nav-group-caption">WORKSPACE</div>
+            <button class="nav-item" data-tab="integrations" type="button"><span class="nav-glyph">⬡</span>Plugins</button>
+            <button class="nav-item" data-tab="agents" type="button"><span class="nav-glyph">♧</span>Agents</button>
+            <button class="nav-item" data-tab="permissions" type="button"><span class="nav-glyph">◇</span>Permissions</button>
+            <button class="nav-item" data-tab="updates" type="button"><span class="nav-glyph">↻</span>Updates <span id="updates-badge" hidden>•</span></button>
+            <div class="nav-spacer"></div>
+            <button class="nav-item developer-link" data-tab="developer" type="button"><span class="nav-glyph">⌘</span>Developer settings <span class="nav-external">↗</span></button>
+            <div class="nav-version">C.O.D.Y. · <span id="settings-app-version">…</span></div>
+          </nav>
+          <div class="settings-content" id="settings-content">
+            <div class="settings-tab selected" data-content="general">
+              <h2>General</h2>
+              <h3 class="group-title">BEHAVIOUR</h3>
+              <div class="settings-group">
+                <label class="setting-row"><span><strong>Launch at login</strong><small>Start C.O.D.Y. when you sign into Windows. Requires a packaged app.</small></span><input type="checkbox" data-pref="launchAtLogin" aria-label="Launch at login"></label>
+                <label class="setting-row"><span><strong>Island visibility</strong><small>Choose when the island appears on your screen.</small></span><select data-pref="visibility" aria-label="Island visibility"><option value="always">Always visible</option><option value="activity">Activity only</option><option value="hover">On hover</option></select></label>
+              </div>
+              <h3 class="group-title">CONVERSATIONS</h3><div class="settings-group"><div class="setting-row"><span><strong>Conversation history</strong><small>Browse previous chats and continue a conversation.</small></span><button id="core-history" class="light-action" type="button">Open history</button></div></div><h3 class="group-title">ABOUT</h3>
+              <div class="settings-group"><div class="setting-row"><span><strong>C.O.D.Y. Dynamic Island</strong><small>Dynamic Island 1.8.0 · Integrated Windows assistant</small></span><span class="subtle-value">Up to date locally</span></div></div>
+              <p class="setting-help">Your preferences are saved automatically.</p>
+            </div>
+            <div class="settings-tab" data-content="voice" hidden>
+              <h2>Voice</h2>
+              <h3 class="group-title">HANDS-FREE</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Listen for C.O.D.Y.</strong><small>Ask a question without holding a shortcut. Uses your Windows default microphone.</small></span><input type="checkbox" data-pref="wakeWordEnabled"></label>
+                <label class="setting-row"><span><strong>Hey Cody</strong><small>“Hey Cody, what's the time?”</small></span><input type="checkbox" data-pref="wakeHeyCody"></label>
+                <label class="setting-row"><span><strong>OK Cody / Okay Cody</strong></span><input type="checkbox" data-pref="wakeOkayCody"></label>
+                <label class="setting-row"><span><strong>Cody</strong><small>Say “Cody”, wait for the listening chime, then speak. The name alone can also trigger when mentioned.</small></span><input type="checkbox" data-pref="wakeCody"></label>
+              </div>
+              <p class="setting-help" id="wake-word-status" role="status" aria-live="polite">Hands-free listening is off.</p>
+              <p class="setting-help">Wake detection runs locally on this PC. After a wake phrase, your request uses C.O.D.Y.’s normal voice recognition. Say “Hey Cody” or “Okay Cody” with your request, or wait for the listening chime. Cody waits through thinking pauses and sends your request when you finish. Say “cancel”, “never mind”, or “stop listening” to discard it. Pauses during replies, push-to-talk and dictation.</p>
+              <h3 class="group-title">SPEECH SPEED</h3>
+              <div class="settings-group speed-group"><div class="speed-options" role="group" aria-label="Speech speed">
+                <button type="button" data-speed="0.7">0.7×</button><button type="button" data-speed="0.85">0.85×</button><button type="button" data-speed="1">1×</button><button type="button" data-speed="1.15">1.15×</button><button type="button" data-speed="1.4">1.4×</button>
+              </div></div>
+              <p class="setting-help">Applies to C.O.D.Y. speech output.</p>
+              <h3 class="group-title">VOICE</h3>
+              <div id="voice-options" class="voice-options" role="group" aria-label="Output voice"></div>
+              <select id="voice-choices" hidden aria-hidden="true" tabindex="-1"><option value="cedar">Cedar</option></select>
+              <div class="settings-group">
+                <div class="setting-row"><span><strong>Preview selected voice</strong><small>Listen to a short sample of C.O.D.Y.'s voice.</small></span><button type="button" class="light-action" id="preview-voice">Play sample</button></div>
+              </div>
+              <p class="setting-help" id="voice-unavailable" hidden></p>
+<h3 class="group-title">REPLIES</h3><div class="settings-group"><label class="setting-row"><span><strong>Speak typed replies</strong><small>Replies to voice requests are spoken automatically.</small></span><input id="voice-auto-speak" type="checkbox"></label><label class="setting-row"><span><strong>Send voice requests automatically</strong><small>Release the microphone control to send your request.</small></span><input id="voice-auto-send" type="checkbox" checked></label></div></div>
+<div class="settings-tab" data-content="microphone" hidden>
+              <h2>Microphone</h2>
+              <h3 class="group-title">ACCESS</h3><div class="settings-group"><div class="setting-row"><span><strong>Microphone access</strong><small>Check that C.O.D.Y. can use your microphone.</small></span><button id="permission-check-mic" class="light-action" type="button">Check access</button></div></div>
+              <h3 class="group-title">RECOGNITION</h3><div class="settings-group"><label class="setting-row"><span><strong>Language</strong><small>Recognition language for your speech.</small></span><select id="voice-language"><option value="en-GB">English (UK)</option><option value="en-US">English (US)</option></select></label></div><h3 class="group-title">INPUT DEVICE</h3>
+              <div class="settings-group"><label class="setting-row"><span><strong>Microphone</strong><small>Select an available recording device.</small></span><select data-pref="micDeviceId" id="mic-choices"><option value="">System default</option></select></label>
+                <div class="setting-row"><span><strong>Refresh devices</strong><small>Ask Windows to list connected microphones.</small></span><button type="button" class="light-action" id="refresh-microphones">Refresh</button></div></div>
+              <h3 class="group-title">TEST MICROPHONE</h3>
+              <div class="settings-group mic-test-group"><div class="setting-row"><span><strong>Input levels</strong><small id="mic-permission-status">Microphone not tested</small></span><button type="button" class="light-action" id="request-mic-permission">Test microphone</button></div>
+                <div class="mic-meter" id="mic-meter" role="img" aria-label="Microphone input level"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              </div>
+            </div>
+            <div class="settings-tab" data-content="appearance" hidden>
+              <h2>Appearance</h2>
+              <h3 class="group-title">C.O.D.Y. COLOUR</h3>
+              <p class="setting-help mascot-look-help">Choose a look for your animated companion.</p>
+              <div id="mascot-options" class="voice-options mascot-options" role="group" aria-label="C.O.D.Y. colour"></div>
+              <p id="mascot-look-status" class="setting-help" role="status" aria-live="polite"></p>
+              <h3 class="group-title">ACCENT COLOUR</h3><div class="settings-group"><div class="setting-row color-row"><span><strong>Interface accent</strong><small>Used for selected controls and highlights.</small></span><div class="swatches" role="group" aria-label="Accent colour">
+                </div></div></div>
+              <h3 class="group-title">ISLAND</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Size</strong><small>Adjust the compact island's size.</small></span><select data-pref="islandSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label>
+                <label class="setting-row"><span><strong>Reveal style</strong><small>How the island appears from the top edge.</small></span><select data-pref="revealStyle"><option value="liquid">Liquid</option><option value="simple">Smooth</option><option value="none">Instant</option></select></label>
+                <label class="setting-row"><span><strong>Animation speed</strong><small>Slow down or reduce mascot animations.</small></span><select data-pref="animationSpeed"><option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option><option value="off">Reduced motion</option></select></label>
+              </div>
+            </div>
+            <div class="settings-tab" data-content="shortcuts" hidden>
+              <h2>Shortcuts</h2>
+              <h3 class="group-title">TALK TO C.O.D.Y.</h3><div class="settings-group">
+                <div class="setting-row"><span><strong>Push to talk</strong><small>Hold Ctrl + Alt to speak. Release to stop listening.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd></div></div>
+                <div class="setting-row"><span><strong>Open chat</strong><small>Open chat and focus the message box.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>C</kbd></div></div>
+                <label class="setting-row"><span><strong>Enable shortcut</strong><small>Use the keyboard while another application is focused.</small></span><input type="checkbox" data-pref="enableHotkey"></label>
+                <label class="setting-row"><span><strong>Shortcut starts microphone</strong><small>Turn off to expand the island with Ctrl + Alt instead.</small></span><input type="checkbox" data-pref="startListeningOnHotkey"></label>
+              </div>
+              <h3 class="group-title">DICTATION</h3><div class="settings-group">
+                <div class="setting-row"><span><strong>Hold to dictate</strong><small>Click a text field, hold Ctrl + Win and speak. Release to insert your words.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Win</kbd></div></div>
+                <div class="setting-row"><span><strong>Hands-free dictation</strong><small>Double-tap Ctrl + Win to keep recording without holding the keys.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Win</kbd><span>×2</span></div></div>
+                <div class="setting-row"><span><strong>Finish hands-free dictation</strong><small>Press Ctrl + Win again to finish and insert the text.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Win</kbd></div></div>
+                <div class="setting-row"><span><strong>Cancel dictation</strong><small>Discard the current recording.</small></span><div class="key-combo"><kbd>Esc</kbd></div></div>
+              </div><p class="setting-help">These shortcuts are fixed. Dictation types into the text field you selected.</p>
+            </div>
+            <div class="settings-tab" data-content="cursor" hidden>
+              <h2>Cursor</h2>
+              <div class="cursor-options" role="group" aria-label="Cursor colours">
+                <button class="cursor-option" type="button" data-cursor-color="accent" aria-pressed="true"><span class="cursor-option-preview" aria-hidden="true"></span><span>Match appearance</span></button>
+              </div>
+              <h3 class="group-title">COMPUTER CONTROL</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Input mode</strong><small>Choose which mouse C.O.D.Y. uses during a task.</small></span><select data-pref="controlInputMode"><option value="system">My mouse and keyboard</option><option value="independent">Independent C.O.D.Y. cursor</option></select></label>
+              </div>
+              <h3 class="group-title">VISIBILITY AND INTERACTION</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Hide floating cursor</strong><small>Hide C.O.D.Y.’s floating cursor and stop it following your mouse.</small></span><input type="checkbox" data-pref="hideFloatingCursor"></label>
+                <label class="setting-row"><span><strong>Screen highlight</strong><small>Draw on screen while holding push-to-talk.</small></span><input type="checkbox" data-pref="screenHighlight"></label>
+                <label class="setting-row"><span><strong>Shake to detach</strong><small>Shake your mouse to leave C.O.D.Y. where it is. Shake again to follow.</small></span><input type="checkbox" data-pref="shakeToDetach"></label>
+              </div>
+            </div>
+            <div class="settings-tab" data-content="behaviour" hidden>
+              <h2>Behaviour</h2>
+              <h3 class="group-title">BEHAVIOUR</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Occasionally follow mouse</strong><small>He can watch your cursor as one of his random moods.</small></span><input type="checkbox" data-pref="cursorTracking"></label>
+                <label class="setting-row"><span><strong>Facial reactions</strong><small>Smiles or looks curious when you hover.</small></span><input type="checkbox" data-pref="reactiveExpressions"></label>
+                <label class="setting-row"><span><strong>Playful emotions</strong><small>Pretend sleep, squinting, winks and curious reactions.</small></span><input type="checkbox" data-pref="funReactions"></label>
+                <label class="setting-row"><span><strong>Personality</strong><small>Choose how expressive the mascot should be.</small></span><select data-pref="idleReactions"><option value="off">Off</option><option value="subtle">Subtle</option><option value="playful">Expressive</option></select></label>
+              </div>
+              <h3 class="group-title">SENSITIVITY</h3><div class="settings-group"><label class="setting-row"><span><strong>Animation sensitivity</strong><small>Changes the island waveform, not Windows microphone gain.</small></span><span class="range-control"><input data-pref="micSensitivity" type="range" min="0.5" max="2" step="0.1"><output data-for="micSensitivity">1.0×</output></span></label></div>
+              <h3 class="group-title">REACTIONS</h3><div class="settings-group"><label class="setting-row"><span><strong>Pause playful reactions</strong><small>Disable C.O.D.Y.'s spontaneous idle expressions.</small></span><input type="checkbox" id="pause-reactions" aria-label="Pause playful reactions"></label></div>
+            </div>
+            <div class="settings-tab" data-content="integrations" hidden>
+              <h2>Plugins</h2>
+              <div class="plugins-toolbar"><label class="sr-only" for="plugins-search">Search plugins</label><input id="plugins-search" type="search" placeholder="Search plugins…"><button id="plugins-refresh" class="light-action" type="button">Refresh</button></div>
+              <div class="plugins-filters" role="group" aria-label="Filter plugins"><button type="button" data-plugin-filter="all" aria-pressed="true">All plugins</button><button type="button" data-plugin-filter="connected" aria-pressed="false">Connected</button><span id="plugins-count"></span></div>
+              <p id="plugins-status" class="setting-help" role="status">Open Plugins to load the CODY catalog.</p>
+              <div id="plugins-list" class="plugins-grid" aria-label="CODY plugins"></div>
+              <details class="plugin-custom"><summary>Add an MCP plugin</summary><form id="plugins-add-form"><label>Plugin name<input id="plugins-add-name" maxlength="80" required autocomplete="off"></label><label>MCP server URL<input id="plugins-add-url" type="url" maxlength="2048" placeholder="https://example.com/mcp" required autocomplete="off"></label><label>API key (optional)<input id="plugins-add-key" type="password" maxlength="8192" autocomplete="new-password"></label><p class="setting-help">Use an API key if your server needs one, or connect through its browser sign-in.</p><button class="light-action" type="submit" id="plugins-add-submit">Add plugin</button></form></details>
+            </div>
+            <div class="settings-tab" data-content="agents" hidden>
+              <h2>Agents</h2>
+              <h3 class="group-title">AI</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Assistant AI</strong><small>Choose which AI handles your next request.</small></span><select id="agents-provider" aria-label="Assistant AI"><option value="heyclicky">Claude</option><option value="codex">ChatGPT Codex</option><option value="chatgpt">ChatGPT</option></select></label>
+                <div class="setting-row" id="agents-model-row" hidden><span><strong>GPT model</strong><small>GPT 6.1 Sol · Medium reasoning</small></span><button id="agents-provider-connect" class="light-action" type="button">Connect</button></div>
+              </div><p id="agents-provider-status" class="setting-help" role="status" aria-live="polite"></p>
+              <h3 class="group-title">Claude Code Usage</h3>
+              <div class="settings-group agent-usage-card">
+                <div class="setting-row"><span><strong id="agent-usage-plan">C.O.D.Y account</strong><small>Agent and conversation allowance</small></span><button id="agent-usage-refresh" class="light-action" type="button">Refresh usage</button></div>
+                <div id="agent-usage-details" hidden>
+                  <div class="agent-usage-bucket"><div><strong>Agent messages</strong><span id="agent-usage-agents-value"></span></div><progress id="agent-usage-agents-meter" aria-label="Agent messages used" max="1" value="0"></progress><small id="agent-usage-agents-remaining"></small></div>
+                  <div class="agent-usage-bucket"><div><strong>Conversations</strong><span id="agent-usage-messages-value"></span></div><progress id="agent-usage-messages-meter" aria-label="Conversation messages used" max="1" value="0"></progress><small id="agent-usage-messages-remaining"></small></div>
+                  <p id="agent-usage-reset" class="setting-help"></p>
+                </div>
+              </div><p id="agent-usage-status" class="setting-help" role="status" aria-live="polite">Open Agents to load your C.O.D.Y usage.</p>
+              <h3 class="group-title">WORKSPACE</h3><div class="settings-group">
+                <div class="setting-row"><span><strong>Agent folder</strong><small id="agents-folder-label">Loading…</small></span><button id="agents-folder" class="light-action" type="button">Choose folder</button></div>
+                <div class="setting-row" id="agents-reset-row" hidden><span><strong>Reset to default folder</strong><small id="agents-default-folder"></small></span><button id="agents-reset" class="light-action" type="button">Reset</button></div>
+              </div><p class="setting-help">Agents create their projects here. The default is in local app data, so OneDrive doesn't sync their scratch files.</p>
+              <h3 class="group-title">AUTONOMY</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Auto-approve extra usage</strong><small>Let long tasks keep running without asking each time. Uses more of your CODY plan's agent messages.</small></span><input type="checkbox" data-agent-setting="extraUsage" disabled></label>
+              </div><h3 class="group-title">ANNOUNCEMENTS</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Speak when a job starts or finishes</strong><small>Cody tells you what a job got done.</small></span><input type="checkbox" data-agent-setting="voice" disabled></label>
+                <label class="setting-row"><span><strong>Show updates beside the cursor</strong><small>A job's reply appears in a bubble next to your cursor when it finishes.</small></span><input type="checkbox" data-agent-setting="cursorUpdates" disabled></label>
+              </div><p class="setting-help">Cody stays quiet during calls, screen sharing, and Do Not Disturb. Finished work waits in chat and the island shows jobs with updates.</p>
+              <h3 class="group-title">WHAT AGENTS CAN REACH</h3><div class="settings-group" id="agents-privacy"></div>
+              <p class="setting-help">Windows privacy settings inherited by agents. Select a row to review access in Windows Settings.</p><p id="agents-status" class="setting-help" role="status">Loading agent settings…</p>
+            </div>
+            <div class="settings-tab" data-content="updates" hidden>
+              <h2>Updates</h2>
+              <h3 class="group-title">C.O.D.Y.</h3>
+              <div class="settings-group">
+                <div class="setting-row"><span><strong id="update-version">C.O.D.Y.</strong><small>Updates from GitHub Releases</small></span><button id="update-releases" class="light-action" type="button">Release notes</button></div>
+                <label class="setting-row"><span><strong>Check automatically</strong><small>Check on startup and every six hours.</small></span><input id="update-automatic" type="checkbox"></label>
+                <div class="setting-row"><span><strong id="update-status" role="status" aria-live="polite">Loading update status…</strong><small id="update-last-checked"></small></span></div>
+                <div class="setting-row"><button id="update-check" class="light-action" type="button">Check for updates</button><button id="update-download" class="light-action" type="button" hidden>Download update</button><button id="update-install" class="light-action" type="button" hidden>Restart to install</button></div>
+              </div>
+              <progress id="update-progress" max="100" value="0" aria-label="Update download progress" hidden></progress>
+              <p class="setting-help">Choose when to download and restart. Your conversations and settings are kept.</p>
+            </div>
+            <div class="settings-tab" data-content="permissions" hidden>
+              
+<h2>Permissions</h2>
+<h3 class="group-title">COMPUTER CONTROL</h3><div class="settings-group"><label class="setting-row"><span><strong>Enable computer control</strong><small>Allow CODY takeovers and C.O.D.Y. computer commands.</small></span><input id="core-control-enabled" type="checkbox"></label><label class="setting-row access-level-row"><span><strong>Access level</strong><small id="core-access-description">How should C.O.D.Y. actions be approved?</small></span><select id="core-control-level" aria-label="Access level">
+  <button type="button"><selectedcontent></selectedcontent></button>
+  <option value="ask"><span class="access-entry"><span data-access-icon="hand" aria-hidden="true"></span><span><strong>Ask for approval</strong><small class="access-subtext">Ask before computer actions and changes.</small></span></span></option>
+  <option value="approve-safe"><span class="access-entry"><span data-access-icon="shield-check" aria-hidden="true"></span><span><strong>Approve for me</strong><small class="access-subtext">Run routine commands automatically; ask before CODY takes control.</small></span></span></option>
+  <option value="full"><span class="access-entry"><span data-access-icon="shield-alert" aria-hidden="true"></span><span><strong>Full access</strong><small class="access-subtext">Allow CODY computer control and C.O.D.Y. tools without repeated approval cards.</small></span></span></option>
+  <option value="custom"><span class="access-entry"><span data-access-icon="settings" aria-hidden="true"></span><span><strong>Custom</strong><small class="access-subtext">Choose which permissions C.O.D.Y. can use.</small></span></span></option>
+</select></label><div class="setting-row"><span><strong>Emergency stop</strong><small>Take back control and disable further computer actions.</small></span><button id="core-emergency" class="light-action" type="button">Stop controls</button></div></div>
+<p class="setting-help">Cody controls the mouse and keyboard while computer use is active. Physical mouse movement is paused to keep actions on target. Press Esc to stop, or use your voice shortcut and say “stop”.</p><p id="core-permission-status" class="setting-help" role="status">Loading backend permissions…</p><div id="core-custom-permissions" hidden><h3 class="group-title">CUSTOM PERMISSIONS</h3><p class="setting-help">Enable the access you want C.O.D.Y. to use. Disabled permissions are blocked.</p><div class="settings-group"><label class="setting-row"><span><strong>Computer use</strong><small>Allow native mouse and keyboard control of apps.</small></span><input type="checkbox" data-native-permission="computerUse"></label><label class="setting-row"><span><strong>Background task computer use</strong><small>Let background agents use the mouse and keyboard when computer use is enabled.</small></span><input type="checkbox" data-native-permission="backgroundTasks"></label></div><h3 class="group-title">CODY BACKEND</h3><div class="settings-group"><label class="setting-row"><span><strong>Read on-screen app context</strong><small>Let the assistant include foreground app context in its replies.</small></span><input type="checkbox" data-native-permission="readApps"></label><label class="setting-row"><span><strong>Approve extra task usage automatically</strong><small>Allow background tasks to continue using paid CODY usage without asking each time.</small></span><input type="checkbox" data-native-permission="extraUsage"></label></div><h3 class="group-title">C.O.D.Y. QUICK COMMANDS</h3><p class="setting-help">These switches control built-in C.O.D.Y. commands. CODY background jobs use their own tools and the backend permissions above.</p><div class="settings-group"><label class="setting-row"><span><strong>System information</strong></span><input type="checkbox" data-core-permission="systemInfo"></label>
+<label class="setting-row"><span><strong>Open applications</strong></span><input type="checkbox" data-core-permission="applications"></label>
+<label class="setting-row"><span><strong>Audio control</strong></span><input type="checkbox" data-core-permission="audio"></label>
+<label class="setting-row"><span><strong>Windows and focus</strong></span><input type="checkbox" data-core-permission="windows"></label>
+<label class="setting-row"><span><strong>Keyboard and mouse</strong></span><input type="checkbox" data-core-permission="keyboardMouse"></label>
+<label class="setting-row"><span><strong>Clipboard</strong></span><input type="checkbox" data-core-permission="clipboard"></label>
+<label class="setting-row"><span><strong>Screenshots</strong></span><input type="checkbox" data-core-permission="screenshots"></label>
+<label class="setting-row"><span><strong>Read files</strong></span><input type="checkbox" data-core-permission="filesRead"></label>
+<label class="setting-row"><span><strong>Edit files</strong></span><input type="checkbox" data-core-permission="filesWrite"></label>
+<label class="setting-row"><span><strong>Inspect and invoke accessible UI controls</strong></span><input type="checkbox" data-core-permission="uiAutomation"></label><label class="setting-row"><span><strong>Screen annotations</strong><small>Draw click-through highlights over the desktop.</small></span><input type="checkbox" data-core-permission="annotations"></label><label class="setting-row"><span><strong>Interactive 3D visuals</strong><small>Create and manipulate desktop models.</small></span><input type="checkbox" data-core-permission="visual3d"></label>
+<label class="setting-row"><span><strong>Run project commands</strong></span><input type="checkbox" data-core-permission="developerTools"></label>
+<label class="setting-row"><span><strong>Read Firefox pages</strong></span><input type="checkbox" data-core-permission="browserRead"></label>
+<label class="setting-row"><span><strong>Control Firefox pages</strong></span><input type="checkbox" data-core-permission="browserInteract"></label></div></div><h3 class="group-title">BACKGROUND TASK WORKSPACE</h3><div class="settings-group"><div class="setting-row"><span><strong>Project folder</strong><small id="core-folder">Default background task workspace</small></span><button id="core-folder-browse" class="light-action" type="button">Choose folder</button></div></div>
+<p class="setting-help">This is the workspace for background projects, not a limit on file access.</p>
+
+</div>
+          </div>
+        </section>
+      </div>
+    </section><div id="core-approval" class="core-approval" role="alertdialog" aria-modal="true" aria-labelledby="core-approval-title" aria-describedby="core-approval-reason core-approval-command" hidden><h3 id="core-approval-title">Computer access requested</h3><p id="core-approval-reason"></p><pre id="core-approval-command"></pre><p class="approval-scope">Allow this step only. You can take control back with Esc.</p><p id="core-approval-count"></p><p id="core-approval-error" role="status"></p><div class="core-approval-actions"><button id="core-approval-deny" class="light-action" type="button">Deny</button><button id="core-approval-allow" class="light-action" type="button">Allow once</button></div></div>
+  </div>
+</main>
+<script src="icons.js"></script><script src="media-art.js"></script><script src="idle-presence.js"></script><script src="../../../ui/voice-client.js"></script><script src="../../../ui/push-to-talk.js"></script><script src="../../../ui/native-voice-ui.js"></script><script src="mascot-looks.js"></script><script src="ui.js"></script><script src="attachments.js"></script><script src="assistant.js"></script><script src="task-format.js"></script><script src="task-appearance.js"></script><script src="background-tasks.js"></script><script src="browser-setup.js"></script><script src="plugins.js"></script><script src="agents.js"></script><script src="updates.js"></script><script src="agent-usage.js"></script><script src="rock-paper-scissors.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "name": "cody-integrated",
+  "productName": "C.O.D.Y",
+  "version": "0.15.1",
+  "description": "C.O.D.Y. with its integrated AI, voice and drawing engine",
+  "main": "src/main.js",
+  "license": "MIT",
+  "author": "C.O.D.Y",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "build:win": "..\\..\\Build-CODY-Standalone.bat",
+    "build:arm64": "..\\..\\Build-CODY-Standalone.bat",
+    "build:x64": "..\\..\\Build-CODY-Standalone.bat",
+    "build:installer": "..\\..\\Build-CODY-Standalone.bat",
+    "check": "node ../../tools/check-source.cjs"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "0.25.0",
+    "three": "0.178.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "electron-updater": "6.8.12"
+  }
+}

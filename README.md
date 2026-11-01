@@ -1,45 +1,89 @@
-# C.O.D.Y.
+<p align="center">
+  <img src="CODY-App/frontend/original-cody/assets/brand/cody-256.png" width="112" alt="C.O.D.Y mascot">
+</p>
 
-**C.O.D.Y.** is an in-development Windows desktop AI assistant combining a custom Electron interface, conversational AI, and permission-controlled computer automation.
+<h1 align="center">C.O.D.Y.</h1>
+<p align="center">A Windows desktop assistant for voice, conversation and getting things done.</p>
+<p align="center">
+  <a href="https://github.com/JNathan34/C.O.D.Y/releases/latest">Download for Windows</a> ·
+  <a href="docs/GETTING-STARTED.md">Getting started</a> ·
+  <a href="CODY-App/docs/GITHUB-UPDATES.md">Updates and releases</a> ·
+  <a href="https://github.com/JNathan34/C.O.D.Y/issues">Report an issue</a>
+</p>
 
-> **Status:** Early development. This repository is being prepared for the source code. Features below include ideas and roadmap items, not a claim that they are all implemented.
+C.O.D.Y. brings chat, voice controls and background tasks into an animated desktop island. It combines an Electron interface with a bundled Windows engine for computer controls, screen capture, browser connections and visual tools.
 
-## Vision
+**Current release: 0.15.1 · Windows x64 and ARM64 · Early development**
 
-C.O.D.Y. aims to provide one assistant that can converse naturally, understand user-approved screen content, and request validated actions from local Windows tools. The regular ChatGPT experience is the default conversational controller; a dedicated coding agent can be used for tasks that benefit from it.
+## Install
 
-## Capabilities
+1. Open the [latest release](https://github.com/JNathan34/C.O.D.Y/releases/latest).
+2. Download **C.O.D.Y-Setup-0.15.1.exe** and run it. Setup selects the application architecture for your PC.
+3. Open C.O.D.Y., connect your preferred AI service and review the app permissions.
 
-**Previously demonstrated in the local prototype (not yet uploaded here):**
-- Basic application launching, such as opening Notepad.
-- Basic Windows controls, such as changing audio volume.
-- An Electron-based user interface and experimental ChatGPT integration.
+The installer is currently unsigned. Windows may show its publisher as unknown. AI providers require their own accounts; provider subscriptions and paid usage are not included.
 
-**Planned / in development:**
-- Reliable chat sessions, streaming responses and conversation history.
-- Structured multi-step tool execution with actual result feedback.
-- Safe file reading, editing, patching and backup/restore.
-- Windows UI Automation with optional screenshot-based understanding.
-- Firefox browser control via an independently installed browser integration.
-- Voice input, spoken responses and an animated Dynamic Island.
-- On-screen annotations and editable, interactive 3D models.
+Once this version is installed, **Settings → Updates** can check GitHub, download a newer release and restart to install it. Automatic checks run at startup and every six hours. You choose when to download and restart. Your conversations and settings stay in their existing profile.
 
-See [Roadmap](docs/ROADMAP.md) and [Architecture](docs/ARCHITECTURE.md).
+## What you can do
 
-## Project organisation
+- **Talk or type.** Use voice input, spoken responses and the desktop island, with local wake-word support.
+- **Choose an assistant.** Connect Claude, ChatGPT Codex or ChatGPT. Some background tasks and attached-file requests still use the native Claude connection.
+- **Work in the background.** Start tasks, inspect their progress and open their outputs.
+- **Control Windows.** Use permission-controlled app, audio, window, clipboard, file and computer actions. Press **Esc** to stop computer control.
+- **Capture your screen.** Take screenshots or record MP4 video, with pause and resume controls.
+- **Connect a browser.** Set up the browser extension through the app. Browser actions require that connection.
+- **Use visual tools.** Draw desktop annotations and work with interactive 3D scenes.
+- **Keep everyday tools close.** Timers, media controls, weather and system monitors are available in the island.
 
-Development currently happens across separate Core AI, GUI, and Research conversations. Releases have been assembled and tested locally as ZIP files; source-code publication will be introduced gradually.
+Features depend on Windows permissions, account access and connected services. The [getting-started guide](docs/GETTING-STARTED.md) covers setup and current limits.
 
-- [Development workflow and handoffs](docs/WORKFLOW.md)
-- [Tool protocol and security approach](docs/TOOL_PROTOCOL.md)
-- [Security guidance](SECURITY.md)
+## What changed in 0.15.1
 
-## Getting started
+- GitHub-based application updates with check, download and restart controls.
+- Correct duration metadata for newly saved screen recordings.
+- C.O.D.Y Pro branding in the account usage card.
+- Current source, tests, build tools and versioned native build inputs published together.
 
-Application source code and reproducible build instructions have **not yet been published**. Do not assume this repository already contains an installable C.O.D.Y. release.
+See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.1.md) and the [changelog](CHANGELOG.md).
 
-## Licensing and credits
+## Develop
 
-No general project licence has been selected yet. Public visibility does not itself grant reuse rights. Any future reused open-source components must retain their required notices, and proprietary HeyClicky application assets/code should not be committed without appropriate permission.
+Requirements: Windows, Git, Node.js 24, Python 3.11 or later, and the .NET 10 SDK. The native projects target Windows and .NET 9 with C# 14.
 
-This project is an independent experiment, not an official OpenAI or HeyClicky product.
+```powershell
+git -c core.longpaths=true clone https://github.com/JNathan34/C.O.D.Y.git
+cd C.O.D.Y\CODY-App
+npm ci --ignore-scripts
+node node_modules/electron/install.js
+powershell -NoProfile -File tools/restore-build-inputs.ps1
+.\Build-Engine.bat
+.\Start-Development.bat
+```
+
+The restore command downloads the versioned native runtime and installer prerequisites from this release and verifies their SHA-256 checksum before extraction. Large runtime files are release assets rather than Git history. The native build also downloads pinned wake-word dependencies and verifies their checksums.
+
+Run the frontend checks with:
+
+```powershell
+cd frontend/original-cody
+npm test
+```
+
+Return to `CODY-App` and run `Build-CODY-Standalone.bat` to build the native engine and package both Windows architectures. Close the development app before rebuilding its engine.
+
+| Location | Contents |
+| --- | --- |
+| `CODY-App/frontend/original-cody/` | Current Electron app, interface, assets and tests |
+| `CODY-App/work/Cody.*` | Native Windows project sources |
+| `CODY-App/tools/` | Build, release and verification tools |
+| `CODY-App/build/installer/standalone.nsh` | Windows installer integration |
+| `docs/` | Setup, architecture and development guides |
+
+[Developer details](CODY-App/README.md) · [Release workflow](CODY-App/docs/GITHUB-UPDATES.md) · [Security](SECURITY.md)
+
+## Project status and credits
+
+C.O.D.Y. is an independent project, not an official OpenAI, Anthropic or HeyClicky product. Its Windows engine includes recovered HeyClicky-derived components alongside C.O.D.Y. integrations. Third-party components, assets, models and services retain their respective rights and terms.
+
+No blanket licence is granted by this repository's public visibility. Package-specific licence fields apply only within their stated scope; they do not relicense third-party or recovered components. Keep applicable notices when working with the source or packaged dependencies.

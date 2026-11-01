@@ -1,0 +1,16 @@
+.island-recording-dot[hidden],.island-recording-controls[hidden]{display:none!important}
+.island-recording-dot{display:block;flex:none;width:6px;height:6px;border-radius:50%;background:#ff454f;box-shadow:0 0 5px #ff454f66}
+body[data-recording="recording"] .island-recording-dot{animation:recording-blink 1.15s ease-in-out infinite}
+body[data-recording="paused"] .island-recording-dot,body[data-recording="starting"] .island-recording-dot{background:#f2ba5c;box-shadow:none}
+.island-recording-controls{display:flex;flex:none;align-items:center;gap:2px}
+.island-recording-controls button{display:grid;place-items:center;width:20px;height:25px;padding:3px;border:0;background:transparent;color:#e4e9f1;border-radius:5px;cursor:pointer}
+.island-recording-controls button:hover:enabled{background:#34303a;color:white}
+.island-recording-controls button:focus-visible{outline:1px solid #d5bfff}
+.island-recording-controls button:disabled{opacity:.4;cursor:default}
+.island-recording-controls .lucide-control{width:12px;height:12px}
+body.recording-layout:not(.panel-open) .island-info{left:30px;right:69px;width:auto;gap:4px}
+body.recording-layout #island-info-text{font-size:11px;font-variant-numeric:tabular-nums;color:#f4e8eb}
+body.recording-layout #island-info-detail{font-size:8px}
+body.recording-layout .island-recording-dot,body.recording-layout .island-info-copy{transform:translateX(6px)}
+@keyframes recording-blink{50%{opacity:.2}}
+@media(prefers-reduced-motion:reduce){body[data-recording="recording"] .island-recording-dot{animation:none}}

@@ -1,30 +1,19 @@
-# C.O.D.Y. Roadmap
+# Roadmap
 
-This is a plan, not an implementation status report.
+## Available in the current source
 
-## Phase 1 — Reliable foundations
-- Stabilise existing ChatGPT conversation flow and streaming in Electron.
-- Define a versioned request/result contract for local tools.
-- Preserve the existing working app launch and volume control.
-- Implement permission prompts, logging and cancellation.
+The island interface, typed and voice requests, local utilities, background task views, computer-control integration, browser setup, screen capture, visual tools and GitHub updater are implemented. Their availability depends on the relevant account connection, Windows permission and platform support.
 
-## Phase 2 — Windows and file tools
-- Safe file listing, reading, backup, patching, writing and restoration.
-- Windows UI Automation to discover and interact with accessible controls.
-- Observe → decide → act → verify loop, with bounded action count.
-- Local build/test tools only with explicit permission and confinement.
+## Next validation work
 
-## Phase 3 — Browser and voice
-- Firefox extension bridge integration, with connection state and permission boundaries.
-- Speech-to-text, text-to-speech and Dynamic Island state synchronisation.
-- Screenshot vision only when the model/bridge supports image inputs.
+- Test a complete update between two published versions, including history preservation and recovery from interrupted downloads.
+- Test native integrations across more x64 and ARM64 Windows PCs.
+- Continue checking voice, browser connection and computer-control reliability with reproducible cases.
 
-## Phase 4 — Visual interaction
-- Transparent Windows annotation overlay.
-- Animated arrows, highlights, labels and interactive explanations.
-- Three.js-based stateful models that can be edited rather than regenerated.
+## Planned polish
 
-## Phase 5 — Polish and release
-- Automated tests, crash reporting without secrets, reproducible packaging.
-- Dependency audits, licences, docs and optional signed installer.
-- Public release only after security review and explicit approval.
+- Add a Windows signing certificate to release packaging.
+- Improve first-run connection diagnostics and feature-specific setup guidance.
+- Expand release automation while keeping accounts and signing credentials outside the source tree.
+
+Planned work is not included in the current release unless its implementation is present in the source and release notes.

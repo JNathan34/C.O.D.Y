@@ -1,25 +1,23 @@
-# Development workflow
+# Development and releases
 
-C.O.D.Y. currently has three independent AI development conversations and a human tester; each chat receives source ZIPs rather than sharing a live filesystem.
+The GitHub repository is the source baseline. Develop in the current `CODY-App` tree, preserve unrelated work, run the frontend tests, then build and inspect the Windows packages.
 
-## Responsibilities
+## Source changes
 
-- **Core AI chat:** conversation adapter, tool engine and local Windows operations.
-- **GUI chat:** Electron shell, Dynamic Island, visuals and settings.
-- **Research chat:** technical research, architectural guidance, documentation and integration contracts.
-- **Human tester:** run builds locally, report reproducible bugs, choose which completed ZIP becomes the next baseline.
+Keep generated binaries, profiles, credentials, local reports and dependency caches out of commits. Include the tests and documentation needed to understand behavior changes. Avoid changing native compatibility identifiers solely to rename visible labels.
 
-## Handoff process
+## Build
 
-1. Preserve the **last-known-good** full project ZIP.
-2. Make changes against that exact baseline, not an older copy.
-3. Record changed files, new dependencies, tests and unresolved issues.
-4. Merge new backend changes into the current app before producing a new full ZIP.
-5. Test the entire application, not only the changed component.
-6. Commit source changes to the repository after reviewing secrets, licences and generated artefacts.
+Follow the root README to install dependencies and restore the versioned native build inputs. Close the development app before running `Build-Engine.bat` or `Build-CODY-Standalone.bat`.
 
-## Naming
+## Release
 
-Suggested test build names: `CODY-v0.1.0-dev.1.zip`, `CODY-v0.1.0-dev.2.zip`.
+1. Increase the app version in `CODY-App/frontend/original-cody/package.json`.
+2. Update the changelog and release notes.
+3. Run the tests, build the NSIS installer and run `npm run release:check` from CODY-App.
+4. Create and inspect the GitHub draft release with the matching installer and latest.yml.
+5. Publish the release after its assets are complete. Keep earlier release assets available.
 
-Avoid committing ZIPs of proprietary HeyClicky builds or account-specific browser sessions. Document external dependencies rather than copying their binaries.
+If native build prerequisites change, create a new versioned build-input archive and commit its checksum manifest with the source. Never upload local account/profile folders as build dependencies.
+
+See [the detailed release guide](../CODY-App/docs/GITHUB-UPDATES.md).

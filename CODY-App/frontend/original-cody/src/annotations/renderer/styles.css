@@ -1,0 +1,17 @@
+html,body{width:100%;height:100%;padding:0;margin:0;overflow:hidden;background:transparent;pointer-events:none;user-select:none}
+#scene{display:block;width:100%;height:100%;overflow:hidden;pointer-events:none}
+.annotation{opacity:var(--opacity,1);transition:opacity 180ms ease;filter:drop-shadow(0 0 var(--glow,0px) #78eaff)}
+.annotation.removing{opacity:0}
+.annotation.waiting-speech{visibility:hidden}.waiting-speech .ink,.waiting-speech .caption,.waiting-speech .spotlight,.speech-paused .ink,.speech-paused .caption,.speech-paused .spotlight{animation-play-state:paused}
+.ink{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:0;animation:draw-ink var(--animation-ms,350ms) ease-out both}
+.caption,.spotlight{animation:appear var(--animation-ms,350ms) ease-out both}
+.caption{font-family:'Segoe UI Variable','Segoe UI',sans-serif;font-weight:600;paint-order:stroke;stroke:#001b2c;stroke-width:1px;stroke-opacity:.4}
+@keyframes draw-ink{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes appear{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.annotation{transition:none}.ink,.caption,.spotlight{animation:none}}
+
+@keyframes pen{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes appear{from{opacity:0}to{opacity:1}}
+.visual-card *{animation-play-state:inherit!important}.waiting-speech.visual-card,.speech-paused.visual-card{animation-play-state:paused}
+
+@media(prefers-reduced-motion:reduce){.visual-card *{animation-duration:.001ms!important;animation-delay:0ms!important}}

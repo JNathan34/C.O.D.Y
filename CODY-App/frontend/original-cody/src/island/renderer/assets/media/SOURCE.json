@@ -1,0 +1,7 @@
+{
+  "notes": "Original brand paths; brand colours applied. Lucide license is in ../icons.",
+  "fallback": "lucide-static@1.62.0/app-window",
+  "brands": "Simple Icons",
+  "revision": "90646e4bf7f3b89df6c37e65baf3e7bc759a517c",
+  "source": "https://github.com/simple-icons/simple-icons"
+}

@@ -1,0 +1,34 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {EventEmitter}=require('node:events');
+const {RockPaperScissors}=require('../src/rock-paper-scissors');
+const {IslandUtilities}=require('../src/island-utilities');
+const {installNativeIpc}=require('../src/native-ipc');
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+for(const transcript of ['Leslie Rock scissors.',"Let's play rock the paper scissors.",'Can we play rock and paper and scissors?'])test(`voice game is claimed before AI and allows a move: ${transcript}`,async()=>{
+  const handlers=new Map(),calls=[],messages=[],engine=new EventEmitter();engine.connected=true;engine.status={state:'Idle'};
+  engine.request=async(command,args)=>{
+    calls.push({command,args});
+    if(command==='end')return {utilityText:transcript};
+    if(command==='begin')return {listening:true};
+    if(command==='game-play')engine.emit('game-cue',{text:args.text});
+    return {};
+  };
+  engine.refresh=async()=>({signedIn:true});
+  const rps=new RockPaperScissors({random:()=>0}),utilities=new IslandUtilities({rps,clearCard(){}});
+  const settings={voiceAutoSpeak:false};
+  const store={data:{settings,activeChatId:'chat'},chat:()=>({messages}),addMessage:(_id,role,text)=>{const message={id:String(messages.length),role,text};messages.push(message);return message;},updateMessage(){},save(){},publicState:()=>({settings})};
+  const webContents={mainFrame:{}};
+  installNativeIpc({ipcMain:{removeHandler(){},handle:(name,fn)=>handlers.set(name,fn)},engine,store,sendUI(){},getState:()=>({}),getWindow:()=>({webContents}),utilities,rps});
+  const invoke=(name,...args)=>handlers.get(name)({sender:webContents,senderFrame:webContents.mainFrame},...args);
+  await invoke('native-begin');const turn=calls.find(call=>call.command==='begin').args.turn;
+  engine.emit('classify-utility',{turn,text:transcript});await tick();
+  assert.equal(calls.find(call=>call.command==='utility-route').args.handled,true);
+  await invoke('native-end');await tick();
+  assert.equal(rps.active,true);assert.equal(rps.snapshot().voice.status,'listening');
+  assert.equal(calls.filter(call=>call.command==='begin').at(-1).args.utilityOnly,true);
+  const chosen=await invoke('rps-action',{action:'choose',move:'paper'});
+  assert.equal(chosen.you,'paper');assert.equal(chosen.outcome,'win');assert.equal(chosen.score.you,1);
+  assert.equal(calls.some(call=>call.command==='submit'),false);
+  assert.equal(invoke('state').busy,false);
+});

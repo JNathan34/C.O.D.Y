@@ -1,0 +1,25 @@
+{
+  "name": "cody-workspace",
+  "private": true,
+  "description": "Development dependencies and entry points for the current C.O.D.Y. app",
+  "scripts": {
+    "start": ".\\Start-Development.bat",
+    "build": ".\\Build-Engine.bat",
+    "package": ".\\Build-CODY-Standalone.bat",
+    "release:check": "node tools/github-release.cjs --check",
+    "release:draft": "node tools/github-release.cjs --draft",
+    "test": "node --test frontend/original-cody/tests/*.test.cjs",
+    "check": "node tools/check-source.cjs",
+    "release:checksums": "node tools/release-checksums.cjs"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "0.25.0",
+    "three": "0.178.0"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.12",
+    "ws": "^8.18.0"
+  }
+}

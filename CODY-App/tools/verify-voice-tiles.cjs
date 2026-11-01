@@ -1,0 +1,16 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path');
+module.exports=async({win,island,engine})=>{
+ const results=[],wait=ms=>new Promise(r=>setTimeout(r,ms)),evaluate=code=>win.webContents.executeJavaScript(code);let original;
+ const check=(name,passed,detail)=>{results.push({name,passed,detail});if(!passed)throw Error(name);};
+ const until=async fn=>{const end=Date.now()+30000;while(Date.now()<end){if(await fn())return;await wait(100);}throw Error('Voice tiles check timed out');};
+ try{
+  await until(()=>evaluate('Boolean(window.CODYIsland?.integrationReady)'));original=(await engine.request('status')).voice;island.show();await evaluate(`window.CODYIsland.setActiveView('settings');document.querySelector('[data-tab="voice"]').click()`);await until(()=>evaluate(`document.querySelectorAll('#voice-options button').length===10`));
+  const layout=await evaluate(`(()=>{const grid=document.getElementById('voice-options'),cedar=grid.querySelector('[data-voice-id="cedar"]');return{count:grid.children.length,height:grid.getBoundingClientRect().height,dropdownHidden:getComputedStyle(document.getElementById('voice-choices')).display==='none',blue:getComputedStyle(cedar).getPropertyValue('--voice-color').trim(),originalIcon:getComputedStyle(cedar.querySelector('img')).filter,icons:[...grid.querySelectorAll('img')].every(i=>i.complete&&i.naturalWidth>=256),colours:new Set([...grid.children].map(b=>b.style.getPropertyValue('--voice-color'))).size};})()`);
+  check('ten compact voice tiles use distinct coloured Cody icons with Cedar in original blue',layout.count===10&&layout.height<180&&layout.dropdownHidden&&layout.blue==='#47A8FF'&&layout.originalIcon==='none'&&layout.icons&&layout.colours===10,layout);
+  await evaluate(`document.querySelector('[data-voice-id="marin"]').click()`);await until(async()=>(await engine.request('status')).voice==='marin');await until(()=>evaluate(`!document.querySelector('[data-voice-id="marin"]').disabled`));check('choosing a tile changes the real native voice',await evaluate(`document.querySelector('[data-voice-id="marin"]').getAttribute('aria-pressed')==='true'&&document.querySelectorAll('#voice-options [aria-pressed="true"]').length===1`));
+  await evaluate(`document.querySelector('[data-voice-id="cedar"]').click()`);await until(async()=>(await engine.request('status')).voice==='cedar');await until(()=>evaluate(`!document.querySelector('[data-voice-id="cedar"]').disabled`));check('Cedar can be selected and persisted by the native voice engine',await evaluate(`document.querySelector('[data-voice-id="cedar"]').getAttribute('aria-pressed')==='true'`));
+  await wait(400);const clip=await evaluate(`(()=>{const r=document.getElementById('island').getBoundingClientRect();return{x:Math.floor(r.x),y:0,width:Math.ceil(r.width),height:Math.ceil(r.height+8)};})()`);fs.writeFileSync(path.resolve(__dirname,'../reports/voice-tiles.png'),(await win.webContents.capturePage(clip)).toPNG());
+ }catch(error){results.push({name:'verification error',passed:false,error:error.stack});}
+ finally{if(original)await engine.request('configure',{voice:original}).catch(()=>{});fs.writeFileSync(path.resolve(__dirname,'../reports/voice-tiles-live.json'),JSON.stringify({passed:results.every(r=>r.passed),results},null,2));}
+};

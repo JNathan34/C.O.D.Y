@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>C.O.D.Y Developer Settings</title><link rel="icon" href="../../../assets/brand/cody-32.png"><link rel="stylesheet" href="settings.css"></head>
+<body><main class="settings">
+  <header><div class="brand-row"><img src="../../../assets/brand/cody-64.png" alt="C.O.D.Y icon" width="48" height="48"><div><h1>C.O.D.Y</h1><p>Developer settings · Island and animation studio</p></div></div><span class="build-tag">v1.7.0</span></header>
+  <section class="section"><h2>Island visibility</h2><p class="hint">Flush against the screen's upper edge. Always pure black with no outlines or glowing effects.</p>
+    <div class="option-cards">
+      <label class="option"><input type="radio" name="visibility" value="always"><span><strong>Always visible</strong><small>C.O.D.Y. remains aware while you work</small></span></label>
+      <label class="option"><input type="radio" name="visibility" value="activity"><span><strong>Activity only</strong><small>Flow out while listening, thinking or speaking, and retract when finished</small></span></label>
+      <label class="option"><input type="radio" name="visibility" value="hover"><span><strong>Reveal at screen edge</strong><small>Move the mouse to the top centre to wake him</small></span></label>
+    </div>
+  </section>
+  <section class="section"><h2>Living mascot</h2>
+    <label class="setting-line"><span><strong>Personality</strong><small>Calm natural reactions or a more expressive companion</small></span><select id="idleReactions"><option value="off">Off</option><option value="subtle">Subtle (default)</option><option value="playful">Expressive</option></select></label>
+    <label class="setting-line"><span><strong>Watch the cursor</strong><small>C.O.D.Y. occasionally decides to follow the mouse for a few seconds</small></span><input type="checkbox" id="cursorTracking"></label>
+    <label class="setting-line"><span><strong>Natural blinking</strong><small>Soft irregular blinking and occasional double blinks</small></span><input type="checkbox" id="blinkEnabled"></label>
+    <label class="setting-line"><span><strong>Facial reactions</strong><small>Curious on approach, happy on hover, surprised when clicked</small></span><input type="checkbox" id="reactiveExpressions"></label>
+    <label class="setting-line"><span><strong>Playful reactions</strong><small>Occasional squints, winks, pretend-sleep, mouse-follow and curious moods</small></span><input type="checkbox" id="funReactions"></label>
+    <label class="setting-line"><span><strong>Pretend-sleep and zZ</strong><small>Emoji-style zZ floating past the mascot ring</small></span><input type="checkbox" id="pretendSleepEnabled"></label>
+    <p class="hint">Longer playful moods last for a few seconds, but hovering over C.O.D.Y. wakes him up immediately. The ring never shakes or rotates.</p>
+  </section>
+  <section class="section"><h2>Network reactions</h2>
+    <label class="setting-line"><span><strong>Show Wi-Fi disconnection</strong><small>When Wi-Fi drops, arcs search from a constant dot. When it returns, blue arcs fill and hold briefly.</small></span><input type="checkbox" id="wifiReactions"></label>
+    <div class="network-status" id="network-status" aria-live="polite"><span class="status-light"></span><span id="network-status-text">Checking wireless adapter…</span></div>
+    <p class="hint">Windows-only. Checks the Wi-Fi adapter every four seconds; doesn't test whether websites or the internet are reachable. Microphone/speech activity takes priority over network alerts.</p>
+  </section>
+  <section class="section"><h2>Appearance and motion</h2>
+    <label class="setting-line"><span><strong>Size</strong><small>Small 192×30 · Medium 216×32 · Large 244×36</small></span><select id="islandSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label>
+    <label class="setting-line"><span><strong>Reveal animation</strong><small>Grows smoothly from the top edge of the screen</small></span><select id="revealStyle"><option value="liquid">Liquid drip</option><option value="simple">Smooth</option><option value="none">Instant</option></select></label>
+    <label class="setting-line"><span><strong>Animation speed</strong><small>Changes mascot reactions and state transitions</small></span><select id="animationSpeed"><option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option><option value="off">Reduced motion</option></select></label>
+    <label class="setting-line"><span><strong>Activity linger</strong><small>How long the island stays after becoming inactive</small></span><select id="activityHideDelay"><option value="0">Immediately</option><option value="800">0.8 second</option><option value="1600">1.6 seconds</option><option value="3000">3 seconds</option><option value="5000">5 seconds</option></select></label>
+    <div class="colours"><span><i class="swatch cyan"></i> Listening · Cyan</span><span><i class="swatch magenta"></i> Thinking · Magenta</span><span><i class="swatch orange"></i> Speaking · Orange</span></div>
+  </section>
+  <section class="section animation-section" id="animation-preview">
+    <div class="animation-heading"><div><h2>Animation studio</h2><p class="hint">Test every state and mascot behaviour without activating your real microphone or changing the desktop island.</p></div><button type="button" class="play-all" id="play-all">▶ Play all</button></div>
+    <div class="animation-stage">
+      <iframe id="animation-frame" title="C.O.D.Y. animation sandbox" src="index.html?demo=1" loading="eager"></iframe>
+      <p id="animation-title">Idle · Your C.O.D.Y. mascot</p>
+      <p class="preview-description" id="animation-description">Choose an animation below to test it here.</p>
+    </div>
+    <h3>Assistant states</h3>
+    <div class="test-grid" id="state-tests">
+      <button type="button" data-state-test="idle">Idle eyes</button>
+      <button type="button" data-state-test="listening">Listening · cyan</button>
+      <button type="button" data-state-test="thinking">Thinking · magenta</button>
+      <button type="button" data-state-test="speaking">Speaking · orange</button>
+      <button type="button" data-state-test="offline">Wi-Fi lost</button>
+      <button type="button" data-state-test="wifi-restored">Wi-Fi restored</button>
+      <button type="button" data-state-test="error">Error</button>
+      <button type="button" data-state-test="reveal">Drip reveal / hide</button>
+    </div>
+    <h3>Personality and expressions</h3>
+    <div class="test-grid" id="expression-tests">
+      <button type="button" data-expression-test="blink">Blink</button>
+      <button type="button" data-expression-test="doubleblink">Double blink</button>
+      <button type="button" data-expression-test="wink">Wink</button>
+      <button type="button" data-expression-test="curious">Curious</button>
+      <button type="button" data-expression-test="happy">Happy</button>
+      <button type="button" data-expression-test="surprised">Surprised</button>
+      <button type="button" data-expression-test="confused">Confused</button>
+      <button type="button" data-expression-test="smug">Smug</button>
+      <button type="button" data-expression-test="shy">Shy</button>
+      <button type="button" data-expression-test="squint">Squint</button>
+      <button type="button" data-expression-test="sleepy">zZ Pretend sleep</button>
+      <button type="button" data-expression-test="mouse">Mouse follow mood</button>
+    </div>
+    <div class="preview-actions"><label>Waveform level <input id="audio-level" type="range" min="0" max="100" value="45"></label><button type="button" id="stop-preview">Reset preview</button></div>
+  </section>
+  <section class="section"><h2>Activation</h2>
+    <div class="shortcut"><kbd>Ctrl</kbd><strong>+</strong><kbd>Alt</kbd><span>Both at once · Windows-wide</span></div>
+    <label class="setting-line"><span><strong>Enable shortcut</strong><small>Modifier keys only; no typed text is read</small></span><input type="checkbox" id="enableHotkey"></label>
+    <div class="setting-line"><span><strong>Push to talk</strong><small>Hold Ctrl + Alt to listen; releasing either key stops capture. The release event is ready for future transcription/send integration.</small></span><span class="shortcut-status">Hold to talk</span></div>
+    <label class="setting-line"><span><strong>Shortcut starts microphone</strong><small>Disable this to open/close the quick panel instead</small></span><input type="checkbox" id="startListeningOnHotkey"></label>
+    <label class="setting-line"><span><strong>Launch with Windows</strong><small>Available after packaging the app as an installer</small></span><input type="checkbox" id="launchAtLogin"></label>
+  </section>
+  <footer><span id="save-message">Settings save automatically</span><button id="preview">Test animations ↑</button></footer>
+</main><script src="settings.js"></script></body></html>

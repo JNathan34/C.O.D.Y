@@ -1,0 +1,39 @@
+{
+  "word": {
+    "source": "Installed application icon resource",
+    "application": "WINWORD.EXE",
+    "version": "16.0.20527.20088"
+  },
+  "excel": {
+    "source": "Installed application icon resource",
+    "application": "EXCEL.EXE",
+    "version": "16.0.20527.20088"
+  },
+  "powerpoint": {
+    "source": "Installed application icon resource",
+    "application": "POWERPNT.EXE",
+    "version": "16.0.20527.20088"
+  },
+  "mail": {
+    "source": "Installed application icon resource",
+    "application": "OUTLOOK.EXE",
+    "version": "16.0.20527.20088"
+  },
+  "discord": {
+    "source": "Installed application icon resource",
+    "application": "Discord.exe",
+    "version": "1.0.58"
+  },
+  "whatsapp": {
+    "source": "Original installed application package asset",
+    "application": "5319275A.WhatsAppDesktop",
+    "version": "2.2641.101.0",
+    "asset": "AppList.targetsize-256_altform-unplated.png"
+  },
+  "spotify": {
+    "source": "Original installed application package asset",
+    "application": "SpotifyAB.SpotifyMusic",
+    "version": "1.306.1921.0",
+    "asset": "Square44x44Logo.targetsize-256_altform-unplated.png"
+  }
+}
