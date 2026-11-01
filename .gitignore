@@ -80,3 +80,10 @@ CODY-App/build/*
 !CODY-App/build/installer/
 CODY-App/build/installer/*
 !CODY-App/build/installer/standalone.nsh
+
+# Local project history, private guides and reference tools
+/Archive/
+/Documentation/
+/Releases/
+/CODY-App/frontend/cody/
+/CODY-App/tools/ilspy/
