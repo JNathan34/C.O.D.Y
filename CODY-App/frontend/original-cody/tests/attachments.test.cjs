@@ -9,7 +9,7 @@ function fixture(){
   return {folder,chats,manager,changes,store,file,saved:()=>saved,close(){for(const name of fs.readdirSync(folder)){const target=path.join(folder,name);if(fs.statSync(target).isDirectory())fs.rmdirSync(target);else fs.unlinkSync(target);}fs.rmdirSync(folder);}};
 }
 test('drop stages deduplicated paths and metadata without copying content or submitting anything',async()=>{
-  const f=fixture();try{const file=f.file(),state=await f.manager.add('one',[file,file]);assert.equal(state.items.length,1);assert.equal(state.items[0].name,'notes.txt');assert.equal(f.chats[1].attachments,undefined);assert.doesNotMatch(f.saved(),/User content stays/);assert.deepEqual(await f.manager.paths('one'),[fs.realpathSync(file)]);}finally{f.close();}
+  const f=fixture();try{const file=f.file(),state=await f.manager.add('one',[file,file]);assert.equal(state.items.length,1);assert.equal(state.items[0].name,'notes.txt');assert.equal(f.chats[1].attachments,undefined);assert.doesNotMatch(f.saved(),/User content stays/);assert.deepEqual(await f.manager.paths('one'),[fs.realpathSync.native(file)]);}finally{f.close();}
 });
 test('folders and non-file paths fail clearly, and a later valid drop still works',async()=>{
   const f=fixture();try{fs.mkdirSync(path.join(f.folder,'directory'));await assert.rejects(f.manager.add('one',[path.join(f.folder,'directory')]),/individual files/);await assert.rejects(f.manager.add('one',['https://example.com/file']),/your computer/);assert.equal((await f.manager.add('one',[f.file()])).items.length,1);}finally{f.close();}
