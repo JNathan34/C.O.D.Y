@@ -38,6 +38,12 @@ Once this version is installed, **Settings → Updates** can check GitHub, downl
 
 Features depend on Windows permissions, account access and connected services. The [getting-started guide](docs/GETTING-STARTED.md) covers setup and current limits.
 
+## Word guide
+
+[Download the illustrated Word guide](https://github.com/JNathan34/C.O.D.Y/releases/download/v0.15.2/CODY-Complete-Capability-Guide.docx) · [Repository copy](docs/CODY-Complete-Capability-Guide.docx)
+
+The handbook covers capabilities, voice commands, settings and setup, with screenshots and examples. It was prepared on 31 October 2026 for version 0.15.0. Follow the current release notes for the newer GitHub updater and separate Windows installers.
+
 ## What changed in 0.15.2
 
 - Separate x64 and ARM64 installers, so each download contains only the version needed for your PC.
