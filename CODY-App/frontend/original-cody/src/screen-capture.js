@@ -4,6 +4,7 @@ const fs=require('node:fs/promises'),path=require('node:path');
 const {randomUUID}=require('node:crypto');
 const {commandText}=require('./command-text');
 const {finalizeMp4}=require('./screen-recorder/finalize-mp4');
+const {captureScreenshot}=require('./screen-recorder/screenshot');
 function captureCommand(input,{recording=false}={}){
   const text=commandText(input).toLowerCase().replace(/[’']/g,'').replace(/[-,]/g,' ').replace(/\s+/g,' ').trim();
   if(/^(?:(?:take|capture|save|grab|make) )?(?:a |the )?(?:screenshot|screen shot|screen capture)(?: (?:of )?(?:my |the )?screen)?$/.test(text)||/^(?:take|capture|save|grab) (?:a )?(?:picture|photo) of (?:my |the )?screen$/.test(text))return 'screenshot';
@@ -15,8 +16,8 @@ function captureCommand(input,{recording=false}={}){
   return null;
 }
 class ScreenCapture extends EventEmitter{
-  constructor({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,shell,pictures,videos,now=Date.now}){
-    super();Object.assign(this,{BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,shell,pictures,videos,now});
+  constructor({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,now=Date.now,captureImage=captureScreenshot}){
+    super();Object.assign(this,{BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,now,captureImage});
     this.status='idle';this.elapsed=0;this.bytes=0;this.pending=new Map();this.tail=Promise.resolve();
     const authorize=event=>{if(event.sender!==this.worker?.webContents||event.senderFrame!==event.sender.mainFrame)throw Error('Untrusted screen recorder');};
     ipcMain.handle('screen-recorder-chunk',async(event,value)=>{
@@ -42,10 +43,12 @@ class ScreenCapture extends EventEmitter{
   }
   filename(prefix,extension){return `${prefix} ${new Date(this.now()).toISOString().replace(/[:.]/g,'-')} ${randomUUID().slice(0,6)}.${extension}`;}
   async screenshot(){
-    const {source}=await this.source(true);if(source.thumbnail.isEmpty())throw Error('Windows returned an empty screenshot.');
+    const {source,display}=await this.source(),scale=display.scaleFactor||1;
+    const png=await this.captureImage({BrowserWindow:this.BrowserWindow,sourceId:source.id,width:Math.round(display.size.width*scale),height:Math.round(display.size.height*scale)});
+    const image=this.nativeImage.createFromBuffer(png);if(image.isEmpty())throw Error('Windows returned an empty screenshot.');
     await fs.mkdir(this.pictures,{recursive:true});const file=path.join(this.pictures,this.filename('Screenshot','png'));
-    await fs.writeFile(file,source.thumbnail.toPNG(),{flag:'wx'});this.lastScreenshot=file;
-    this.clipboard?.writeImage(source.thumbnail);this.publish();return {path:file,reply:'Screenshot saved and copied to the clipboard.',confirmation:'Done.'};
+    await fs.writeFile(file,png,{flag:'wx'});this.lastScreenshot=file;
+    this.clipboard?.writeImage(image);this.publish();return {path:file,reply:'Screenshot saved and copied to the clipboard.',confirmation:'Done.'};
   }
   execute(action){
     if(action==='screenshot')return this.screenshot();

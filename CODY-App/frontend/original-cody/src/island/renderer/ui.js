@@ -15,6 +15,17 @@
   const chatView = document.getElementById('view-chat');
   const settingsView = document.getElementById('view-settings');
   let activeView = 'chat';
+  let chatExpanded=false;
+  const expandChatButton=document.getElementById('chat-expand');
+  function setChatExpanded(value){
+    chatExpanded=Boolean(value);body.classList.toggle('chat-expanded',chatExpanded);
+    expandChatButton.setAttribute('aria-pressed',String(chatExpanded));
+    const label=chatExpanded?'Return to compact chat':'Expand chat';expandChatButton.title=label;expandChatButton.setAttribute('aria-label',label);
+    expandChatButton.querySelector('path').setAttribute('d',chatExpanded?'M3 8h5V3m8 0v5h5M8 21v-5H3m18 0h-5v5':'M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5');
+    api?.setChatExpanded?.(chatExpanded);
+  }
+  expandChatButton.addEventListener('click',()=>setChatExpanded(!chatExpanded));
+  setChatExpanded(false);
   let micTestStream=null, micTestContext=null, micTestFrame=null;
   const input = document.getElementById('quick-input');
   const sendButton = document.getElementById('panel-send');
@@ -100,7 +111,7 @@
   function appendMessage(role,text){
     const node=document.createElement('div');
     node.className='message '+(role==='user'?'user':'assistant');
-    node.textContent=String(text);
+    window.CODYChatFormat.render(node,text,role);
     messages.appendChild(node);
     emptyState.hidden=true;
     document.getElementById('conversation').scrollTop=document.getElementById('conversation').scrollHeight;
@@ -423,6 +434,7 @@
   }
   function setActiveView(view){
     activeView=['settings','tasks','history'].includes(view)?view:'chat';
+    expandChatButton.hidden=activeView!=='chat';
     const history=activeView==='history',historyView=document.getElementById('view-history');
     body.classList.toggle('history-open',history);historyView.setAttribute('aria-hidden',String(!history));historyView.inert=!history;historyView.classList.toggle('is-current',history);
     if(history)document.getElementById('history-conversation').append(chatView);else if(chatView.parentElement.id==='history-conversation')historyView.parentElement.prepend(chatView);
@@ -709,7 +721,7 @@
     setState,setAudioLevel,connectSpeakingAudio,stopMicTest,setSettingsTab,updateInput,wakeUp,setMediaPlaying,resetExpression:()=>setExpression('normal',0,true),
     startListening:()=>void startMicrophone(),stopListening:()=>stopMicrophone(),
     togglePanel,getState:()=>state,onPrompt:null,onNewChat:null,backendConnected:false,
-    appendMessage,newConversation,setActiveView,
+    appendMessage,renderMessage:window.CODYChatFormat.render,newConversation,setActiveView,
     applySettings,showIsland,applyCursor,
     playExpression:(name,duration)=>setExpression(name,duration),
     previewExpression:(name,duration=2100)=>{setState('idle');setExpression(name,duration,true);},

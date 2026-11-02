@@ -33,8 +33,8 @@ module.exports=async({win,island,store,attachments,engine})=>{
     await prompt("In the attached image only, what colour is the robot's outer ring? Reply with the colour only.");
     const imageReply=store.chat(chatId).messages.filter(message=>message.role==='assistant').at(-1)?.text||'';
     check('real HeyClicky image question reads the attached image',/blue|cyan|turquoise/i.test(imageReply),{reply:imageReply});
-    await evaluate(`document.querySelector('#attachment-list .attachment-remove').click()`);await until(()=>evaluate('window.CODYAttachments.state().items.length===0'));
-    check('removing the file clears future attachment context',(await attachments.paths(chatId)).length===0);
+    await until(()=>evaluate('window.CODYAttachments.state().items.length===0'));
+    check('sending the file clears future attachment context',(await attachments.paths(chatId)).length===0);
     const document=path.resolve(__dirname,'../reports/attachment-live-fixture-'+Date.now()+'.txt');fs.writeFileSync(document,'Calibration number: 48127\nTest token: CODY_OLD\n');
     await drop(document);await prompt('Read the attached local test file. Tell me its calibration number, and replace the exact token CODY_OLD with CODY_NEW in that same file. Keep the other content unchanged. This is a harmless attachment feature test; do not edit any other files. Reply briefly when finished.');
     await until(()=>fs.readFileSync(document,'utf8').includes('CODY_NEW'),150000);

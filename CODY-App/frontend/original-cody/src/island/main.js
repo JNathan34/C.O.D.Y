@@ -11,6 +11,7 @@ let fileDragActive=false;
 let mascotSleeping=false,wakeClickUntil=0;
 let captureUIActive=false,captureUIGraceUntil=0;
 let taskDetailExpanded=false;
+let chatExpanded=false;
 const captureUIBusy=()=>captureUIActive||Date.now()<captureUIGraceUntil;
 
 const SIZES = Object.freeze({
@@ -272,7 +273,7 @@ function pollCursor(clickedPoint=null) {
   const left = (bounds.width-size.width)/2;
   const nearIsland = point.x >= bounds.x + left && point.x < bounds.x + left+size.width && point.y >= bounds.y && point.y < bounds.y + size.height;
   // All visible expanded content remains interactive; outside is click-through.
-  const wide=['settings','history'].includes(currentPanelView)||currentPanelView==='tasks'&&taskDetailExpanded;
+  const wide=['settings','history'].includes(currentPanelView)||currentPanelView==='tasks'&&taskDetailExpanded||currentPanelView==='chat'&&chatExpanded;
   const width = Math.min(wide?SETTINGS_WIDTH:currentPanelView==='tasks'?TASKS_WIDTH:CHAT_WIDTH,bounds.width);
   const height = Math.min(wide?SETTINGS_HEIGHT:currentPanelView==='tasks'?TASKS_HEIGHT:CHAT_HEIGHT,bounds.height);
   const panelX = bounds.x+(bounds.width-width)/2;
@@ -418,6 +419,7 @@ function setupIpc() {
   on('island:open-preview',openPreview);
   on('island:sleeping',(_event,value)=>{if(mascotSleeping&&value!==true)wakeClickUntil=Date.now()+1500;mascotSleeping=value===true;});
   on('island:expand',(_event,open)=>setExpanded(open));
+  on('island:chat-expanded',(_event,value)=>{chatExpanded=value===true;});
   on('island:task-detail',(_event,open)=>{taskDetailExpanded=open===true;});
   on('island:view',(_event,view)=>{if(['chat','settings','tasks','history'].includes(view))currentPanelView=view;});
   on('island:show',()=>{forcedVisible=true;updateVisibility();if(!isActive())scheduleHide();});

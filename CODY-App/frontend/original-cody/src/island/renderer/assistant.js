@@ -171,7 +171,7 @@
     if(message)message.text=delta?(message.text||'')+text:text;
     if(chatId!==app.data.activeChatId)return;
     const node=[...$('chat-messages').children].find(node=>node.dataset.messageId===messageId);
-    if(node){node.textContent=displayText(message?.text||text)||'Thinking…';window.CODYAttachments?.decorateMessage(node,message||{});}
+    if(node){island.renderMessage(node,displayText(message?.text||text)||'Thinking…',message?.role||'assistant');window.CODYAttachments?.decorateMessage(node,message||{});}
     const log=$('conversation');if(log.scrollHeight-log.scrollTop-log.clientHeight<130)log.scrollTop=log.scrollHeight;
   }
   function busy(value){

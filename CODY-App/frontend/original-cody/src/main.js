@@ -106,7 +106,7 @@ function createWindow(){
     else if(!quitting){quitting=true;app.quit();}
   });
   if(store.data.settings.startMinimized||process.argv.includes('--background'))island.showCompact();
-  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  win.webContents.setWindowOpenHandler(({url})=>{try{const link=new URL(url);if(['https:','http:'].includes(link.protocol))void shell.openExternal(link.href).catch(()=>{});}catch{}return {action:'deny'};});
   win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('file://'))event.preventDefault();});
 }
 function getState(){return {...store.publicState(),tasks:nativeTasks,rps:rps?.snapshot(),monitors:monitors?.snapshot(),capture:screenCapture?.snapshot(),timer:desktopTimer?.snapshot(),quickCard,spotify:spotify?.snapshot(),controlCapabilities:controller?.catalog(),firefoxConnection:firefoxBridge?.status(),connected:Boolean(codex?.ready),busy:Boolean(activeTurn||starting),webConnected:Boolean(webBrowser?.lastState?.signedIn)};}
@@ -580,7 +580,7 @@ else app.whenReady().then(()=>{
   controller.proofread=async target=>{if(!target)target=(await nativeEngine.request('text-capture',{clientPid:process.pid})).target;if(!target)throw Error('Click the text box, then hold your voice shortcut and say “spell check this”. The box must expose editable text.');return nativeEngine.request('proofread',{target});};
   controller.nativeAudio={set:level=>nativeEngine.request("audio-set",{level}),mute:muted=>nativeEngine.request("audio-mute",{muted})};
   rps=new RockPaperScissors();rps.on("change",state=>{sendUI("rps-state",state);refreshIslandCards();});
-  screenCapture=new ScreenCapture({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,shell,pictures:path.join(app.getPath('pictures'),'C.O.D.Y'),videos:path.join(app.getPath('videos'),'C.O.D.Y')});
+  screenCapture=new ScreenCapture({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures:path.join(app.getPath('pictures'),'C.O.D.Y'),videos:path.join(app.getPath('videos'),'C.O.D.Y')});
   let lastSavedCapture=null;screenCapture.on('change',state=>{sendUI('capture-state',state);refreshIslandCards();if(state.status==='starting')island.collapse();if(state.status==='saved'&&state.savedPath!==lastSavedCapture){lastSavedCapture=state.savedPath;showQuickCard({kind:'utility',text:'Recording saved',detail:'Click to open',icon:'camera',captureKind:'recording'});}if(state.status==='error')showQuickCard({kind:'utility',text:'Recording error',detail:state.error,icon:'circle-alert'});});
   monitors=new IslandMonitors({settingsFile:path.join(app.getPath('userData'),'island-monitors.json'),fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact();lastMonitorActive=state.active;});

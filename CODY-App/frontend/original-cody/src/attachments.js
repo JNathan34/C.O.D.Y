@@ -33,11 +33,19 @@ class Attachments{
     });this.queue=operation;return operation;
   }
   remove(id,fileId){const operation=this.queue.catch(()=>{}).then(()=>{const chat=this.chat(id);chat.attachments=(chat.attachments||[]).filter(file=>file.id!==fileId);this.store.save();return this.publish(id);});this.queue=operation;return operation;}
-  async paths(id){
-    await this.queue.catch(()=>{});
-    const chat=this.chat(id),paths=[];
-    for(const saved of chat.attachments||[]){try{paths.push((await this.inspect(saved.path)).path);}catch{throw Error(path.basename(saved.path||'Attachment')+' is no longer available. Remove it or attach it again.');}}
-    return paths;
+  prepare(id){
+    const operation=this.queue.catch(()=>{}).then(async()=>{
+      const files=[...(this.chat(id).attachments||[])],paths=[];
+      for(const saved of files){try{paths.push((await this.inspect(saved.path)).path);}catch{throw Error(path.basename(saved.path||'Attachment')+' is no longer available. Remove it or attach it again.');}}
+      return {paths,ids:files.map(file=>file.id)};
+    });this.queue=operation;return operation;
   }
+  clearSent(id,ids){
+    const operation=this.queue.catch(()=>{}).then(()=>{
+      const chat=this.chat(id),sent=new Set(ids);chat.attachments=(chat.attachments||[]).filter(file=>!sent.has(file.id));
+      this.store.save();return this.publish(id);
+    });this.queue=operation;return operation;
+  }
+  async paths(id){return (await this.prepare(id)).paths;}
 }
 module.exports={Attachments};

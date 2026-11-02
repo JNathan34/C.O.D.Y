@@ -196,6 +196,21 @@ button{font:inherit;cursor:pointer}
 .chat-messages:empty{display:none}.message{display:flex;flex-direction:column;gap:6px;max-width:100%;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .message.user{align-self:flex-end;width:fit-content;max-width:88%;background:#262626;border-radius:15px 15px 5px 15px;padding:9px 12px}
 .message.assistant{align-self:stretch;color:#e5e5e5;padding:0 4px}
+.message.assistant{display:block;white-space:normal;min-width:0}
+.message.assistant p{margin:0 0 10px;line-height:1.6;white-space:pre-wrap}
+.message.assistant h2,.message.assistant h3,.message.assistant h4,.message.assistant h5,.message.assistant h6{font-size:1.1em;line-height:1.4;margin:15px 0 8px;font-weight:650}
+.message.assistant ul,.message.assistant ol{margin:7px 0 12px;padding-left:22px}
+.message.assistant li{margin:5px 0;line-height:1.6;white-space:pre-wrap}
+.message.assistant code{font: .93em/1.5 Consolas,monospace;background:#24262d;border-radius:4px;padding:2px 4px}
+.message.assistant pre{max-width:100%;overflow-x:auto;margin:10px 0;padding:12px;background:#191b21;border:1px solid #34363e;border-radius:9px;white-space:pre}
+.message.assistant pre code{padding:0;background:none;white-space:pre}
+.message.assistant blockquote{margin:10px 0;padding:8px 12px;border-left:3px solid #707480;background:#191b20;border-radius:0 7px 7px 0}
+.message.assistant blockquote p:last-child,.message.assistant>:last-child{margin-bottom:0}
+.message.assistant a{color:#90bfff;text-decoration:underline;overflow-wrap:anywhere}
+.chat-table{max-width:100%;overflow-x:auto;margin:10px 0}
+.chat-table table{border-collapse:collapse;min-width:100%;font-size:inherit}
+.chat-table th,.chat-table td{border:1px solid #373941;padding:7px 10px;text-align:left;vertical-align:top}
+.chat-table th{background:#23252c;font-weight:650}
 .composer-area{flex-shrink:0}.composer{background:#1e1e1e;border:1px solid #343434;border-radius:18px;padding:10px 11px 8px;min-height:76px;transition:border-color .18s}
 .composer:focus-within{border-color:#5c5c5c}
 #quick-input{display:block;width:100%;height:auto;min-height:19px;max-height:62px;resize:none;overflow-y:auto;border:0;background:transparent;color:#f1f1f1;padding:0;outline:none;font:12px/1.5 'Segoe UI Variable','Segoe UI',system-ui,sans-serif;user-select:text;box-shadow:none}
@@ -241,6 +256,8 @@ body[data-motion="off"] .quick-panel,body[data-motion="off"] .island,body[data-m
 /* v1.8 — one seamless island with two purpose-sized states */
 body.panel-open:not(.settings-open) .island{width:min(520px,100%);height:min(352px,100%)}
 body.panel-open.settings-open .island{width:min(900px,100%);height:min(716px,100%)}
+body.panel-open.chat-expanded:not(.settings-open):not(.tasks-open):not(.history-open) .island{width:min(900px,100%);height:min(716px,100%)}
+#chat-expand[hidden]{display:none}
 body.panel-open .mascot{top:34px;width:38px;height:38px}
 .quick-panel{top:0;bottom:0;left:0;right:0;padding:15px 29px 17px;}
 .panel-header{position:absolute;top:13px;left:28px;right:28px;z-index:5;min-height:32px;margin:0}

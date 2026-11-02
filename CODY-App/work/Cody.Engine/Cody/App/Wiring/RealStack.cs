@@ -238,7 +238,7 @@ public sealed class RealStack : IAsyncDisposable
 		{
 			cursor.EndPenRide();
 		};
-		screenDrawingCanvas.ScreenChangeWatchFactory = (DisplayInfo display, Action<string> onChanged) => new ScreenDrawingStaleWatch(display, onChanged);
+		screenDrawingCanvas.ScreenChangeWatchFactory = (DisplayInfo display, Action<string> onChanged) => HeyClicky.App.Cody.CodyDrawingControls.WatchScreen(screenDrawingCanvas, display, onChanged);
 		double value2 = Lap();
 		AgentRuntimeOptions agentRuntimeOptions = new AgentRuntimeOptions();
 		AppHost.PrepareStoredSettings(core.Settings, agentRuntimeOptions);

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.4 — 2 November 2026
+
+- Render structured answers and Markdown as readable chat content, including saved and streamed replies.
+- Clear sent attachments from the composer while retaining file names on the sent message; rejected sends keep files ready for retry.
+- Add a top-right button to toggle between compact and expanded chat without losing the conversation or draft.
+- Show Clear and model-window close controls during 3D generation.
+- Keep 3D models visible when clicking elsewhere, switching apps or scrolling; explicit X and Clear controls still remove them.
+- Capture screenshots through a decoded frame and sRGB canvas before saving and copying, avoiding direct thumbnail exports with incorrect colours.
+- Verify 283 JavaScript tests, native builds, chat and attachment UI checks, screenshot colour samples and native 3D controls/persistence checks.
+
 ## 0.15.3 — 2 November 2026
 
 - Rename the Agents allowance card to Claude Code Usage and add Claude Code sign-in and sign-out controls.

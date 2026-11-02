@@ -147,6 +147,16 @@ public sealed class LessonService
 		ClickyDrawingWindowViewer.Shared.Present(lesson, this);
 	}
 
+	internal bool GeneratingControlsShown => offer?.IsShown == true;
+
+	internal void ShowGeneratingControls(bool force)
+	{
+		if (!replaying && (force || offer?.IsShown != true) && real.Canvas.DrawingDisplay is DisplayInfo display)
+		{
+			ShowOffer(display, null);
+		}
+	}
+
 	private void ShowOffer(DisplayInfo display, Recent? entry)
 	{
 		if (!DrawnOnboardingTour.IsRunning && !real.Canvas.IsDrawingFadedAway)

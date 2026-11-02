@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('cody',Object.freeze({
   openSettings:()=>ipcRenderer.send('island:open-settings'),
   openPreview:()=>ipcRenderer.send('island:open-preview'),
   expand:open=>ipcRenderer.send('island:expand',open),
+  setChatExpanded:value=>ipcRenderer.send('island:chat-expanded',value===true),
   setView:view=>ipcRenderer.send('island:view',view),
   setPickerOpen:open=>ipcRenderer.send('island:picker-open',Boolean(open)),
   show:()=>ipcRenderer.send('island:show'),

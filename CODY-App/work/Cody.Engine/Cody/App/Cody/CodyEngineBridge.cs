@@ -100,6 +100,7 @@ public static class CodyEngineBridge
         int consentTicks=0;
         bool? captureUi=null;
         meter.Tick += (_, _) => {
+            CodyDrawingControls.Tick(host);
             if(CodyIndependentInput.Active)CodyMouseGuard.Pulse();
             escapeWork=CodyIndependentInput.Active||host.ClickyDrive?.ClaimsEscape==true||session.State!=VoiceState.Idle||host.Real.Agents.Tasks.Any(task=>task.Status is AgentTaskStatus.Starting or AgentTaskStatus.Running or AgentTaskStatus.WaitingForUser);
             bool yielding=HeyClicky.Platform.Win32.ScreenCaptureYield.IsYielding;
@@ -195,15 +196,20 @@ public static class CodyEngineBridge
                     case "plugins-action":return await CodyPlugins.Act(host,Text("pluginId"),Text("action"),Text("accountId"));
                     case "plugins-add":return CodyPlugins.Add(host,Text("name"),Text("url"),Text("apiKey"));
                     case "model-zoom-state":return await CodyModelZoom.Snapshot();
+                    case "drawing-controls-state":return await CodyDrawingControls.Snapshot(host);
+                    case "drawing-controls-test-close":if(!zoomFixture)throw new InvalidOperationException("Create the local model fixture first.");CodyDrawingControls.CloseForTest(host);return new{closed=true};
+                    case "drawing-controls-test-screen-change":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");var changeReason=Text("reason");if(changeReason is not ("click" or "app switch" or "space change" or "scroll"))throw new InvalidOperationException("Unsupported test reason.");CodyDrawingControls.ScreenChangeForTest(host,changeReason);return new{changed=true};
+                    case "drawing-controls-test-finish":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");host.Real.Canvas.Finish();host.Real.Canvas.IsStreamingNarration=false;return new{finished=true};
                     case "model-zoom-test":return new{accepted=CodyModelZoom.WheelForTest(Text("handle"),request.GetProperty("delta").GetInt32())};
                     case "model-zoom-point-test":return new{accepted=CodyModelZoom.WheelAtPointForTest(request.GetProperty("x").GetInt32(),request.GetProperty("y").GetInt32(),request.GetProperty("delta").GetInt32())};
                     case "model-zoom-image":return new{png=Convert.ToBase64String(host.Real.Canvas.RenderDrawingPng(overScreenshot:false)??Array.Empty<byte>())};
                     case "model-zoom-demo":
                         if(host.Real.Canvas.IsShowing&&host.Real.Canvas.InkedMarkCount>0)throw new InvalidOperationException("Keep the existing drawing; zoom verification requires an empty canvas.");
                         var captures=await host.Real.Capture.CaptureAllAsync();var capture=captures.First();host.Real.Canvas.BeginProgram(capture,host.Services.Settings.CursorColorHex);
-                        var feed=host.Real.Canvas.Feed("scene3d(180,140,420,340,s=>{s.box({w:1.7,h:1.2,d:1.1});s.camera({spin:0});});",true);
-                        for(int i=0;i<Math.Max(1,feed.Lines.Count);i++)host.Real.Canvas.ReleaseLine(i);host.Real.Canvas.Finish();zoomFixture=true;return new{created=true,lines=feed.Lines.Count};
-                    case "model-zoom-demo-clear":if(zoomFixture){host.Real.Canvas.Clear(false);zoomFixture=false;}return new{cleared=true};
+                        bool streaming=request.TryGetProperty("streaming",out var streamingValue)&&streamingValue.ValueKind==JsonValueKind.True;host.Real.Canvas.IsStreamingNarration=streaming;
+                        var feed=host.Real.Canvas.Feed((streaming?"say('Generating the model.');paper(160,120,460,380,{title:'3D generation',board:'plain'});":"")+"scene3d(180,140,420,340,s=>{s.box({w:1.7,h:1.2,d:1.1});s.camera({spin:0});});"+(streaming?"say('Adding more detail.');":""),!streaming);
+                        for(int i=0;i<Math.Max(1,feed.Lines.Count);i++)host.Real.Canvas.ReleaseLine(i);if(!streaming)host.Real.Canvas.Finish();zoomFixture=true;return new{created=true,lines=feed.Lines.Count};
+                    case "model-zoom-demo-clear":if(zoomFixture){host.Real.Canvas.Clear(false);host.Real.Canvas.IsStreamingNarration=false;zoomFixture=false;}return new{cleared=true};
                     case "permissions-configure":
                         bool? readAppsValue=request.TryGetProperty("readApps",out var readApps)?readApps.GetBoolean():null,extraUsageValue=request.TryGetProperty("extraUsage",out var extraUsage)?extraUsage.GetBoolean():null;
                         string folderValue=null;if(request.TryGetProperty("workingFolder",out var folder)){folderValue=folder.GetString();if(string.IsNullOrWhiteSpace(folderValue)||!Path.IsPathFullyQualified(folderValue)||!Directory.Exists(folderValue))throw new ArgumentException("Choose an existing working folder.");folderValue=Path.GetFullPath(folderValue);}

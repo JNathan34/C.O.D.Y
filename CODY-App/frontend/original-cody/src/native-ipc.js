@@ -167,7 +167,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
       void runUtility(operation,text,voice||store.data.settings.voiceAutoSpeak).catch(error=>{if(active===operation)finish(error.message);});
       return {started:true,local:true,utility:true};
     }
-    let files;try{files=attachments?await attachments.paths(chatId):[];}catch(error){return {error:error.message};}if(active)return {error:'Another reply is in progress'};
+    let batch;try{batch=attachments?await attachments.prepare(chatId):{paths:[],ids:[]};}catch(error){return {error:error.message};}const files=batch.paths;if(active)return {error:'Another reply is in progress'};
     const chosen=selection(store.data.settings);
     if(chosen.provider!=='heyclicky'){
       if(!submitExternal)return {error:'This AI connection is unavailable.'};
@@ -180,10 +180,11 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     remember(active);
     const operation=active;
     void engine.request('submit',{turn:active.turn,text,speak:voice||store.data.settings.voiceAutoSpeak===true,...(files.length?{files}:{})}).then(result=>{if(active!==operation)return;if(!active.answer?.text&&result.text)replace(active.answer,result.text);finish();if(!files.length)void utilities?.observe(text);}).catch(error=>{if(active===operation)finish(error.message);});
+    if(batch.ids.length)await attachments.clearSent(chatId,batch.ids);
     return {started:true,provider:'heyclicky'};
   };
   handle('send-message',submit);
-  const beginVoice=async({audioPrefix,wake=false}={})=>{if(externalBusy()&&!await cancelExternal())throw Error('Finish or stop the current reply first');if(gameVoice?.running)return {listening:gameVoice.capture};if(active){const drive=await engine.request('drive-state');if(!drive.active)throw Error('Finish the current reply first');await engine.request('drive-stop');finish();}const operation=active={turn:randomUUID(),chatId:store.data.activeChatId,voice:true,wake,provider:selection(store.data.settings).provider};remember(operation);try{operation.files=attachments?await attachments.paths(operation.chatId):[];if(active!==operation)return {listening:false};const result=await engine.request('begin',{turn:operation.turn,...(wake?{wake:true}:{}),captureText:captureTextEnabled(),clientPid:process.pid,...(operation.files.length||wake||operation.provider!=='heyclicky'?{utilityOnly:true}:{}),...(audioPrefix?{audioPrefix}:{})});operation.proofreadTarget=result.textTarget;return result;}catch(error){finish(error.message);throw error;}};
+  const beginVoice=async({audioPrefix,wake=false}={})=>{if(externalBusy()&&!await cancelExternal())throw Error('Finish or stop the current reply first');if(gameVoice?.running)return {listening:gameVoice.capture};if(active){const drive=await engine.request('drive-state');if(!drive.active)throw Error('Finish the current reply first');await engine.request('drive-stop');finish();}const operation=active={turn:randomUUID(),chatId:store.data.activeChatId,voice:true,wake,provider:selection(store.data.settings).provider};remember(operation);try{operation.attachmentBatch=attachments?await attachments.prepare(operation.chatId):{paths:[],ids:[]};operation.files=operation.attachmentBatch.paths;if(active!==operation)return {listening:false};const result=await engine.request('begin',{turn:operation.turn,...(wake?{wake:true}:{}),captureText:captureTextEnabled(),clientPid:process.pid,...(operation.files.length||wake||operation.provider!=='heyclicky'?{utilityOnly:true}:{}),...(audioPrefix?{audioPrefix}:{})});operation.proofreadTarget=result.textTarget;return result;}catch(error){finish(error.message);throw error;}};
   handle('native-begin',()=>beginVoice());
   const endVoice=async()=>{
     if(gameVoice?.running){await gameVoice.finishListening();return {game:true};}if(!active)return {listening:false};const operation=active;
@@ -202,7 +203,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
       }
       else if(result.utilityText&&(operation.files?.length||operation.wake)&&!utilities?.match(result.utilityText)){
         if(!operation.user)operation.user=sendMessage('user',result.utilityText);operation.answer=sendMessage('assistant','');sendUI('busy',{busy:true});
-        const answer=await engine.request('submit',{turn:operation.turn,text:result.utilityText,speak:true,files:operation.files});
+        const [answer]=await Promise.all([engine.request('submit',{turn:operation.turn,text:result.utilityText,speak:true,files:operation.files}),operation.attachmentBatch?.ids.length?attachments.clearSent(operation.chatId,operation.attachmentBatch.ids):Promise.resolve()]);
         if(active===operation){if(!operation.answer.text&&answer.text)replace(operation.answer,answer.text);finish();}
       }else if(result.utilityText){await runUtility(operation,result.utilityText,true);}else{const spoken=active?.user?.text;finish();if(spoken)void utilities?.observe(spoken);}
       return result;

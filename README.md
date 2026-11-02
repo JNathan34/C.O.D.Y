@@ -13,12 +13,12 @@
 
 C.O.D.Y. brings chat, voice controls and background tasks into an animated desktop island. It combines an Electron interface with a bundled Windows engine for computer controls, screen capture, browser connections and visual tools.
 
-**Current release: 0.15.3 · Windows x64 and ARM64 · Early development**
+**Current release: 0.15.4 · Windows x64 and ARM64 · Early development**
 
 ## Install
 
 1. Open the [latest release](https://github.com/JNathan34/C.O.D.Y/releases/latest).
-2. Choose **C.O.D.Y-Setup-0.15.3-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.3-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
+2. Choose **C.O.D.Y-Setup-0.15.4-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.4-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
 3. Open C.O.D.Y., connect your preferred AI service and review the app permissions.
 
 The installer is currently unsigned. Windows may show its publisher as unknown. AI providers require their own accounts; provider subscriptions and paid usage are not included.
@@ -44,14 +44,15 @@ Features depend on Windows permissions, account access and connected services. T
 
 The handbook covers capabilities, voice commands, settings and setup, with screenshots and examples. It was prepared on 31 October 2026 for version 0.15.0. Follow the current release notes for the newer GitHub updater and separate Windows installers.
 
-## What changed in 0.15.3
+## What changed in 0.15.4
 
-- Claude Code Usage naming with account sign-in and sign-out controls in Agents.
-- A matching Codex Usage card with allowance meters and reset times.
-- First-click opening when the island is asleep.
-- Separate x64 and ARM64 installers with GitHub updates for the matching architecture.
+- Readable structured replies and Markdown formatting in chat.
+- Sent attachments clear from the input area, with file names retained in conversation history.
+- A top-right button for a larger chat view.
+- 3D close/clear controls during generation, with models retained when clicking elsewhere or switching apps.
+- Screenshot colour conversion to sRGB before saving and copying.
 
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.3.md) and the [changelog](CHANGELOG.md).
+See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.4.md) and the [changelog](CHANGELOG.md).
 
 ## Develop
 
