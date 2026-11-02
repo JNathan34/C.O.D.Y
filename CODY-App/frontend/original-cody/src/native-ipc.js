@@ -5,7 +5,7 @@ const {RpsVoice}=require('./rps-voice');
 const {taskState}=require('./background-tasks');
 const {selection,providerPatch}=require('./agent-provider');
 const {setPersonalCodexEnabled}=require('./usage-policy');
-function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExternal=async()=>{},externalBusy=()=>false,connectProvider,getState,getWindow,utilities,rps,capture,attachments,chooseFiles,controller,chooseWorkingFolder,captureTextEnabled=()=>false,onTasks=()=>{},showFiles=()=>{},fileDragging=()=>{},showApprovals=()=>{},cancelLocalApprovals=()=>{}}){
+function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExternal=async()=>{},externalBusy=()=>false,connectProvider,codexUsage,getState,getWindow,utilities,rps,capture,attachments,chooseFiles,controller,chooseWorkingFolder,captureTextEnabled=()=>false,onTasks=()=>{},showFiles=()=>{},fileDragging=()=>{},showApprovals=()=>{},cancelLocalApprovals=()=>{}}){
   let active=null;
   const turnChats=new Map(),reports=new Set();
   let tasks=taskState(null,false);
@@ -25,6 +25,12 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   handle('plugins-list',()=>engine.request('plugins-list'));
   handle('agents-state',()=>engine.request('agents-state'));
   handle('heyclicky-usage',()=>engine.request('heyclicky-usage'));
+  handle('codex-usage',()=>codexUsage?codexUsage():{available:false,signedIn:false,error:'Codex usage is unavailable.'});
+  handle('claude-account',async action=>{
+    if(!['signIn','signOut'].includes(action))throw Error('Invalid Claude Code account action.');
+    if(active||externalBusy()||tasks.activeCount||['Listening','Processing','Responding'].includes(engine.status?.state))throw Error('Finish or stop the current work before changing the Claude Code account.');
+    const result=await engine.request(action);sendUI('auth-changed',{});return result;
+  });
   handle('agent-provider-state',()=>selection(store.data.settings));
   handle('agent-provider-select',provider=>{
     if(active||externalBusy())throw Error('Finish or stop the current request before changing AI.');

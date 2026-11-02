@@ -3,10 +3,12 @@ const { app, BrowserWindow, ipcMain, Menu, screen, shell, session, globalShortcu
 const fs = require('node:fs');
 const path = require('node:path');
 const branding=require('../branding');
+const {shouldRecoverPointer}=require('./pointer-open');
 const mascotLooks=require('./renderer/mascot-looks');
 const { spawn, execFile } = require('node:child_process');
 const preferenceListeners=new Set();
 let fileDragActive=false;
+let mascotSleeping=false,wakeClickUntil=0;
 let captureUIActive=false,captureUIGraceUntil=0;
 let taskDetailExpanded=false;
 const captureUIBusy=()=>captureUIActive||Date.now()<captureUIGraceUntil;
@@ -282,6 +284,9 @@ function pollCursor(clickedPoint=null) {
   // Match the top-attached notch silhouette instead of blocking mouse input through its transparent shoulders.
   const inset = y < 8 ? Math.max(0,y)*1.8 : y < 24 ? 14.4+(y-8)*.8 : 27.2+(y-24)*1.7;
   const silhouetteHit = nearIsland && Math.abs(point.x-centerX) < (size.width/2-inset);
+  if(clickedPoint&&shouldRecoverPointer({visible:islandWindow.isVisible(),expanded,hit:silhouetteHit,sleeping:mascotSleeping,wakeUntil:wakeClickUntil,now:Date.now(),button:clickedPoint.button||'left'})){
+    mascotSleeping=false;wakeClickUntil=0;setExpanded(true);emit('island:command','pointer-open');
+  }
   if(clickedPoint&&expanded&&!captureUIBusy()&&!pickerOpen&&!onPanel&&!silhouetteHit)setExpanded(false);
   const ignoreMouse = !(islandWindow.isVisible() && (pickerOpen || silhouetteHit || onPanel));
   if (ignoreMouse !== mouseIgnored) {
@@ -411,6 +416,7 @@ function setupIpc() {
   on('island:audio-level',(_event,level)=>emit('island:audio-level',Math.max(0,Math.min(1,Number(level)||0))));
   on('island:open-settings',openSettings);
   on('island:open-preview',openPreview);
+  on('island:sleeping',(_event,value)=>{if(mascotSleeping&&value!==true)wakeClickUntil=Date.now()+1500;mascotSleeping=value===true;});
   on('island:expand',(_event,open)=>setExpanded(open));
   on('island:task-detail',(_event,open)=>{taskDetailExpanded=open===true;});
   on('island:view',(_event,view)=>{if(['chat','settings','tasks','history'].includes(view))currentPanelView=view;});

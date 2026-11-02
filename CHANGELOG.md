@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.3 — 2 November 2026
+
+- Rename the Agents allowance card to Claude Code Usage and add Claude Code sign-in and sign-out controls.
+- Show Codex usage in matching cards, with actual usage percentages, allowance windows and reset times from the signed-in ChatGPT account.
+- Use the bundled Codex runtime for account reads without requiring a separate CLI installation.
+- Open the sleeping island on its first left click, including immediately after hover wakes the mascot.
+- Verify 270 JavaScript tests, account UI states and the native engine build.
+
 ## 0.15.2 — 1 November 2026
 
 - Separate Windows x64 and ARM64 setup executables replace the combined installer.

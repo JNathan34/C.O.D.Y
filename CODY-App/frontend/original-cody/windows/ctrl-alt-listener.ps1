@@ -17,10 +17,12 @@ $chatChord = $false
 $mouseHeld = $false
 try {
     while ($true) {
+        $leftMouse = ((([int][CodyModifierKeys]::GetAsyncKeyState(0x01)) -band 0x8000) -ne 0)
+        $rightMouse = ((([int][CodyModifierKeys]::GetAsyncKeyState(0x02)) -band 0x8000) -ne 0)
         $mouse = ((([int][CodyModifierKeys]::GetAsyncKeyState(0x01)) -band 0x8000) -ne 0) -or ((([int][CodyModifierKeys]::GetAsyncKeyState(0x02)) -band 0x8000) -ne 0) -or ((([int][CodyModifierKeys]::GetAsyncKeyState(0x04)) -band 0x8000) -ne 0)
         if ($mouse -and -not $mouseHeld) {
             $point = New-Object CodyModifierKeys+Point
-            if ([CodyModifierKeys]::GetCursorPos([ref]$point)) { [Console]::Out.WriteLine(('CLICK {0} {1}' -f $point.X,$point.Y)); [Console]::Out.Flush() }
+            if ([CodyModifierKeys]::GetCursorPos([ref]$point)) { $button = if ($leftMouse) { 'left' } elseif ($rightMouse) { 'right' } else { 'middle' }; [Console]::Out.WriteLine(('CLICK {0} {1} {2}' -f $point.X,$point.Y,$button)); [Console]::Out.Flush() }
         }
         $mouseHeld = $mouse
         $ctrl = (([int][CodyModifierKeys]::GetAsyncKeyState(0x11)) -band 0x8000) -ne 0

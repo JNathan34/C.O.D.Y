@@ -14,8 +14,8 @@ function startPushToTalk(emit) {
       if (line === 'DOWN' && !held) { held = true; emit('down'); }
       if (line === 'UP' && held) { held = false; emit('up'); }
       if (line === 'CANCEL') { held = false; emit('cancel'); }
-      const click=/^CLICK (-?\d+) (-?\d+)$/.exec(line);
-      if(click)emit({type:'pointer',x:Number(click[1]),y:Number(click[2])});
+      const click=/^CLICK (-?\d+) (-?\d+)(?: (left|right|middle))?$/.exec(line);
+      if(click)emit({type:'pointer',x:Number(click[1]),y:Number(click[2]),button:click[3]||'left'});
     }
   });
   child.stderr.on('data', data => console.warn('CODY shortcut:',String(data).slice(0,500)));

@@ -52,8 +52,9 @@
   let hotkeyActive = false;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const random = (min,max) => min + Math.random()*(max-min);
-  let mediaPlaying=false;
+  let mediaPlaying=false,pointerOpenUntil=0;
   const presence=new window.CODYIdlePresence({now:()=>performance.now(),onChange:sleeping=>{
+    api?.setSleeping?.(sleeping);
     body.classList.toggle('auto-sleeping',sleeping);body.classList.remove('is-blinking');
     gazeTarget={x:0,y:0};setExpression(sleeping?'sleepy':'normal',0,true);
     if(!sleeping){nextBlink=performance.now()+4500;nextGag=performance.now()+11000;}
@@ -635,6 +636,7 @@
   });
   island.addEventListener('click',event=>{
     if(event.target.closest('button,textarea,select,input,label,nav,.settings-content'))return;
+    if(performance.now()<pointerOpenUntil){pointerOpenUntil=0;return;}
     if(panelOpen){
       // The little mascot at the top is also a collapse target.
       const rect=island.getBoundingClientRect();
@@ -664,6 +666,7 @@
   if(api){
     api.onHotkey(onHotkey);
     api.onCommand(action=>{
+      if(action==='pointer-open'){pointerOpenUntil=performance.now()+1500;setPanelOpen(true,false);return;}
       if(action==='start')void startMicrophone();else if(action==='stop')stopMicrophone();
       else if(action==='chat'){setActiveView('chat');setPanelOpen(true,false);}
     });

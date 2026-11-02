@@ -278,18 +278,24 @@
             <div class="settings-tab" data-content="agents" hidden>
               <h2>Agents</h2>
               <h3 class="group-title">AI</h3><div class="settings-group">
-                <label class="setting-row"><span><strong>Assistant AI</strong><small>Choose which AI handles your next request.</small></span><select id="agents-provider" aria-label="Assistant AI"><option value="heyclicky">Claude</option><option value="codex">ChatGPT Codex</option><option value="chatgpt">ChatGPT</option></select></label>
+                <label class="setting-row"><span><strong>Assistant AI</strong><small>Choose which AI handles your next request.</small></span><select id="agents-provider" aria-label="Assistant AI"><option value="heyclicky">Claude Code</option><option value="codex">ChatGPT Codex</option><option value="chatgpt">ChatGPT</option></select></label>
                 <div class="setting-row" id="agents-model-row" hidden><span><strong>GPT model</strong><small>GPT 6.1 Sol · Medium reasoning</small></span><button id="agents-provider-connect" class="light-action" type="button">Connect</button></div>
               </div><p id="agents-provider-status" class="setting-help" role="status" aria-live="polite"></p>
               <h3 class="group-title">Claude Code Usage</h3>
               <div class="settings-group agent-usage-card">
-                <div class="setting-row"><span><strong id="agent-usage-plan">C.O.D.Y account</strong><small>Agent and conversation allowance</small></span><button id="agent-usage-refresh" class="light-action" type="button">Refresh usage</button></div>
+                <div class="setting-row"><span><strong id="agent-usage-plan">Claude Code Usage</strong><small>Agent and conversation allowance</small></span><button id="agent-usage-refresh" class="light-action" type="button">Refresh usage</button></div>
+                <div class="setting-row"><span><strong>Claude Code account</strong><small id="claude-account-state">Checking connection…</small></span><button id="claude-sign-in" class="light-action" type="button" aria-label="Sign in to Claude Code" hidden>Sign in</button><button id="claude-sign-out" class="light-action" type="button" aria-label="Sign out of Claude Code" hidden>Sign out</button></div>
                 <div id="agent-usage-details" hidden>
                   <div class="agent-usage-bucket"><div><strong>Agent messages</strong><span id="agent-usage-agents-value"></span></div><progress id="agent-usage-agents-meter" aria-label="Agent messages used" max="1" value="0"></progress><small id="agent-usage-agents-remaining"></small></div>
                   <div class="agent-usage-bucket"><div><strong>Conversations</strong><span id="agent-usage-messages-value"></span></div><progress id="agent-usage-messages-meter" aria-label="Conversation messages used" max="1" value="0"></progress><small id="agent-usage-messages-remaining"></small></div>
                   <p id="agent-usage-reset" class="setting-help"></p>
                 </div>
-              </div><p id="agent-usage-status" class="setting-help" role="status" aria-live="polite">Open Agents to load your C.O.D.Y usage.</p>
+              </div><p id="agent-usage-status" class="setting-help" role="status" aria-live="polite">Open Agents to load your Claude Code usage.</p>
+              <h3 class="group-title">Codex Usage</h3>
+              <div class="settings-group agent-usage-card">
+                <div class="setting-row"><span><strong>Codex Usage</strong><small id="codex-usage-plan">ChatGPT account allowance</small></span><button id="codex-usage-refresh" class="light-action" type="button">Refresh usage</button></div>
+                <div id="codex-usage-details" hidden></div>
+              </div><p id="codex-usage-status" class="setting-help" role="status" aria-live="polite">Open Agents to load your Codex usage.</p>
               <h3 class="group-title">WORKSPACE</h3><div class="settings-group">
                 <div class="setting-row"><span><strong>Agent folder</strong><small id="agents-folder-label">Loading…</small></span><button id="agents-folder" class="light-action" type="button">Choose folder</button></div>
                 <div class="setting-row" id="agents-reset-row" hidden><span><strong>Reset to default folder</strong><small id="agents-default-folder"></small></span><button id="agents-reset" class="light-action" type="button">Reset</button></div>

@@ -304,6 +304,7 @@ public static class CodyEngineBridge
                     case "wake-cue":host.Services.Audio.PlayEarcon("textOpen");return new{played=true};
                     case "dictation-shortcuts":return new{installed=dictationShortcuts?.Installed==true,hold="Ctrl + Win",handsFree="Ctrl + Win, pressed twice",cancel="Esc",recording=host.Real.Dictation.IsCapturingAudio};
                     case "cursor-preferences":return new{controlInputMode=CodyIndependentInput.SystemInputEnabled?"system":"independent",screenHighlight=host.Services.Settings.ScreenHighlightEnabled,cursorColor=host.Real.Core.Settings.Read(s=>s.CursorColorHex),highlightActive=host.Real.Highlight.IsEnabled};
+                    case "signOut": await host.Real.Agents.SignOutAsync(); await host.Services.Auth.SignOutAsync(); return new { signedIn = false };
                     case "signIn": host.SignIn(); return new { started = true };
                     case "quit": CodyOverlayOrder.Stop();CodyIndependentInput.End();CodyTaskLibrary.Flush();host.Quit(); return new { stopping = true };
                     default: throw new ArgumentException("Unknown engine command.");
