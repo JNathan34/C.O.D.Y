@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.5 — 2 November 2026
+
+- Hold Ctrl and left-drag to move 3D models, including transparent models and models with backgrounds. Normal dragging still rotates; scroll still zooms.
+- Keep moved models reachable at the screen edges and retain their placement after release and zoom.
+- Keep chat above 3D models without repeated window-order changes that cause flicker.
+- Verify native model movement, zoom, close/clear behaviour and stable chat/model stacking, including computer-control overlays.
+
 ## 0.15.4 — 2 November 2026
 
 - Render structured answers and Markdown as readable chat content, including saved and streamed replies.

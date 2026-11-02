@@ -196,6 +196,8 @@ public static class CodyEngineBridge
                     case "plugins-action":return await CodyPlugins.Act(host,Text("pluginId"),Text("action"),Text("accountId"));
                     case "plugins-add":return CodyPlugins.Add(host,Text("name"),Text("url"),Text("apiKey"));
                     case "model-zoom-state":return await CodyModelZoom.Snapshot();
+                    case "model-drag-state":return await CodyModelDrag.Snapshot();
+                    case "model-drag-test":if(!zoomFixture&&!CodyModelDrag.Active)throw new InvalidOperationException("Create the local model fixture first.");return new{accepted=CodyModelZoom.DragForTest(Text("action"),request.GetProperty("x").GetInt32(),request.GetProperty("y").GetInt32(),request.TryGetProperty("ctrl",out var ctrl)&&ctrl.ValueKind==JsonValueKind.True)};
                     case "drawing-controls-state":return await CodyDrawingControls.Snapshot(host);
                     case "drawing-controls-test-close":if(!zoomFixture)throw new InvalidOperationException("Create the local model fixture first.");CodyDrawingControls.CloseForTest(host);return new{closed=true};
                     case "drawing-controls-test-screen-change":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");var changeReason=Text("reason");if(changeReason is not ("click" or "app switch" or "space change" or "scroll"))throw new InvalidOperationException("Unsupported test reason.");CodyDrawingControls.ScreenChangeForTest(host,changeReason);return new{changed=true};

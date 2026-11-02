@@ -17,6 +17,7 @@ internal static class CodyOverlayOrder
     private static readonly WinEventCallback callback=Changed;
     private static int queued;
     private static long retryAfter;
+    private static long repairs;
     private static DispatcherQueueTimer repairTimer,watchdog;
     private const uint KeepGeometryAndFocus=0x213;
     internal static void Start(DispatcherQueue queue){
@@ -26,15 +27,16 @@ internal static class CodyOverlayOrder
         // Shell/compositor changes do not always deliver window-order events.
         // Check visible overlays too; Refresh leaves correctly ordered windows alone.
         watchdog=queue.CreateTimer();watchdog.Interval=TimeSpan.FromMilliseconds(250);
-        watchdog.Tick+=(_,_)=>{if(layers.Any(IsWindowVisible))Refresh();};watchdog.Start();
+        watchdog.Tick+=(_,_)=>{if(HasVisibleClient())Refresh();};watchdog.Start();
     }
     internal static void Stop(){if(foregroundHook!=0)UnhookWinEvent(foregroundHook);if(orderHook!=0)UnhookWinEvent(orderHook);foregroundHook=orderHook=0;repairTimer?.Stop();repairTimer=null;watchdog?.Stop();watchdog=null;TestContender(false);layers=Array.Empty<nint>();}
     private static void Changed(nint hook,uint kind,nint window,int obj,int child,uint thread,uint time){
-        if(layers.Length==0||!layers.Any(IsWindowVisible)||dispatcher==null||kind!=3&&kind!=0x8004&&(obj!=0||child!=0))return;
+        if(!HasVisibleClient()||dispatcher==null||kind!=3&&kind!=0x8004&&(obj!=0||child!=0))return;
         if(Interlocked.Exchange(ref queued,1)!=0)return;
         if(!dispatcher.TryEnqueue(DispatcherQueuePriority.High,()=>{Interlocked.Exchange(ref queued,0);Refresh();}))Interlocked.Exchange(ref queued,0);
     }
     private static bool OwnedBy(nint window,uint pid){GetWindowThreadProcessId(window,out uint owner);return window!=0&&IsWindow(window)&&owner==pid;}
+    private static bool HasVisibleClient()=>OwnedBy(island,clientPid)&&IsWindowVisible(island)||layers.Any(IsWindowVisible);
     private static string Class(nint window){var name=new StringBuilder(96);GetClassName(window,name,name.Capacity);return name.ToString();}
     private static bool Visible(nint window){
         if(!IsWindowVisible(window)||Class(window)=="SysShadow"||!GetWindowRect(window,out var r)||r.right<=r.left||r.bottom<=r.top)return false;
@@ -54,12 +56,16 @@ internal static class CodyOverlayOrder
         foreach(var surface in protectedWindows){
             int index=stack.IndexOf(surface);if(index<0)continue;
             if(((long)GetWindowLongPtr(surface,-20)&8)==0)return true;
+            if(island!=0&&Visible(island)&&Overlap(surface,island)&&stack.IndexOf(island)>index)return true;
+            // The canvas spans the whole display but is mostly transparent.
+            // Its bounds must not cause a fight with taskbars and other overlays.
+            // Only the explicit computer-control layers need external-app repair.
+            if(!layers.Contains(surface))continue;
             for(int i=0;i<index;i++){
                 var window=stack[i];GetWindowThreadProcessId(window,out uint pid);
                 if(pid==clientPid||protectedWindows.Contains(window)||window==island)continue;
                 if(Overlap(surface,window))return true;
             }
-            if(island!=0&&Visible(island)&&Overlap(surface,island)&&stack.IndexOf(island)>index)return true;
         }
         return false;
     }
@@ -69,19 +75,25 @@ internal static class CodyOverlayOrder
         }
         var stack=Stack();var drawing=stack.Where(window=>{GetWindowThreadProcessId(window,out uint pid);return pid==Environment.ProcessId&&(Class(window) is "HeyClickyDrawingWindow" or "HeyClickyOverlayWindow");}).ToArray();
         var visibleLayers=layers.Where(h=>OwnedBy(h,clientPid)&&Visible(h)).ToArray();
-        if(visibleLayers.Length==0){if(HeyClicky.Platform.Win32.ScreenCaptureYield.IsYielding)return;for(int i=drawing.Length-1;i>=0;i--)SetWindowPos(drawing[i],-1,0,0,0,0,KeepGeometryAndFocus);return;}
         var protectedWindows=visibleLayers.Concat(HeyClicky.Platform.Win32.ScreenCaptureYield.IsYielding?Array.Empty<nint>():drawing).ToArray();
         if(!NeedsRepair(stack,protectedWindows))return;
-        foreach(var layer in Enumerable.Reverse(visibleLayers))SetWindowPos(layer,-1,0,0,0,0,KeepGeometryAndFocus);
-        if(!HeyClicky.Platform.Win32.ScreenCaptureYield.IsYielding)foreach(var surface in Enumerable.Reverse(drawing))SetWindowPos(surface,-1,0,0,0,0,KeepGeometryAndFocus);
-        if(island!=0&&Visible(island))SetWindowPos(island,-1,0,0,0,0,KeepGeometryAndFocus);
+        Interlocked.Increment(ref repairs);
+        // Insert drawing surfaces below the chat from the outset. Raising each
+        // model to HWND_TOPMOST first briefly covers the chat and causes flicker.
+        nint after=-1;
+        if(OwnedBy(island,clientPid)&&Visible(island)){SetWindowPos(island,-1,0,0,0,0,KeepGeometryAndFocus);after=island;}
+        foreach(var surface in protectedWindows.Skip(visibleLayers.Length).Concat(visibleLayers)){
+            SetWindowPos(surface,after,0,0,0,0,KeepGeometryAndFocus);after=surface;
+        }
         // Higher Windows security bands cannot be reordered by a regular app.
         // Avoid repeatedly churning the desktop if the OS declines the order.
         retryAfter=Environment.TickCount64+(NeedsRepair(Stack(),protectedWindows)?500:16);
     }
     internal static object Snapshot(){
         var stack=Stack();var visible=layers.Where(h=>OwnedBy(h,clientPid)&&Visible(h)).ToArray();
-        return new{registered=layers.Length,visible=visible.Length,eventDriven=foregroundHook!=0&&orderHook!=0,aboveApps=!NeedsRepair(stack,visible.Concat(stack.Where(h=>{GetWindowThreadProcessId(h,out uint pid);return pid==Environment.ProcessId&&(Class(h) is "HeyClickyDrawingWindow" or "HeyClickyOverlayWindow");})).ToArray()),islandAbove= !Visible(island)||visible.All(h=>!Overlap(h,island)||stack.IndexOf(island)<stack.IndexOf(h)),foreground=GetForegroundWindow().ToString()};
+        var drawing=stack.Where(h=>{GetWindowThreadProcessId(h,out uint pid);return pid==Environment.ProcessId&&(Class(h) is "HeyClickyDrawingWindow" or "HeyClickyOverlayWindow");}).ToArray();
+        var protectedWindows=visible.Concat(drawing).ToArray();
+        return new{registered=layers.Length,visible=visible.Length,drawing=drawing.Length,repairs=Interlocked.Read(ref repairs),eventDriven=foregroundHook!=0&&orderHook!=0,aboveApps=!NeedsRepair(stack,protectedWindows),islandAbove= !Visible(island)||protectedWindows.All(h=>!Overlap(h,island)||stack.IndexOf(island)<stack.IndexOf(h)),foreground=GetForegroundWindow().ToString()};
     }
     // A non-activating, click-through foreign test surface; never sends input.
     internal static object TestContender(bool show){
