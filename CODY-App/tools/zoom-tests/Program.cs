@@ -2,7 +2,7 @@ using System;
 using HeyClicky.App.Cody;
 void Check(bool value,string name){if(!value)throw new Exception(name);Console.WriteLine("PASS "+name);}
 Check(CodyZoomMath.Target(6,6,120)<6,"scroll up zooms in");Check(CodyZoomMath.Target(6,6,-120)>6,"scroll down zooms out");
-double value=6;for(int i=0;i<100;i++)value=CodyZoomMath.Target(value,6,120);Check(Math.Abs(value-2.7)<.0001,"zoom in has a safe lower camera-distance limit");
+double value=6;for(int i=0;i<100;i++)value=CodyZoomMath.Target(value,6,120);Check(Math.Abs(value-.6)<.0001,"zoom in supports ten times the original magnification");
 for(int i=0;i<100;i++)value=CodyZoomMath.Target(value,6,-120);Check(value==24,"zoom out cannot lose the model at infinity");
 Check(Math.Abs(CodyZoomMath.Target(CodyZoomMath.Target(6,6,120),6,-120)-6)<.0001,"opposite scroll steps are symmetric");
 Check(Math.Abs(CodyZoomMath.Target(6,6,1)-6)<.01,"high-resolution wheel input does not jump");

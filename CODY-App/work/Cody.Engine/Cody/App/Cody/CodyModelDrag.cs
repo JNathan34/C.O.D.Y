@@ -54,7 +54,8 @@ internal static class CodyModelDrag
             string raw=(string)Invoke(engine,"Evaluate","(()=>{const live=globalThis.__codyDragSession;if(!live)return '-1';const marks=ClickyDraw.runCode(live.session.code,live.w,live.h);return String(marks.findIndex(mark=>mark&&mark.do==='stage3d'&&mark.id==="+JsonSerializer.Serialize(stage)+"));})()");
             if(!int.TryParse(raw,out int mark)||mark<0)throw new InvalidOperationException("The model's drawing mark could not be found.");
             drag.Marks=new[]{mark};
-            if(Invoke(engine,"DraggableCards") is IEnumerable cards)foreach(object card in cards)if(Property(card,"Marks") is int[] marks&&Array.IndexOf(marks,mark)>=0){drag.Marks=marks;break;}
+            if(Invoke(engine,"DraggableCards") is IEnumerable cards)foreach(object card in cards)
+                if(Property(card,"Marks") is int[] marks&&Property(card,"Units") is int[] units&&CodyModelViewport.Belongs(Field(drag.Figure,"Node"),units)){drag.Marks=marks;break;}
             object bounds=Property(overlay,"BoundsPx"),size=Property(painter,"CanvasSize"),handle=Field(drag.Figure,"Handle"),frame=Property(handle,"BoundsPx");
             drag.Scale=Convert.ToDouble(Field(bounds,"Width"))/Convert.ToDouble(Field(size,"X"));
             drag.Left=Convert.ToDouble(Field(bounds,"X"));drag.Top=Convert.ToDouble(Field(bounds,"Y"));drag.Right=drag.Left+Convert.ToDouble(Field(bounds,"Width"));drag.Bottom=drag.Top+Convert.ToDouble(Field(bounds,"Height"));
@@ -72,7 +73,7 @@ internal static class CodyModelDrag
             double y=Math.Clamp((double)Volatile.Read(ref drag.Y)-drag.StartY,drag.Top+keep-drag.ModelBottom,drag.Bottom-keep-drag.ModelTop);
             double dx=(x-drag.AppliedX)/drag.Scale,dy=(y-drag.AppliedY)/drag.Scale;if(Math.Abs(dx)+Math.Abs(dy)<0.01)return;
             int moved=Convert.ToInt32(Invoke(Field(canvas,"engine"),"MoveCard",drag.Marks,dx,dy));
-            if(moved>0){drag.AppliedX=x;drag.AppliedY=y;Invoke(Field(canvas,"cardHandles"),"Refresh");Interlocked.Increment(ref moves);}
+            if(moved>0){drag.AppliedX=x;drag.AppliedY=y;Invoke(Field(canvas,"cardHandles"),"Refresh");CodyModelViewport.Apply(canvas,drag.Figure);Interlocked.Increment(ref moves);}
         }catch(Exception ex){error=ex.GetBaseException().Message;drag.Ready=false;}
     }
     internal static Task<object> Snapshot(){var answer=new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);post(()=>answer.TrySetResult(new{active=Active,moves,error}));return answer.Task.WaitAsync(TimeSpan.FromSeconds(5));}

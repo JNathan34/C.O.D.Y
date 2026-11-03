@@ -96,6 +96,7 @@ internal static class CodyDrawingControls
             try{
                 if(!canvas.IsStreamingNarration||!HasVisibleDrawing(canvas))return;
                 object controls=Field(canvas,"cardHandles");Invoke(controls,"Refresh");
+                CodyModelViewport.Refresh(canvas);
                 if(Field(controls,"handles") is IEnumerable handles)foreach(object handle in handles)Invoke(handle,"SetRevealed",true,false);
             }catch(Exception ex){error=ex.GetBaseException().Message;}
             finally{Volatile.Write(ref queued,0);}

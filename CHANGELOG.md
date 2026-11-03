@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.7 — 3 November 2026
+
+- Keep 3D models and pointer input within the visible window content area.
+- Align close controls with the rendered title bar and preserve alignment after moving.
+- Increase scroll zoom to 10× and remove models when their window closes.
+
 ## 0.15.6 — 3 November 2026
 
 - Add persistent clock and weather pins with “show clock”, “show weather” and named-city weather commands. Save selections across restarts, refresh the local 24-hour clock live and weather every five minutes, and support individual hide commands.

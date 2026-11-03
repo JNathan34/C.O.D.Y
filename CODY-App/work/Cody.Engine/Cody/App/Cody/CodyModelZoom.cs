@@ -43,9 +43,10 @@ internal static class CodyModelZoom
         object painter=Field(canvas,"painter"),adapter=Property(painter,"Figures")??Field(painter,"Figures");
         if(Field(adapter,"stages") is not IDictionary stages)return;
         var live=new HashSet<nint>();
-        foreach(DictionaryEntry entry in stages){var figure=entry.Value;object handle=Field(figure,"Handle"),stage=Field(figure,"Stage");if(handle==null||stage==null)continue;
+        foreach(object figure in stages.Values.Cast<object>().ToArray()){object handle=Field(figure,"Handle"),stage=Field(figure,"Stage");if(handle==null||stage==null)continue;
             nint hwnd=(nint)(Property(handle,"Handle")??nint.Zero);if(hwnd==0)continue;live.Add(hwnd);
             if(!figures.TryGetValue(hwnd,out var existing)||!ReferenceEquals(existing.Stage,stage))figures[hwnd]=new Binding(stage,figure,hwnd);
+            figures[hwnd].Viewport=CodyModelViewport.Apply(canvas,figure);
         }
         foreach(nint hwnd in figures.Keys)if(!live.Contains(hwnd))figures.TryRemove(hwnd,out _);
     });
@@ -73,6 +74,7 @@ internal static class CodyModelZoom
     internal static Task<object> Snapshot(){var answer=new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);Post(()=>answer.TrySetResult(new{hookInstalled=hook!=0,wheels=Interlocked.Read(ref wheels),error,figures=figures.Values.Select(x=>x.Snapshot()).ToArray()}));return answer.Task.WaitAsync(TimeSpan.FromSeconds(5));}
     private sealed class Binding{
         internal readonly object Stage,Figure;internal readonly nint Handle;
+        internal RectD? Viewport;
         private readonly object scene,sync;private readonly FieldInfo camera,framing;private readonly MethodInfo apply;
         private double baseline,current,target,previous;private bool initialized;internal volatile bool Animating;
         internal Binding(object stage,object figure,nint handle){Stage=stage;Figure=figure;Handle=handle;scene=Field(stage,"Scene");sync=Field(stage,"sync")??stage;camera=scene?.GetType().GetField("camera",Fields);framing=scene?.GetType().GetField("framing",Fields);apply=stage.GetType().GetMethod("ApplyCamera",Fields);}
@@ -85,7 +87,7 @@ internal static class CodyModelZoom
         }
         internal void Tick(){if(!Animating)return;lock(sync){double now=clock.Elapsed.TotalSeconds;current=CodyZoomMath.Ease(current,target,now-previous);previous=now;
             apply.Invoke(Stage,new object[]{JsonSerializer.SerializeToElement(new{distance=(float)current}),null});Animating=current!=target;}}
-        internal object Snapshot(){GetWindowRect(Handle,out var bounds);lock(sync){object placement=Property(Stage,"Placement");return new{handle=Handle.ToString(),bounds=new{x=bounds.Left,y=bounds.Top,width=bounds.Right-bounds.Left,height=bounds.Bottom-bounds.Top},translation=new{x=Convert.ToDouble(Field(placement,"M31")),y=Convert.ToDouble(Field(placement,"M32"))},rotating=Field(Stage,"isDragging") is true,initialized,baseline,current,target,cameraDistance=scene==null?0:Convert.ToDouble(Property(scene,"CameraDistance")),animating=Animating};}}
+        internal object Snapshot(){GetWindowRect(Handle,out var bounds);lock(sync){object placement=Property(Stage,"Placement");return new{handle=Handle.ToString(),bounds=new{x=bounds.Left,y=bounds.Top,width=bounds.Right-bounds.Left,height=bounds.Bottom-bounds.Top},viewport=Viewport,layout=CodyModelViewport.Inspect(canvas,Figure),translation=new{x=Convert.ToDouble(Field(placement,"M31")),y=Convert.ToDouble(Field(placement,"M32"))},rotating=Field(Stage,"isDragging") is true,initialized,baseline,current,target,cameraDistance=scene==null?0:Convert.ToDouble(Property(scene,"CameraDistance")),animating=Animating};}}
     }
     private delegate nint Hook(int code,nint message,nint data);
     [StructLayout(LayoutKind.Sequential)]private struct Point{public int X,Y;}

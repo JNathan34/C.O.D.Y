@@ -1,7 +1,7 @@
 {
   "name": "cody-integrated",
   "productName": "C.O.D.Y",
-  "version": "0.15.6",
+  "version": "0.15.7",
   "description": "C.O.D.Y. with its integrated AI, voice and drawing engine",
   "main": "src/main.js",
   "license": "MIT",
