@@ -1,44 +1,96 @@
-# Watches voice modifiers and mouse presses; Electron owns the Ctrl+Alt+C shortcut.
+# Watches voice modifiers and pointer presses; Electron owns the Ctrl+Alt+C shortcut.
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Threading;
 public static class CodyModifierKeys {
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int virtualKey);
     [StructLayout(LayoutKind.Sequential)]
     public struct Point { public int X; public int Y; }
-    [DllImport("user32.dll")]
-    public static extern bool GetCursorPos(out Point point);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput { public Point point; public uint mouseData, flags, time; public UIntPtr extraInfo; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Message { public IntPtr hwnd; public uint message; public UIntPtr wParam; public IntPtr lParam; public uint time; public Point point; public uint privateData; }
+    private delegate IntPtr MouseHook(int code, IntPtr message, IntPtr data);
+    [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr SetWindowsHookEx(int id, MouseHook callback, IntPtr module, uint thread);
+    [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hook);
+    [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr message, IntPtr data);
+    [DllImport("user32.dll")] private static extern int GetMessage(out Message message, IntPtr window, uint min, uint max);
+    [DllImport("user32.dll")] private static extern bool PostThreadMessage(uint thread, uint message, UIntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string name);
+    private static readonly ConcurrentQueue<string> presses = new ConcurrentQueue<string>();
+    private static readonly MouseHook callback = OnMouse;
+    private static readonly ManualResetEvent ready = new ManualResetEvent(false);
+    private static Thread watcher;
+    private static uint threadId;
+    private static int startupError;
+    private static IntPtr OnMouse(int code, IntPtr message, IntPtr data) {
+        int kind = message.ToInt32();
+        if (code >= 0 && (kind == 0x0201 || kind == 0x0204 || kind == 0x0207)) {
+            // Include touch/pen promoted presses, even when Windows marks them injected.
+            // Queue only: never block input delivery while writing to the parent process.
+            MouseInput input = (MouseInput)Marshal.PtrToStructure(data, typeof(MouseInput));
+            presses.Enqueue(String.Format("POINTER {0} {1} {2}", input.point.X, input.point.Y,
+                kind == 0x0201 ? "left" : kind == 0x0204 ? "right" : "middle"));
+        }
+        return CallNextHookEx(IntPtr.Zero, code, message, data);
+    }
+    public static void StartPointerWatch() {
+        ready.Reset(); startupError = 0;
+        watcher = new Thread(() => {
+            SetThreadDpiAwarenessContext(new IntPtr(-4));
+            threadId = GetCurrentThreadId();
+            IntPtr hook = SetWindowsHookEx(14, callback, GetModuleHandle(null), 0);
+            if (hook == IntPtr.Zero) startupError = Marshal.GetLastWin32Error();
+            ready.Set();
+            if (hook == IntPtr.Zero) return;
+            try { Message message; while (GetMessage(out message, IntPtr.Zero, 0, 0) > 0) {} }
+            finally { UnhookWindowsHookEx(hook); }
+        });
+        watcher.IsBackground = true;
+        watcher.Start(); ready.WaitOne();
+        if (startupError != 0) throw new Win32Exception(startupError);
+    }
+    public static string NextPointerPress() { string press; return presses.TryDequeue(out press) ? press : null; }
+    public static void StopPointerWatch() {
+        if (watcher == null || !watcher.IsAlive) return;
+        PostThreadMessage(threadId, 0x0012, UIntPtr.Zero, IntPtr.Zero);
+        watcher.Join(1000);
+    }
 }
 '@
 $held = $false
 $chatChord = $false
-$mouseHeld = $false
+$muteKeyHeld = $false
+[CodyModifierKeys]::StartPointerWatch()
 try {
     while ($true) {
-        $leftMouse = ((([int][CodyModifierKeys]::GetAsyncKeyState(0x01)) -band 0x8000) -ne 0)
-        $rightMouse = ((([int][CodyModifierKeys]::GetAsyncKeyState(0x02)) -band 0x8000) -ne 0)
-        $mouse = ((([int][CodyModifierKeys]::GetAsyncKeyState(0x01)) -band 0x8000) -ne 0) -or ((([int][CodyModifierKeys]::GetAsyncKeyState(0x02)) -band 0x8000) -ne 0) -or ((([int][CodyModifierKeys]::GetAsyncKeyState(0x04)) -band 0x8000) -ne 0)
-        if ($mouse -and -not $mouseHeld) {
-            $point = New-Object CodyModifierKeys+Point
-            if ([CodyModifierKeys]::GetCursorPos([ref]$point)) { $button = if ($leftMouse) { 'left' } elseif ($rightMouse) { 'right' } else { 'middle' }; [Console]::Out.WriteLine(('CLICK {0} {1} {2}' -f $point.X,$point.Y,$button)); [Console]::Out.Flush() }
+        while ($press = [CodyModifierKeys]::NextPointerPress()) {
+            [Console]::Out.WriteLine($press); [Console]::Out.Flush()
         }
-        $mouseHeld = $mouse
         $ctrl = (([int][CodyModifierKeys]::GetAsyncKeyState(0x11)) -band 0x8000) -ne 0
         $alt = (([int][CodyModifierKeys]::GetAsyncKeyState(0x12)) -band 0x8000) -ne 0
         # AltGr often appears as Ctrl+Alt; do not turn ordinary typing into recording.
         $altGr = (([int][CodyModifierKeys]::GetAsyncKeyState(0xA5)) -band 0x8000) -ne 0
         $both = $ctrl -and $alt -and -not $altGr
         $chatKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x43)) -band 0x8000) -ne 0
+        $muteKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x4D)) -band 0x8000) -ne 0
+        if ($muteKeyHeld -and -not $muteKey) { [Console]::Out.WriteLine('MUTE_RELEASE'); [Console]::Out.Flush() }
+        $muteKeyHeld = $muteKey
         if (-not $both) { $chatChord = $false }
-        if ($both -and $chatKey -and -not $chatChord) {
+        if ($both -and ($chatKey -or $muteKey) -and -not $chatChord) {
             $chatChord = $true
             $held = $false
             [Console]::Out.WriteLine('CANCEL')
             [Console]::Out.Flush()
         }
-        # Do not submit voice or restart capture while this chat chord is held.
+        # Chat and mic-mute chords never submit voice or restart capture before release.
         if ($chatChord) { Start-Sleep -Milliseconds 25; continue }
         if ($both -ne $held) {
             $held = $both
@@ -49,5 +101,6 @@ try {
         Start-Sleep -Milliseconds 25
     }
 } finally {
+    [CodyModifierKeys]::StopPointerWatch()
     if ($held) { [Console]::Out.WriteLine('UP'); [Console]::Out.Flush() }
 }

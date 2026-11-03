@@ -17,6 +17,7 @@ public static class CodyEngineBridge
     public static bool EngineMode => Program.Args.Contains("--cody-engine");
     public static bool AutomaticUpdatesEnabled => false;
     public static bool IsRunning { get; private set; }
+    internal static bool MicrophoneMuted { get; private set; }
     internal static readonly CodyConsent Consent=new();
     private static AppHost host;
     private static CodyEscapeTakeBack escapeCancellation;
@@ -69,6 +70,7 @@ public static class CodyEngineBridge
     {
         if (!EngineMode || IsRunning) return;
         host = app;
+        MicrophoneMuted=File.Exists(Path.Combine(CodyPaths.StateRoot,"microphone-muted"));
         if(Program.Args.Contains("--verify-control-handoff")){
             string report=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../reports/control-handoff-live.txt"));
             try{
@@ -202,6 +204,16 @@ public static class CodyEngineBridge
                     case "drawing-controls-test-close":if(!zoomFixture)throw new InvalidOperationException("Create the local model fixture first.");CodyDrawingControls.CloseForTest(host);return new{closed=true};
                     case "drawing-controls-test-screen-change":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");var changeReason=Text("reason");if(changeReason is not ("click" or "app switch" or "space change" or "scroll"))throw new InvalidOperationException("Unsupported test reason.");CodyDrawingControls.ScreenChangeForTest(host,changeReason);return new{changed=true};
                     case "drawing-controls-test-finish":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");host.Real.Canvas.Finish();host.Real.Canvas.IsStreamingNarration=false;return new{finished=true};
+                    case "drawing-controls-test-card":
+                    case "drawing-controls-test-empty":
+                        if(host.Real.Canvas.IsShowingDrawing&&!zoomFixture)throw new InvalidOperationException("Keep the existing drawing; this check requires an empty canvas.");
+                        var emptyCaptures=await host.Real.Capture.CaptureAllAsync();
+                        host.Real.Canvas.BeginProgram(emptyCaptures.First(),host.Services.Settings.CursorColorHex);
+                        host.Real.Canvas.IsStreamingNarration=true;
+                        bool testCard=command=="drawing-controls-test-card";
+                        var testDrawingFeed=host.Real.Canvas.Feed(testCard?"say('A test drawing.');paper(160,120,460,380,{title:'Drawing control test',board:'plain'});ring(220,220,100,100);say('Done.');":"say('No drawing in this response.');",false);
+                        for(int testLine=0;testLine<Math.Max(1,testDrawingFeed.Lines.Count);testLine++)host.Real.Canvas.ReleaseLine(testLine);
+                        zoomFixture=true;return new{created=true,empty=!testCard};
                     case "model-zoom-test":return new{accepted=CodyModelZoom.WheelForTest(Text("handle"),request.GetProperty("delta").GetInt32())};
                     case "model-zoom-point-test":return new{accepted=CodyModelZoom.WheelAtPointForTest(request.GetProperty("x").GetInt32(),request.GetProperty("y").GetInt32(),request.GetProperty("delta").GetInt32())};
                     case "model-zoom-image":return new{png=Convert.ToBase64String(host.Real.Canvas.RenderDrawingPng(overScreenshot:false)??Array.Empty<byte>())};
@@ -260,7 +272,19 @@ public static class CodyEngineBridge
                     case "game-play":
                         string cueText=Text("text");
                         return await CodyGameAudio.Play(host,cueText,()=>Emit("game-cue",new {text=cueText,turn}));
+                    case "microphone-mute":
+                        bool microphoneMuted=request.GetProperty("muted").GetBoolean();
+                        string muteFile=Path.Combine(CodyPaths.StateRoot,"microphone-muted");
+                        if(microphoneMuted)File.WriteAllText(muteFile,"muted");else if(File.Exists(muteFile))File.Delete(muteFile);
+                        MicrophoneMuted=microphoneMuted;
+                        if(microphoneMuted){
+                            host.Real.Dictation.CancelActiveSession();
+                            if(session.State==VoiceState.Listening)session.Cancel();
+                            CodyVoiceActivity.End();
+                        }
+                        return new { muted=MicrophoneMuted };
                     case "begin":
+                        if(MicrophoneMuted)throw new InvalidOperationException("C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.");
                         StopSpeech(request.TryGetProperty("gameDuplex", out var duplex) && duplex.GetBoolean());
                         string textTarget=request.TryGetProperty("captureText",out var captureText)&&captureText.GetBoolean()?await CodyProofread.Capture(request.GetProperty("clientPid").GetInt32()):null;
                         turn = Text("turn", id);
@@ -271,8 +295,10 @@ public static class CodyEngineBridge
                             string encoded=prefixAudio.GetString();if(encoded==null||encoded.Length>128000)throw new ArgumentException("Invalid wake audio prefix.");
                             audioPrefix=Convert.FromBase64String(encoded);if(audioPrefix.Length%2!=0)throw new ArgumentException("Invalid wake audio samples.");
                         }
+                        if(MicrophoneMuted)throw new InvalidOperationException("C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.");
                         CodyVoiceActivity.Begin(host.Services.Microphone,request.TryGetProperty("wake",out var wakeCapture)&&wakeCapture.GetBoolean());
                         await ((CompanionSession)session).BeginPushToTalkWithPrefixAsync(audioPrefix);
+                        if(MicrophoneMuted){session.Cancel();CodyVoiceActivity.End();return new { listening=false,textTarget };}
                         return new { listening = session.State == VoiceState.Listening, textTarget };
                     case "end":
                         voiceEnding = true; routedUtility = null;voiceControlStopped=false;

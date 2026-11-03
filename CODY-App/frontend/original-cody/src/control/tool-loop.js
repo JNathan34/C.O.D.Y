@@ -3,12 +3,13 @@ const {ACTIONS}=require('./policy');
 const {ACTIONS:DRAW_ACTIONS}=require('../annotations/schema');
 const {ACTIONS:SCENE_ACTIONS}=require('../visuals/schema');
 const {commandText}=require('../command-text');
+const {parseSystemCommand}=require('./system-settings');
 // Results from tools and web pages are untrusted observations: they never change
 // the original human intent, granted permissions, or tool allowlist.
 const MARKER='CODY_TOOL_JSON:';
 // Page reads are repeatable observations, not side effects. A dynamic page may
 // need several identical queries while its controls finish loading.
-const REPEATABLE_BROWSER_READS=new Set(['browser.pageInfo','browser.getDom','browser.readText','browser.readComments','browser.listTabs','browser.wait','desktop.inspect','scene.status','draw.status','screen.capture','screen.list']);
+const REPEATABLE_BROWSER_READS=new Set(['browser.pageInfo','browser.getDom','browser.readText','browser.readComments','browser.listTabs','browser.wait','desktop.inspect','scene.status','draw.status','screen.capture','screen.list','system.radio.status','system.power.status','system.brightness.status']);
 const MAX_UNCHANGED_OBSERVATIONS=3;
 const MAX_BROWSER_SCROLLS=5; // bounded relative scrolling for lazy-loaded pages
 const intentTypes=Object.freeze({
@@ -64,6 +65,11 @@ const TOOLS={
 };
 function allowedFor(human,perms){if(!perms?.enabled||perms.level==='off')return [];
  const categories=taskCategories(human);const selected=new Set(categories.flatMap(cat=>TOOLS[cat]));
+ for(const part of commandText(human,{preserveShow:true}).split(/\s+(?:and then|and|then)\s+/i)){
+  const system=parseSystemCommand(part);if(!system)continue;
+  selected.add(system.action);
+  if(system.action.endsWith('.set'))selected.add(system.action.replace(/\.set$/,'.status'));
+ }
  // Edits/creation must be specifically requested by the original human.
  const mutate=/\b(?:create|edit|replace|patch|change|modify|fix|rename|move|copy|delete|backup|restore|update|save|write|type)\b/i.test(human);
  const deletes=/\b(?:delete|remove|restore)\b/i.test(human);
@@ -90,6 +96,9 @@ function allowedFor(human,perms){if(!perms?.enabled||perms.level==='off')return 
 // Examples are *schemas*, not instructions from a webpage. They help the model
 // avoid inventing keyboard shortcuts and malformed Firefox calls.
 const EXAMPLES=Object.freeze({
+ 'system.radio.set':{kind:'bluetooth',enabled:true},'system.radio.status':{kind:'bluetooth'},
+ 'system.power.set':{mode:'efficiency'},'system.power.status':{},
+ 'system.brightness.set':{level:50},'system.brightness.status':{},'system.settings.open':{page:'power'},
  'draw.card':{x:120,y:150,width:500,height:300,mode:'speech',marks:[{do:'text',at:[24,40],text:'How it works',tone:'#FFFFFF'},{do:'rect',at:[24,75],w:150,h:80,tone:'#009DFF'},{do:'arrow',pts:[[180,115],[300,115]],tone:'#009DFF'}]},
  'scene.status':{},'scene.create':{name:'Desktop models'},'scene.move':{displayId:'USE_DISPLAY_ID_FROM_scene.status'},'scene.clear':{},
  'model.createPrimitive':{id:'cube-1',primitive:'box',position:[0,0,0],scale:[1,1,1],color:'#009DFF'},

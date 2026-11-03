@@ -5,6 +5,7 @@ const {commandText,repairSpeechCommand}=require('./command-text');
 const {parseMediaCommand}=require('./media-commands');
 const {parseAppCommand}=require('./app-commands');
 const {isProofreadCommand}=require('./proofread-command');
+const {parseSystemCommand}=require('./control/system-settings');
 
 const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy'};
 const APP_ALIASES={'google chrome':'chrome','microsoft edge':'edge','mozilla firefox':'firefox','windows explorer':'file explorer'};
@@ -30,6 +31,7 @@ function matchesApp(window,name){
 class IslandUtilities {
   constructor({tasks,monitors,capture,rps,weather,timer,spotify,controller,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{tasks,monitors,capture,rps,weather,timer,spotify,controller,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input){
+    const system=parseSystemCommand(input);if(system)return {kind:'direct',...system,text:input};
     if(/^(?:(?:show|open|view)(?: me)? (?:my |the )?(?:background )?tasks|background tasks)$/i.test(commandText(input,{preserveShow:true})))return {kind:'local',action:'background-tasks'};
     if(isProofreadCommand(input))return {kind:'direct',action:'text.proofread',args:{}};
     const appLayout=parseAppCommand(input);if(appLayout)return {kind:'direct',...appLayout,text:input};
@@ -86,7 +88,8 @@ class IslandUtilities {
           const result=await this.controller.execute(action,args,{origin:'chat'});
           if(result.cancelled)return {handled:true,cancelled:true,reply:'Action cancelled.'};
           if(!result.ok)throw Error(result.error||'The action did not complete.');
-          if(action.startsWith('audio.')){reply=this.volumeCard(typeof result.result?.level==='number'?result.result:await this.audioState(),generation);confirmation=route.action==='audio.adjust'?(route.delta>0?"Volume up.":"Volume down."):action==='audio.mute'?(args.muted?"Muted.":"Unmuted."):"Volume set.";}
+          if(action.startsWith('system.')){reply=result.result.message;confirmation=reply;show({kind:'utility',text:action==='system.settings.open'?'Settings opened':reply,detail:action==='system.settings.open'?'Windows':'System control',icon:'settings'});}
+          else if(action.startsWith('audio.')){reply=this.volumeCard(typeof result.result?.level==='number'?result.result:await this.audioState(),generation);confirmation=route.action==='audio.adjust'?(route.delta>0?"Volume up.":"Volume down."):action==='audio.mute'?(args.muted?"Muted.":"Unmuted."):"Volume set.";}
           else if(action==='spotify.control'||action==='media.control'){this.mediaCard(({play:'Playing',pause:'Paused',next:'Next track',previous:'Previous track',toggle:'Playback changed',seek:'Seeked'})[args.command]);reply=args.command==='seek'?`Skipped ${args.seconds<0?'back':'forward'} ${Math.abs(args.seconds)} seconds.`:({play:'Playing.',pause:'Paused.',next:'Skipping to the next track.',previous:'Playing the previous track.',toggle:'Playback changed.'})[args.command];confirmation=({play:'Playing.',pause:'Paused.',next:'Next track.',previous:'Previous track.',toggle:'Done.',seek:'Done.'})[args.command];}
           else if(action==='plezy.play'){reply=`Playing ${result.result?.title||args.title} on Plezy.`;confirmation='Playing.';show({kind:'utility',text:'Playing',detail:result.result?.title||args.title,icon:'play'});this.refreshMedia();}
           else if(action==='app.split'){const names=args.apps.map(appLabel);reply=`Opened ${names[0]} on the left and ${names[1]} on the right.`;confirmation='Done.';this.showCompact();show({kind:'utility',text:'Split screen',detail:names.join(' + '),icon:'external-link'});}

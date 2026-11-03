@@ -7,6 +7,7 @@ const DEFAULT_PERMISSIONS = Object.freeze({
   enabled: false,
   level: 'approve-safe',
   systemInfo: true,
+  systemSettings: false,
   applications: true,
   audio: true,
   windows: false,
@@ -25,6 +26,13 @@ const DEFAULT_PERMISSIONS = Object.freeze({
 
 const ACTIONS = Object.freeze({
   'system.status': {permission: 'systemInfo', risk: 'low', description:'Get CPU, memory and OS summary'},
+  'system.radio.set': {permission:'systemSettings',risk:'low',description:'Turn Bluetooth or Wi-Fi on or off and verify Windows radio state'},
+  'system.radio.status': {permission:'systemInfo',risk:'low',description:'Read Bluetooth or Wi-Fi radio state'},
+  'system.power.set': {permission:'systemSettings',risk:'low',description:'Set Best power efficiency, Balanced or Best performance for the current power supply'},
+  'system.power.status': {permission:'systemInfo',risk:'low',description:'Read the configured Windows power mode for the current power supply'},
+  'system.brightness.set': {permission:'systemSettings',risk:'low',description:'Set Windows-managed display brightness from 0 to 100 percent'},
+  'system.brightness.status': {permission:'systemInfo',risk:'low',description:'Read brightness of Windows-managed displays'},
+  'system.settings.open': {permission:'applications',risk:'low',description:'Open an approved Windows Settings page; Energy saver must be changed using its Windows control'},
   'app.open': {permission:'applications',risk:'low',description:'Open an approved Windows application'},
   'app.split': {permission:'applications',requires:['windows'],risk:'low',description:'Open two approved applications and arrange their windows side by side'},
   'app.list': {permission:'applications',risk:'low',description:'List open applications'},

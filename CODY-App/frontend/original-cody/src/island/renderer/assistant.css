@@ -291,3 +291,55 @@ body:not(.panel-open) .core-approval,body.settings-open #browser-setup,body.task
 .agent-usage-bucket progress::-webkit-progress-bar{background:#e7e8ec;border-radius:6px}
 .agent-usage-bucket progress::-webkit-progress-value{background:#287be8;border-radius:6px}
 .agent-usage-card [hidden]{display:none!important}.agent-usage-card #agent-usage-reset{padding:0 16px 12px;margin:0}
+
+/* Expanded chat responds to the island's size, including on smaller displays. */
+body.panel-open.chat-expanded:not(.settings-open):not(.tasks-open):not(.history-open) .island{container-type:size}
+body.panel-open.chat-expanded #view-chat{
+  --chat-content-width:680px;
+  --chat-welcome-width:560px;
+}
+body.panel-open.chat-expanded #view-chat .conversation{display:flex;flex-direction:column}
+body.panel-open.chat-expanded #view-chat .empty-state{
+  flex-shrink:0;width:100%;max-width:var(--chat-welcome-width);margin:auto; padding:20px 0;
+}
+body.panel-open.chat-expanded #view-chat .empty-state[hidden]{display:none}
+body.panel-open.chat-expanded #view-chat .empty-state h2{font-size:clamp(20px,3.2cqw,28px);margin-bottom:clamp(13px,3cqh,24px)}
+body.panel-open.chat-expanded #view-chat .suggestions{gap:clamp(7px,1.4cqw,12px)}
+body.panel-open.chat-expanded #view-chat .suggestion{min-height:clamp(37px,8cqh,58px);padding:12px 16px;font-size:clamp(12px,1.7cqw,15px)}
+body.panel-open.chat-expanded #view-chat .chat-messages,
+body.panel-open.chat-expanded #view-chat .composer-area{width:100%;max-width:var(--chat-content-width);margin-inline:auto}
+body.panel-open.chat-expanded #view-chat .message{font-size:clamp(12px,1.6cqw,14px)}
+body.panel-open.chat-expanded #view-chat .composer{min-height:clamp(69px,12cqh,90px);padding:12px 14px}
+body.panel-open.chat-expanded #quick-input{font-size:clamp(12px,1.6cqw,14px)}
+@container (max-width:480px){
+  body.panel-open.chat-expanded #view-chat .suggestions{grid-template-columns:1fr}
+}
+
+/* Privacy uses the same contained glyph treatment as Wi-Fi status. */
+.microphone-indicator{position:absolute;inset:0;opacity:0;pointer-events:none;transform:scale(.85);transition:opacity 140ms ease,transform 180ms ease;color:#ff9ea9}
+.microphone-indicator svg{display:block;width:100%;height:100%;transform:scale(.74);overflow:visible;fill:none;stroke:currentColor;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
+.microphone-slash-mask{stroke:#101114;stroke-width:7}
+.microphone-slash{stroke-dasharray:1;stroke-dashoffset:0}
+.microphone-ready-wave{opacity:0;stroke-dasharray:1;stroke-dashoffset:1}
+body:is([data-microphone="muted"],[data-microphone="restored"]) .symbol-layer,
+body:is([data-microphone="muted"],[data-microphone="restored"]) .morph-dot,
+body:is([data-microphone="muted"],[data-microphone="restored"]) .media-music-notes{opacity:0!important}
+body:is([data-microphone="muted"],[data-microphone="restored"]) .ring{opacity:0!important}
+body[data-microphone="muted"] #ring-offline,body[data-microphone="restored"] #ring-restored{opacity:1!important}
+body:is([data-microphone="muted"],[data-microphone="restored"]) .microphone-indicator{opacity:1;transform:scale(1)}
+body[data-microphone="muted"] .microphone-glyph{animation:microphone-appear 220ms ease-out both}
+body[data-microphone="muted"] .microphone-slash{animation:microphone-mute-line 320ms 90ms ease-out both}
+body[data-microphone="restored"] .microphone-indicator{color:#62b6ff}
+body[data-microphone="restored"] .microphone-slash-mask{opacity:0}
+body[data-microphone="restored"] .microphone-slash{animation:microphone-unmute-line 200ms ease-in forwards}
+body[data-microphone="restored"] .microphone-glyph{animation:microphone-appear 200ms ease-out both}
+body[data-microphone="restored"] .microphone-ready-wave{animation:microphone-ready 650ms 180ms ease-out both}
+body[data-microphone="restored"] .wave-two{animation-delay:330ms}
+@keyframes microphone-appear{from{opacity:0}to{opacity:1}}
+@keyframes microphone-mute-line{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes microphone-unmute-line{to{stroke-dashoffset:1;opacity:0}}
+@keyframes microphone-ready{0%{opacity:0;stroke-dashoffset:1}35%,75%{opacity:1;stroke-dashoffset:0}100%{opacity:0;stroke-dashoffset:0}}
+body[data-motion="off"] .microphone-indicator,body[data-motion="off"] .microphone-indicator *{animation:none!important;transition:none!important}
+body[data-motion="off"][data-microphone="restored"] .microphone-slash,
+body[data-motion="off"][data-microphone="restored"] .microphone-slash-mask{opacity:0}
+@media(prefers-reduced-motion:reduce){.microphone-indicator,.microphone-indicator *{animation:none!important;transition:none!important}body[data-microphone="restored"] .microphone-slash,body[data-microphone="restored"] .microphone-slash-mask{opacity:0}}

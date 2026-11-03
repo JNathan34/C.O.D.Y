@@ -5,7 +5,7 @@ const {RpsVoice}=require('./rps-voice');
 const {taskState}=require('./background-tasks');
 const {selection,providerPatch}=require('./agent-provider');
 const {setPersonalCodexEnabled}=require('./usage-policy');
-function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExternal=async()=>{},externalBusy=()=>false,connectProvider,codexUsage,getState,getWindow,utilities,rps,capture,attachments,chooseFiles,controller,chooseWorkingFolder,captureTextEnabled=()=>false,onTasks=()=>{},showFiles=()=>{},fileDragging=()=>{},showApprovals=()=>{},cancelLocalApprovals=()=>{}}){
+function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExternal=async()=>{},externalBusy=()=>false,connectProvider,codexUsage,getState,getWindow,utilities,rps,capture,attachments,chooseFiles,controller,chooseWorkingFolder,captureTextEnabled=()=>false,onTasks=()=>{},showFiles=()=>{},fileDragging=()=>{},showApprovals=()=>{},cancelLocalApprovals=()=>{},isMicrophoneMuted=()=>false}){
   let active=null;
   const turnChats=new Map(),reports=new Set();
   let tasks=taskState(null,false);
@@ -18,7 +18,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(chat){chat.nativeTurns=[...(chat.nativeTurns||[]),operation.turn].slice(-128);store.save();}
     if(turnChats.size>4096)turnChats.delete(turnChats.keys().next().value);
   }
-  const gameVoice=rps?new RpsVoice({engine,game:rps}):null;
+  const gameVoice=rps?new RpsVoice({engine,game:rps,isMicrophoneMuted}):null;
   const handle=(name,fn)=>{ipcMain.removeHandler(name);ipcMain.handle(name,(event,...args)=>{if(event.sender!==getWindow()?.webContents||event.senderFrame!==event.sender.mainFrame)throw Error('Untrusted interface');return fn(...args);});};
   const rememberPermissions=value=>{if(store.data?.settings&&store.setNativePermissions){store.setNativePermissions(value);sendUI('settings-changed',store.data.settings);}return value;};
   engine.on('permissions-changed',rememberPermissions);
@@ -184,9 +184,10 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     return {started:true,provider:'heyclicky'};
   };
   handle('send-message',submit);
-  const beginVoice=async({audioPrefix,wake=false}={})=>{if(externalBusy()&&!await cancelExternal())throw Error('Finish or stop the current reply first');if(gameVoice?.running)return {listening:gameVoice.capture};if(active){const drive=await engine.request('drive-state');if(!drive.active)throw Error('Finish the current reply first');await engine.request('drive-stop');finish();}const operation=active={turn:randomUUID(),chatId:store.data.activeChatId,voice:true,wake,provider:selection(store.data.settings).provider};remember(operation);try{operation.attachmentBatch=attachments?await attachments.prepare(operation.chatId):{paths:[],ids:[]};operation.files=operation.attachmentBatch.paths;if(active!==operation)return {listening:false};const result=await engine.request('begin',{turn:operation.turn,...(wake?{wake:true}:{}),captureText:captureTextEnabled(),clientPid:process.pid,...(operation.files.length||wake||operation.provider!=='heyclicky'?{utilityOnly:true}:{}),...(audioPrefix?{audioPrefix}:{})});operation.proofreadTarget=result.textTarget;return result;}catch(error){finish(error.message);throw error;}};
+  const beginVoice=async({audioPrefix,wake=false}={})=>{if(isMicrophoneMuted())throw Error('C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.');if(externalBusy()&&!await cancelExternal())throw Error('Finish or stop the current reply first');if(gameVoice?.running)return {listening:gameVoice.capture};if(active){const drive=await engine.request('drive-state');if(!drive.active)throw Error('Finish the current reply first');await engine.request('drive-stop');finish();}const operation=active={turn:randomUUID(),chatId:store.data.activeChatId,voice:true,wake,provider:selection(store.data.settings).provider};remember(operation);try{operation.attachmentBatch=attachments?await attachments.prepare(operation.chatId):{paths:[],ids:[]};operation.files=operation.attachmentBatch.paths;if(active!==operation)return {listening:false};if(isMicrophoneMuted())throw Error('C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.');const result=await engine.request('begin',{turn:operation.turn,...(wake?{wake:true}:{}),captureText:captureTextEnabled(),clientPid:process.pid,...(operation.files.length||wake||operation.provider!=='heyclicky'?{utilityOnly:true}:{}),...(audioPrefix?{audioPrefix}:{})});operation.proofreadTarget=result.textTarget;return result;}catch(error){if(active===operation)finish(error.message);throw error;}};
   handle('native-begin',()=>beginVoice());
   const endVoice=async()=>{
+    if(isMicrophoneMuted())return {listening:false,muted:true};
     if(gameVoice?.running){await gameVoice.finishListening();return {game:true};}if(!active)return {listening:false};const operation=active;
     try{
       const result=await engine.request('end');if(active!==operation)return result;
@@ -226,6 +227,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   // settings preview into a billable native AI request.
   handle('web-status',async()=>{const status=await engine.refresh();return {signedIn:status.signedIn,detail:status.signedIn?'CODY connected':'CODY sign-in required'};});
   handle('web-sign-in',()=>engine.request('signIn'));
-  return {cancel,gameVoice,submit,beginVoice,endVoice,endWakeVoice:()=>active?.wake?endVoice():Promise.resolve({listening:false}),cancelWakeVoice:()=>active?.wake?cancel():Promise.resolve(false),isBusy:()=>Boolean(active||externalBusy())};
+  const muteVoice=async()=>{if(gameVoice?.running)await gameVoice.cancel();if(active?.voice&&engine.status?.state==='Listening'){await engine.request('cancel');finish();}};
+  return {cancel,gameVoice,submit,beginVoice,endVoice,muteVoice,endWakeVoice:()=>active?.wake?endVoice():Promise.resolve({listening:false}),cancelWakeVoice:()=>active?.wake?cancel():Promise.resolve(false),isBusy:()=>Boolean(active||externalBusy())};
 }
 module.exports={installNativeIpc};

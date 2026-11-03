@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Add persistent clock and weather pins with “show clock”, “show weather” and named-city weather commands. Save selections across restarts, refresh the local 24-hour clock live and weather every five minutes, and support individual hide commands.
+
+- Show the on-screen drawing Clear button only when rendered drawing content or a 3D model exists. Hide stale controls when a response has an empty canvas, including during narration.
+
+- Add Ctrl + Alt + M to toggle C.O.D.Y.-only microphone mute, with saved state and an equivalent Shortcuts setting.
+- Show a persistent coral crossed-out microphone while muted and a brief blue microphone animation on unmute, with reduced-motion support and isolated studio previews.
+- Stop active C.O.D.Y. voice capture and block push-to-talk, wake detection, voice games, microphone tests and dictation while muted. Keep typed commands and other apps' microphone access available.
+
+- Add permission-checked Bluetooth and Wi-Fi on/off commands, radio status, Windows power modes, display brightness and approved Settings-page shortcuts for typed and spoken requests.
+- Keep Windows Energy saver separate from power mode: saver requests open its Settings page and report that the toggle still needs changing there.
+- Add a Windows settings custom-permission switch and verify state before acknowledging successful changes.
+- Recenter and resize expanded chat content, align conversation and composer widths, and stack suggestions on narrow displays.
+- Capture Windows pointer presses for touchscreen outside-tap dismissal and first-tap opening of awake or sleeping islands.
+- Update the Word capability guide with source changes, validation results and current limitations.
+
 ## 0.15.5 — 2 November 2026
 
 - Hold Ctrl and left-drag to move 3D models, including transparent models and models with backgrounds. Normal dragging still rotates; scroll still zooms.

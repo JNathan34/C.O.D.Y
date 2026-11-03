@@ -14,6 +14,43 @@ Check Windows microphone permission before using voice input. Configure the micr
 
 Review Settings → Permissions before using computer actions. Choose the level of access you want, then enable individual capabilities as needed. Press Esc to stop a computer takeover. The app can also run local utility commands such as screenshots and timers.
 
+### Mute C.O.D.Y. voice input
+
+Press **Ctrl + Alt + M** to mute or unmute C.O.D.Y. The same switch is under **Settings → Shortcuts → Microphone muted**. Muting stops active C.O.D.Y. voice capture and blocks push-to-talk, wake phrases, voice games, microphone tests and C.O.D.Y. dictation. It does not mute the Windows microphone for other apps. Typed requests remain available, and the mute preference is saved across restarts.
+
+While muted, the mascot shows a coral microphone with a line drawn across it. Unmuting briefly shows a blue microphone with sound waves for about 1.25 seconds before the normal mascot returns. Reduced-motion settings use a static indicator. The developer animation studio includes isolated previews of both states.
+
+The shortcut works outside C.O.D.Y. when Windows can register it. If another application has reserved the shortcut, the focused C.O.D.Y. window provides a fallback; the Settings switch is also available. This source addition requires the updated native engine and is not yet packaged into a new installer.
+
+### Windows settings commands in the current source
+
+In Custom permissions, enable **Windows settings** for radio, power-mode and brightness changes. Full access includes this permission. Status checks use **System information**, and opening a Settings page uses **Open applications**. The Ask profile requests approval before acting.
+
+- “Turn on Bluetooth” or “turn Bluetooth off.”
+- “Turn on Wi-Fi” or “turn Wi-Fi off.”
+- “Check Bluetooth status” or “check Wi-Fi status.” “Show Wi-Fi” continues to show the island monitor.
+- “Turn on power saver” selects **Best power efficiency** for the current power source. “Turn off power saver” selects **Balanced**; it does not restore a previous custom mode. You can also say “set power mode to best performance” or “show power mode.”
+- “Set brightness to 50 percent” or “check brightness.” Brightness needs a display that exposes Windows brightness controls; external monitors may require their own controls.
+- “Open Bluetooth settings,” “open Wi-Fi settings,” “open display settings” or “open energy saver settings.” Power, sound, notifications, storage, keyboard, mouse, network and Windows Update settings are also supported.
+
+Windows Energy saver/Battery saver is separate from the performance power mode. Requests to turn Energy saver/Battery saver on or off open its Settings page and clearly state that the toggle still needs to be changed there. Radio access can be denied by Windows, hardware switches or device policy. Turning off a radio can disconnect devices or networking; C.O.D.Y. reports success only after Windows confirms the requested state.
+
+These additions are source changes and have not been packaged into a new installer yet.
+
+## On-screen drawing controls
+
+The drawing **Clear** button appears when there is rendered drawing content or a 3D model to remove. Starting a narration or allocating an empty drawing canvas does not show it. Cleared, faded and newly empty canvases hide the old button. Clear and model close controls remain available while actual drawings are being generated. This fix is in the development source and requires the updated native engine.
+
+## Keep clock and weather in the island
+
+Say or type **“show clock”** to pin a live 24-hour local clock and date. **“Show weather”** pins current weather; use **“show weather in Derby”** for a named city or **“show weather here”** to use your approximate location. An existing named-city choice is retained when you just say “show weather”.
+
+Pins stay selected until you remove them and return when C.O.D.Y. restarts. They do not expire like quick answers. Multiple pins, including RAM, clock and weather, rotate in the existing island display. Recording, voice interaction and temporary results can briefly take priority.
+
+Weather refreshes every five minutes while pinned and retries failed lookups after one minute. It needs an internet connection; failed lookups show **Weather unavailable** rather than an old temperature as if it were current.
+
+Use **“hide clock”**, **“hide weather”**, **“hide clock and weather”** or **“clear the island”** to remove pins. Ordinary questions such as “what’s the time?” and “what’s the weather?” still show temporary answers. These additions are in the development source and are not yet packaged into a new installer.
+
 ## Browser connection
 
 Use the browser setup card in the app to connect its extension. Browser actions require a working extension/native-host connection. If a browser is not connected, reconnect it in the app before retrying.

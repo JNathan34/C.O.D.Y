@@ -38,6 +38,7 @@ const DEFAULTS = Object.freeze({
   voiceId: '',
   voiceRate: 1, voicePitch: 1, voiceVolume: 1,
   micDeviceId: '', micSensitivity: 1,
+  microphoneMuted: false,
   visibility: 'always', // always | activity | hover
   islandSize: 'medium',
   idleReactions: 'subtle', // off | subtle | playful
@@ -67,6 +68,7 @@ let timerVisible=false;
 let gameActive=false;
 let recordingActive=false,wakeListeningActive=false;
 let chatShortcutRegistered=false;
+let muteShortcutRegistered=false,muteShortcutHeld=false;
 let forcedVisible = false;
 let hoverVisible = false;
 let hotkeyProcess = null;
@@ -90,6 +92,15 @@ let pendingWifiRestore = false;
 let wifiRestoreTimer = null;
 
 function preferencesFile() { return path.join(app.getPath('userData'), 'island-settings.json'); }
+function setMicrophoneMuted(muted){
+  settings.microphoneMuted=Boolean(muted);saveSettings();
+  hotkeyHeld=false;emit('island:hotkey','cancel');
+  emit('island:settings',settings);
+  for(const listener of preferenceListeners){try{listener({...settings});}catch(error){console.warn(error.message);}}
+  // Keep the privacy indicator visible even in Activity only / On hover modes.
+  forcedVisible=true;updateVisibility();
+  if(!settings.microphoneMuted)scheduleHide();
+}
 function validateSettings(patch, old = settings) {
   const next = { ...old };
   for (const [key, value] of Object.entries(patch || {})) {
@@ -148,7 +159,7 @@ function positionWindow() {
 }
 function isActive() { return state !== 'idle'; }
 function shouldShow() {
-  return !suspended && (fileDragActive || wakeListeningActive || recordingActive || gameActive || timerVisible || settings.visibility === 'always' || isActive() || expanded || forcedVisible || hoverVisible);
+  return !suspended && (settings.microphoneMuted || fileDragActive || wakeListeningActive || recordingActive || gameActive || timerVisible || settings.visibility === 'always' || isActive() || expanded || forcedVisible || hoverVisible);
 }
 function hideWindowNow() {
   if (!islandWindow || islandWindow.isDestroyed() || shouldShow()) return;
@@ -285,7 +296,7 @@ function pollCursor(clickedPoint=null) {
   // Match the top-attached notch silhouette instead of blocking mouse input through its transparent shoulders.
   const inset = y < 8 ? Math.max(0,y)*1.8 : y < 24 ? 14.4+(y-8)*.8 : 27.2+(y-24)*1.7;
   const silhouetteHit = nearIsland && Math.abs(point.x-centerX) < (size.width/2-inset);
-  if(clickedPoint&&shouldRecoverPointer({visible:islandWindow.isVisible(),expanded,hit:silhouetteHit,sleeping:mascotSleeping,wakeUntil:wakeClickUntil,now:Date.now(),button:clickedPoint.button||'left'})){
+  if(clickedPoint&&shouldRecoverPointer({visible:islandWindow.isVisible(),expanded,hit:silhouetteHit,button:clickedPoint.button||'left'})){
     mascotSleeping=false;wakeClickUntil=0;setExpanded(true);emit('island:command','pointer-open');
   }
   if(clickedPoint&&expanded&&!captureUIBusy()&&!pickerOpen&&!onPanel&&!silhouetteHit)setExpanded(false);
@@ -318,6 +329,7 @@ function pollCursor(clickedPoint=null) {
 function onModifierEvent(event) {
   // Even if the shortcut was disabled while held, release must always stop capture.
   if (event === 'DOWN') {
+    if(settings.microphoneMuted&&settings.startListeningOnHotkey)return;
     if (!settings.enableHotkey || hotkeyHeld) return;
     hotkeyHeld = true;
     forcedVisible = true;
@@ -370,6 +382,10 @@ function createIsland() {
   });
   islandWindow.on('minimize',()=>{setExpanded(false);setTimeout(recoverVisibility,100);});
   islandWindow.webContents.on('before-input-event',(event,input)=>{
+    if(input.code==='KeyM'){
+      if(input.type==='keyUp')handleHotkey('mute-up');
+      if(input.control&&input.alt&&!input.shift&&!input.meta){event.preventDefault();if(!muteShortcutRegistered&&input.type==='keyDown'&&!input.isAutoRepeat)handleHotkey('mute');}
+    }
     if(input.control&&input.alt&&!input.shift&&!input.meta&&input.code==='KeyC'){
       event.preventDefault();
       if(!chatShortcutRegistered&&input.type==='keyDown'&&!input.isAutoRepeat)handleHotkey('chat');
@@ -475,18 +491,24 @@ function startWifiWatcher() {
 
 let initialized=false;
 function mount(){
-  if(!initialized){readSettings();setupIpc();startWifiWatcher();screen.on('display-metrics-changed',recoverVisibility);screen.on('display-added',recoverVisibility);screen.on('display-removed',recoverVisibility);powerMonitor.on('resume',recoverVisibility);powerMonitor.on('unlock-screen',recoverVisibility);visibilityTimer=setInterval(recoverVisibility,250);chatShortcutRegistered=globalShortcut.register('Control+Alt+C',()=>handleHotkey('chat'));if(!chatShortcutRegistered)console.warn('CODY: Ctrl+Alt+C is already registered by another application; using focused-window fallback.');initialized=true;}
+  if(!initialized){readSettings();setupIpc();startWifiWatcher();screen.on('display-metrics-changed',recoverVisibility);screen.on('display-added',recoverVisibility);screen.on('display-removed',recoverVisibility);powerMonitor.on('resume',recoverVisibility);powerMonitor.on('unlock-screen',recoverVisibility);visibilityTimer=setInterval(recoverVisibility,250);chatShortcutRegistered=globalShortcut.register('Control+Alt+C',()=>handleHotkey('chat'));if(!chatShortcutRegistered)console.warn('CODY: Ctrl+Alt+C is already registered by another application; using focused-window fallback.');muteShortcutRegistered=globalShortcut.register('Control+Alt+M',()=>handleHotkey('mute'));if(!muteShortcutRegistered)console.warn('CODY: Ctrl+Alt+M is already registered by another application; using focused-window fallback.');initialized=true;}
   if(!islandWindow||islandWindow.isDestroyed())createIsland();
   return islandWindow;
 }
 function stop(){
   isQuitting=true;
   if(chatShortcutRegistered){globalShortcut.unregister('Control+Alt+C');chatShortcutRegistered=false;}
+  if(muteShortcutRegistered){globalShortcut.unregister('Control+Alt+M');muteShortcutRegistered=false;}muteShortcutHeld=false;
   for(const timer of [cursorTimer,visibilityTimer,wifiCheckTimer,wifiRestoreTimer,hideTimer,concealFallback])if(timer)clearInterval(timer);
   if(settingsWindow&&!settingsWindow.isDestroyed())settingsWindow.destroy();
 }
 function handleHotkey(action){
-  if(action?.type==='pointer'){pollCursor(action);return;}
+  if(action==='mute-up'){muteShortcutHeld=false;return;}
+  if(action==='mute'){if(muteShortcutHeld)return;muteShortcutHeld=true;setMicrophoneMuted(!settings.microphoneMuted);return;}
+  if(action?.type==='pointer'){
+    const point=action.physicalPixels?screen.screenToDipPoint({x:action.x,y:action.y}):action;
+    pollCursor({...action,...point});return;
+  }
   if(action==='chat'){
     hotkeyHeld=false;emit('island:hotkey','cancel');
     if(expanded){setExpanded(false);return;}

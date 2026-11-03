@@ -15,6 +15,11 @@ int count=actions.Count;Key(162,true);Key(164,true);Key(164,false);Key(162,false
 Key(162,true,1212369995);Key(91,true,1212369995);Key(91,false,1212369995);Key(162,false,1212369995);if(actions.Count!=count)throw new Exception("AI-injected keys triggered dictation");
 Press();Key(68,true);Key(68,false);Release();if(active||actions[^2]!=ShortcutAction.DictationCancel)throw new Exception("Windows shortcut did not cancel accidental dictation");
 Console.WriteLine("PASS: hold/release, double-tap hands-free, finish, Escape, Ctrl+Alt passthrough, injected-key isolation, Windows shortcut cancellation");
+var mutedKeys=new CodyDictationShortcuts.KeyState();int mutedActions=0;
+mutedKeys.Handle(162,true,false,0,false,_=>mutedActions++,()=>false);mutedKeys.Handle(91,true,false,0,false,_=>mutedActions++,()=>false);
+mutedKeys.Handle(91,false,true,0,false,_=>mutedActions++,()=>false);mutedKeys.Handle(162,false,true,0,false,_=>mutedActions++,()=>false);
+if(mutedActions!=0)throw new Exception("Muted dictation started recording");
+Console.WriteLine("PASS: muted dictation cannot arm a new capture");
 sealed class Scheduler:IDictationScheduler{
  public DateTimeOffset Now{get;private set;}=DateTimeOffset.UtcNow;
  private readonly List<(DateTimeOffset At,Job Job)> jobs=new();
@@ -22,5 +27,5 @@ sealed class Scheduler:IDictationScheduler{
  public void Advance(int ms){Now=Now.AddMilliseconds(ms);foreach(var job in jobs.Where(j=>j.At<=Now).ToArray()){jobs.Remove(job);if(!job.Job.Cancelled)job.Job.Action();}}
  private sealed class Job(Action action):IDisposable{public Action Action=action;public bool Cancelled;public void Dispose()=>Cancelled=true;}
 }
-namespace HeyClicky.App.Cody{internal static class CodyIndependentInput{internal static bool Active=>false;}}
+namespace HeyClicky.App.Cody{internal static class CodyIndependentInput{internal static bool Active=>false;}internal static class CodyEngineBridge{internal static bool MicrophoneMuted=>false;}}
 namespace HeyClicky.Core.Dictation{public sealed class DictationController{public bool HasDedicatedHandsFreeShortcut{get;set;}public void HandleShortcut(ShortcutAction action){}public bool CancelActiveSession()=>false;}}

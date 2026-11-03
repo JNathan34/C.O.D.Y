@@ -84,13 +84,20 @@
   function resetPreview(){
     clearDemo();previewState='idle';
     const c=demo();if(!c)return;
-    c.showIsland(true);c.applySettings({...current,visibility:'always',idleReactions:'subtle'});
+    c.showIsland(true);c.applySettings({...current,microphoneMuted:false,visibility:'always',idleReactions:'subtle'});
     c.setState('idle');c.previewExpression('normal',0);c.setAudioLevel(0);
     showLabel('Idle · Your C.O.D.Y. mascot','Choose an animation below to test it here.');
   }
   function auditionState(which){
     clearDemo();const c=demo();if(!c)return;
     c.showIsland(true);
+    c.applySettings({...current,microphoneMuted:false});
+    if(which==='mic-muted'||which==='mic-restored'){
+      c.setState('idle');c.applySettings({microphoneMuted:true});
+      showLabel(which==='mic-muted'?'Microphone muted':'Microphone unmuted',which==='mic-muted'?'Coral microphone and a drawn slash remain visible while C.O.D.Y. voice input is muted.':'The slash clears, blue microphone waves appear briefly, then the normal mascot returns.');
+      if(which==='mic-restored')later(()=>c.applySettings({microphoneMuted:false}),450);
+      return;
+    }
     if(which==='reveal'){
       c.setState('idle');c.showIsland(false);
       showLabel('Liquid reveal','The island retracts into the screen edge, then flows back down.');
@@ -114,6 +121,7 @@
   }
   function auditionExpression(name){
     clearDemo();const c=demo();if(!c)return;
+    c.applySettings({microphoneMuted:false});
     c.showIsland(true);c.setState('idle');previewState='idle';
     showLabel(name==='doubleblink'?'Double blink':name[0].toUpperCase()+name.slice(1),
       name==='squint'?'The original eyes gently narrow, hold, and open again.':
@@ -139,7 +147,7 @@
     const steps=[
       ['idle'],['blink','expression'],['wink','expression'],['squint','expression'],
       ['sleepy','expression'],['mouse','expression'],['listening'],['thinking'],['speaking'],
-      ['offline'],['wifi-restored'],['error'],['reveal']
+      ['offline'],['wifi-restored'],['mic-muted'],['mic-restored'],['error'],['reveal']
     ];
     let index=0;
     const next=()=>{

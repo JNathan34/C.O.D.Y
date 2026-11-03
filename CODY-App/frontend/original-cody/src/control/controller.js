@@ -16,12 +16,14 @@ const {validate:validateScene}=require('../visuals/schema');
 const {splitMetadata}=require('../visuals/ledger');
 const {splitApps,validateSplitApps,appPin}=require('./app-layout');
 const {normalizeApp}=require('../app-commands');
+const {validateSystemArgs,buildSystemScript}=require('./system-settings');
 
 function ensureArgs(action,args){
   if(!args||typeof args!=='object'||Array.isArray(args))throw Error('Action arguments must be an object');
   const integer=(v,min,max,label)=>{if(!Number.isInteger(v)||v<min||v>max)throw Error(`Invalid ${label}`);return v;};
   const str=(v,max,label)=>{if(typeof v!=='string'||!v.trim()||v.length>max)throw Error(`Invalid ${label}`);return v;};
   switch(action){
+    case 'system.radio.set':case 'system.radio.status':case 'system.power.set':case 'system.power.status':case 'system.brightness.set':case 'system.brightness.status':case 'system.settings.open':return validateSystemArgs(action,args);
     case 'system.status': case 'window.list': case 'app.list':case 'process.list': case 'clipboard.read':case 'screen.list':return {};
     case 'screen.capture':{
       if(Object.keys(args).some(key=>!['includeAnnotations','displayId','crop'].includes(key)))throw Error('Invalid screenshot argument');
@@ -154,6 +156,11 @@ class ComputerController {
     }else{
     switch(action){
       case 'system.status':result=await windows.systemStatus();break;
+      case 'system.radio.set':case 'system.radio.status':case 'system.power.set':case 'system.power.status':case 'system.brightness.set':case 'system.brightness.status':case 'system.settings.open':{
+        result=JSON.parse(await this.runner(buildSystemScript(action,clean)));
+        if(!result||typeof result.message!=='string'||!result.message.trim())throw Error('Windows did not return a settings result.');
+        break;
+      }
       case 'app.open':result=await this.runner(windows.openApp(clean.app));break;
       case 'app.split':result=await splitApps(clean.apps,{runner:this.runner});break;
       case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);break;

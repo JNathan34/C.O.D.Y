@@ -27,6 +27,7 @@ class KeywordWakeListener extends EventEmitter{
   super();Object.assign(this,{launch,canListen,canCapture,beginVoice,endVoice,cancelVoice,onWake,spawnProcess,now});this.enabled=false;this.capture=false;this.opening=false;this.finishing=false;this.phrases=[];this.mode='off';this.message='Hands-free listening is off.';this.epoch=0;this.generation=0;this.cooldown=0;this.failures=0;this.poll=setInterval(()=>this.update(),100);this.poll.unref?.();
  }
  snapshot(){return {enabled:this.enabled,mode:this.mode,message:this.message,phrases:[...this.phrases],local:true,detector:'keyword'};}
+ setMuted(muted){this.muted=Boolean(muted);if(this.muted){this.stop();this.status('paused','C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.');}else this.update();}
  status(mode,message){if(mode===this.mode&&message===this.message)return;this.mode=mode;this.message=message;this.emit('change',this.snapshot());}
  configure(prefs){const phrases=phrasesFor(prefs),changed=JSON.stringify(phrases)!==JSON.stringify(this.phrases);this.phrases=phrases;this.enabled=prefs.wakeWordEnabled===true;if(changed||!this.enabled)this.stop();if(!this.enabled)this.status('off','Hands-free listening is off.');else this.update();return this.snapshot();}
  stop(){
@@ -37,6 +38,7 @@ class KeywordWakeListener extends EventEmitter{
  }
  fault(message){this.stop();this.status('error',String(message).slice(0,220));if(this.enabled&&!this.closed){this.retry=setTimeout(()=>{this.retry=null;this.update();},Math.min(15000,1000*2**Math.min(this.failures++,4)));this.retry.unref?.();}}
  start(){
+  if(this.muted)return;
   if(this.child||this.retry||this.closed)return;
   this.status('starting','Starting local wake detection…');let child;
   try{const launch=this.launch(this.phrases);child=this.spawnProcess(launch.command,launch.args,{...launch.options,windowsHide:true,stdio:['pipe','pipe','pipe']});}catch(error){this.fault(error.message);return;}
@@ -56,6 +58,7 @@ class KeywordWakeListener extends EventEmitter{
   try{this.child.stdin.write(JSON.stringify({mode,epoch})+'\n');}catch(error){this.fault(error.message);}return promise;
  }
  update(){
+  if(this.muted)return;
   if(this.closed||!this.enabled)return;
   if(!this.phrases.length){this.stop();this.status('paused','Choose at least one wake phrase.');return;}
   if(!this.child){this.start();return;}if(!this.ready)return;
@@ -66,6 +69,7 @@ class KeywordWakeListener extends EventEmitter{
   void this.request('listen');if(this.confirmed===this.epoch)this.status('listening','Ready for '+this.phrases.map(p=>p.replace('cody','Cody')).join(' / ')+'.');
  }
  receive(value){
+  if(this.muted)return;
   if(!this.enabled||this.closed||!value)return;
   if(value.type==='ready'){clearTimeout(this.startup);this.ready=true;this.update();return;}
   if(value.type==='error'){this.fault(value.message);return;}
@@ -77,6 +81,7 @@ class KeywordWakeListener extends EventEmitter{
   if(value.type==='wake'&&value.epoch===this.epoch&&this.confirmed===this.epoch&&this.wire==='listen'&&this.phrases.includes(value.phrase))void this.wake();
  }
  async wake(){
+  if(this.muted)return false;
   if(this.opening||this.capture||this.finishing||this.canListen()||this.now()<this.cooldown)return false;
   const generation=this.generation;this.opening=true;this.status('arming','Opening the microphone…');
   try{

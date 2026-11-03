@@ -49,7 +49,7 @@
       const index=Math.floor(Date.now()/3000)%monitors.items.length,item=monitors.items[index];
       $('island-info-text').textContent=item.text;$('island-info-detail').textContent=item.detail;
       info.dataset.monitor=item.id;info.title=monitors.items.map(value=>value.text+' — '+value.detail+(value.tooltip?' · '+value.tooltip:'')).join('\n');
-      $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),'activity');art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
+      $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),item.icon||'activity');art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
     }
     $('island-recording-dot').hidden=!recording;$('island-recording-controls').hidden=!recording;
     if(recording){
@@ -307,7 +307,7 @@
     onReview:()=>{island.togglePanel(true);island.setActiveView('chat');$('quick-input').focus();},
     onAudio:audio=>audio instanceof HTMLMediaElement?island.connectSpeakingAudio(audio,{play:false}):undefined
   });
-  island.onVoiceHotkey=action=>{if(action==='down')void voice.press();else if(action==='up')void voice.release();else void voice.cancel();};
+  island.onVoiceHotkey=action=>{if(action==='down'){if(!preferences.microphoneMuted)void voice.press();}else if(action==='up'){if(!preferences.microphoneMuted)void voice.release();}else if(['starting','listening'].includes(voice.getPhase()))void voice.cancel();};
   island.onStartListening=()=>voice.press();island.onStopListening=()=>voice.release();
   island.onToggleListening=()=>['starting','listening'].includes(voice.getPhase())?voice.release():voice.press();
   window.addEventListener('cody:voice-state',event=>{
@@ -319,6 +319,7 @@
   window.addEventListener('cody:audio-level',event=>island.setAudioLevel(Math.min(1,event.detail.level*9*(preferences.micSensitivity||1))));
   visual.onSettings(next=>{
     const speedChanged=next.voiceRate!==preferences.voiceRate;preferences=next;
+    if(next.microphoneMuted&&['starting','listening'].includes(voice.getPhase()))void voice.cancel();
     if(speedChanged)void api.voice.configure({speed:next.voiceRate}).catch(error=>note(error.message));
   });
   busy(app.data.busy);renderMessages();renderPermissions();

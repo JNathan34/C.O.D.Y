@@ -1,7 +1,9 @@
 'use strict';
 /** Extremely narrow direct commands. Never parse chat-model output as tool calls. */
 const {commandText}=require('../command-text');
+const {parseSystemCommand}=require('./system-settings');
 function parseDirectAction(input){
+  const system=parseSystemCommand(input);if(system)return system;
   const t=commandText(input);let m;
   const media=t.toLowerCase().replace(/[’']/g,'').replace(/^(?:hey )?cody[, ]+/,'').replace(/^(?:(?:can|could) you )?(?:please )?/,'').replace(/[.!?]+$/,'').trim();
   if(/^(?:play|resume) (?:my )?music$/.test(media))return {action:'spotify.control',args:{command:'play'}};

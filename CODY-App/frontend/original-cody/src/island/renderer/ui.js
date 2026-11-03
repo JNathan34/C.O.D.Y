@@ -42,6 +42,7 @@
     enableHotkey:true,wakeWordEnabled:false,wakeHeyCody:true,wakeOkayCody:true,wakeCody:true,controlInputMode:'system',mascotLook:'blue',accentColor:'#9D9DFF',cursorColor:'accent',hideFloatingCursor:false,screenHighlight:true,shakeToDetach:true,voiceId:'',voiceRate:1,voicePitch:1,voiceVolume:1,micDeviceId:'',micSensitivity:1,visibility:'always'
   };
   let settings = {...DEFAULTS};
+  settings.microphoneMuted=false;
   let state = 'idle';
   let displayedState = 'idle';
   let panelOpen = false;
@@ -64,6 +65,21 @@
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const random = (min,max) => min + Math.random()*(max-min);
   let mediaPlaying=false,pointerOpenUntil=0;
+  let microphoneMuted=false,microphoneStateKnown=false,microphoneRestoreTimer=null;
+  function applyMicrophoneMute(muted){
+    muted=muted===true;
+    if(microphoneStateKnown&&microphoneMuted===muted)return;
+    const restored=microphoneStateKnown&&microphoneMuted&&!muted;
+    microphoneStateKnown=true;microphoneMuted=muted;
+    clearTimeout(microphoneRestoreTimer);
+    body.dataset.microphone=muted?'muted':restored?'restored':'on';
+    if(muted){stopMicrophone(false);stopMicTest();wakeUp();}
+    if(restored){wakeUp();microphoneRestoreTimer=setTimeout(()=>{if(!microphoneMuted)body.dataset.microphone='on';},1250);}
+    micButton.disabled=muted;
+    micButton.title=muted?'C.O.D.Y. microphone muted · Ctrl + Alt + M to unmute':'Start listening';
+    micButton.setAttribute('aria-label',muted?'C.O.D.Y. microphone muted. Press Ctrl + Alt + M to unmute.':'Start listening');
+    document.dispatchEvent(new CustomEvent('cody:microphone-mute',{detail:{muted}}));
+  }
   const presence=new window.CODYIdlePresence({now:()=>performance.now(),onChange:sleeping=>{
     api?.setSleeping?.(sleeping);
     body.classList.toggle('auto-sleeping',sleeping);body.classList.remove('is-blinking');
@@ -196,6 +212,7 @@
   }
   function applySettings(prefs) {
     settings={...settings,...prefs};
+    applyMicrophoneMute(settings.microphoneMuted);
     const look=window.CODYLooks[settings.mascotLook]||window.CODYLooks.blue;
     body.style.setProperty('--mascot-filter',look.filter);
     const lookStatus=document.getElementById('mascot-look-status');if(lookStatus)lookStatus.textContent=look.name+' selected';
@@ -299,7 +316,7 @@
       nextGag=performance.now()+random(6800,12500);
     }
     morphTo(next);
-    micButton.setAttribute('aria-label',next==='listening'?'Stop listening':'Start listening');
+    micButton.setAttribute('aria-label',microphoneMuted?'C.O.D.Y. microphone muted. Press Ctrl + Alt + M to unmute.':next==='listening'?'Stop listening':'Start listening');
     micButton.setAttribute('aria-pressed',String(next==='listening'));
     document.getElementById('mic-status').textContent=next==='listening'?'Listening…':'';
     audioTarget=0;audioLastSample=0;
@@ -348,6 +365,7 @@
     }else requestAnimationFrame(animateFrame);
   }
   async function startMicrophone(){
+    if(microphoneMuted)return;
     if(typeof window.CODYIsland?.onStartListening==='function')return window.CODYIsland.onStartListening();
     if(window.assistant)return;
     if(micRequested||state==='listening')return;
@@ -622,12 +640,13 @@
   }
   document.getElementById('refresh-microphones').addEventListener('click',()=>void getMicrophoneAccess());
   document.getElementById('request-mic-permission').addEventListener('click',async()=>{
+    if(microphoneMuted){document.getElementById('mic-permission-status').textContent='C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.';return;}
     if(window.CODYIsland?.voiceCapturing){note.textContent='Finish voice input before testing the microphone.';return;}
     if(micTestStream){stopMicTest();return;}
     try{
       const constraint=settings.micDeviceId?{deviceId:{ideal:settings.micDeviceId}}:true;
       const stream=await navigator.mediaDevices.getUserMedia({audio:constraint});
-      if(!panelOpen||activeView!=='settings'||document.querySelector('[data-content="microphone"]').hidden){stream.getTracks().forEach(t=>t.stop());return;}
+      if(microphoneMuted||!panelOpen||activeView!=='settings'||document.querySelector('[data-content="microphone"]').hidden){stream.getTracks().forEach(t=>t.stop());return;}
       micTestStream=stream;
       const ctx=new (window.AudioContext||window.webkitAudioContext)();micTestContext=ctx;
       const analyser=ctx.createAnalyser();analyser.fftSize=1024;

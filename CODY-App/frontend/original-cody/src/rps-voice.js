@@ -2,8 +2,8 @@
 const {randomUUID}=require('node:crypto');
 // Only the game owns this hands-free capture. Ordinary conversations keep push-to-talk.
 class RpsVoice {
-  constructor({engine,game,now=Date.now}){
-    Object.assign(this,{engine,game,now});this.generation=0;this.running=false;
+  constructor({engine,game,now=Date.now,isMicrophoneMuted=()=>false}){
+    Object.assign(this,{engine,game,now,isMicrophoneMuted});this.generation=0;this.running=false;
     engine.on('meter',data=>this.meter(data));
     engine.on('game-cue',data=>{
       if(!this.running||data.text!==this.expectedCue)return;
@@ -39,7 +39,8 @@ class RpsVoice {
   }
   fail(error){this.generation++;this.running=false;this.capture=false;clearTimeout(this.wordTimer);this.show('error',error.message);void this.engine.request('cancel').catch(()=>{});}
   async start(){
-    await this.cancel();if(!this.game.active||this.game.phase!=='ready')return;
+    if(this.isMicrophoneMuted()){this.show('idle','Microphone muted. Use the game buttons or press Ctrl + Alt + M.');return;}
+    await this.cancel();if(this.isMicrophoneMuted()||!this.game.active||this.game.phase!=='ready')return;
     const token=++this.generation;this.running=true;
     try{
       this.move=this.game.committed;this.show('preparing','Getting ready…');
@@ -57,6 +58,7 @@ class RpsVoice {
     }catch(error){if(token===this.generation)this.fail(error);}
   }
   async listen(token,duplex=false){
+    if(this.isMicrophoneMuted()){await this.cancel();return;}
     if(token!==this.generation)return;
     this.show('starting','Opening microphone…');this.turn=randomUUID();
     const result=await this.engine.request('begin',{turn:this.turn,utilityOnly:true,gameDuplex:duplex});

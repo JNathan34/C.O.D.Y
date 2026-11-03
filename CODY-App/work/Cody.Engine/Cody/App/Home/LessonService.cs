@@ -149,6 +149,8 @@ public sealed class LessonService
 
 	internal bool GeneratingControlsShown => offer?.IsShown == true;
 
+	internal void HideDrawingControls() => offer?.Hide();
+
 	internal void ShowGeneratingControls(bool force)
 	{
 		if (!replaying && (force || offer?.IsShown != true) && real.Canvas.DrawingDisplay is DisplayInfo display)
@@ -159,7 +161,7 @@ public sealed class LessonService
 
 	private void ShowOffer(DisplayInfo display, Recent? entry)
 	{
-		if (!DrawnOnboardingTour.IsRunning && !real.Canvas.IsDrawingFadedAway)
+		if (!DrawnOnboardingTour.IsRunning && HeyClicky.App.Cody.CodyDrawingControls.HasVisibleDrawing(real.Canvas))
 		{
 			if (offer == null)
 			{

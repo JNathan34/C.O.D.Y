@@ -31,6 +31,7 @@ Once this version is installed, **Settings → Updates** can check GitHub, downl
 - **Choose an assistant.** Connect Claude, ChatGPT Codex or ChatGPT. Some background tasks and attached-file requests still use the native Claude connection.
 - **Work in the background.** Start tasks, inspect their progress and open their outputs.
 - **Control Windows.** Use permission-controlled app, audio, window, clipboard, file and computer actions. Press **Esc** to stop computer control.
+- **Change Windows settings in the current source.** Turn Bluetooth or Wi-Fi on/off, choose a power mode, set supported display brightness and open Settings pages. See the [commands and limits](docs/GETTING-STARTED.md#windows-settings-commands-in-the-current-source); these additions are not packaged in the current release.
 - **Capture your screen.** Take screenshots or record MP4 video, with pause and resume controls.
 - **Connect a browser.** Set up the browser extension through the app. Browser actions require that connection.
 - **Use visual tools.** Draw desktop annotations and work with interactive 3D scenes.
@@ -38,11 +39,39 @@ Once this version is installed, **Settings → Updates** can check GitHub, downl
 
 Features depend on Windows permissions, account access and connected services. The [getting-started guide](docs/GETTING-STARTED.md) covers setup and current limits.
 
+## Pictures of the current development build
+
+These pictures show the latest source changes. The downloadable **0.15.5** installer predates the new microphone shortcut, pinned clock/weather and Windows settings commands. The weather picture uses an example reading.
+
+![Expanded chat with centred suggestions and message box](docs/screenshots/expanded-chat.png)
+
+The expanded chat adjusts its suggestions and message box to the available space. Touchscreen input opens the island on the first tap and collapses it when you tap outside.
+
+| Pinned clock and date | Pinned weather example |
+| --- | --- |
+| ![Persistent local clock and date](docs/screenshots/pinned-clock.png) | ![Persistent weather showing an example Derby reading](docs/screenshots/pinned-weather.png) |
+
+Say **“show clock”**, **“show weather”** or **“show weather in Derby”** to keep an item in the island. Pins survive restarts and rotate alongside RAM and other monitors. Use **“hide clock”** or **“hide weather”** to remove them.
+
+| Microphone muted | Brief unmute indicator |
+| --- | --- |
+| ![Coral crossed-out microphone while CODY is muted](docs/screenshots/microphone-muted.png) | ![Blue microphone and sound waves during unmute animation](docs/screenshots/microphone-unmuted.png) |
+
+**Ctrl + Alt + M** toggles C.O.D.Y. voice input, wake detection and dictation. The crossed-out microphone stays visible while muted; unmuting briefly shows blue sound waves. Other apps retain microphone access, and typed requests remain available.
+
+| Updated Shortcuts page | Windows settings permission |
+| --- | --- |
+| ![Shortcuts settings including Ctrl Alt M and microphone mute](docs/screenshots/settings-shortcuts.png) | ![Custom permissions including Windows settings](docs/screenshots/settings-windows-permissions.png) |
+
+The new Windows settings permission covers Bluetooth and Wi-Fi on/off, power mode and supported display brightness. See the [command examples and limitations](docs/GETTING-STARTED.md#windows-settings-commands-in-the-current-source).
+
 ## Word guide
 
-[Download the illustrated Word guide](https://github.com/JNathan34/C.O.D.Y/releases/download/v0.15.2/CODY-Complete-Capability-Guide.docx) · [Repository copy](docs/CODY-Complete-Capability-Guide.docx)
+[Download the latest illustrated Word guide](https://github.com/JNathan34/C.O.D.Y/raw/refs/heads/main/docs/CODY-Complete-Capability-Guide.docx) · [Repository copy](docs/CODY-Complete-Capability-Guide.docx) · [Older release copy](https://github.com/JNathan34/C.O.D.Y/releases/download/v0.15.2/CODY-Complete-Capability-Guide.docx)
 
-The handbook covers capabilities, voice commands, settings and setup, with screenshots and examples. It was prepared on 31 October 2026 for version 0.15.0. Follow the current release notes for the newer GitHub updater and separate Windows installers.
+The handbook covers capabilities, voice commands, settings and setup, with screenshots and examples. The illustrated guide was prepared on 31 October 2026 for version 0.15.0. The repository copy was updated on 3 November with source changes to expanded chat layout, touchscreen first-tap opening and outside-tap dismissal, validation notes and proposed improvements. These source changes have not been packaged into a new installer during this update. Follow the current release notes for the newer GitHub updater and separate Windows installers.
+
+The repository guide now includes refreshed Shortcuts and Permissions pictures plus current expanded-chat, clock, weather and microphone-status pictures. Weather is labelled as an example reading. Screenshot assets are in `docs/screenshots`; `CODY-App/tools/capture-guide-screenshots.cjs` captures the current renderer, and `CODY-App/tools/update-guide-pictures.py` embeds them using the document Python runtime.
 
 ## What changed in 0.15.5
 

@@ -89,6 +89,15 @@
         </svg>
       </div>
       <div class="morph-dot" id="morph-dot"></div>
+      <div class="microphone-indicator" id="microphone-indicator" aria-hidden="true">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <g class="microphone-glyph"><rect x="27" y="16" width="10" height="23" rx="5"/><path d="M21 30v5a11 11 0 0 0 22 0v-5M32 46v7m-6 0h12"/></g>
+          <path class="microphone-slash-mask" d="m20 20 24 24"/>
+          <path class="microphone-slash" pathLength="1" d="m20 20 24 24"/>
+          <path class="microphone-ready-wave wave-one" pathLength="1" d="M45 24q5 8 0 16"/>
+          <path class="microphone-ready-wave wave-two" pathLength="1" d="M50 20q8 12 0 24"/>
+        </svg>
+      </div>
     </div>
     <button id="island-timer" class="island-timer" type="button" hidden aria-label="Timer"><span id="island-timer-icon" aria-hidden="true"></span><span id="island-timer-value" role="timer">00:00</span></button>
     <div id="island-info" class="island-info" hidden>
@@ -233,6 +242,8 @@
               <h3 class="group-title">TALK TO C.O.D.Y.</h3><div class="settings-group">
                 <div class="setting-row"><span><strong>Push to talk</strong><small>Hold Ctrl + Alt to speak. Release to stop listening.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd></div></div>
                 <div class="setting-row"><span><strong>Open chat</strong><small>Open chat and focus the message box.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>C</kbd></div></div>
+                <div class="setting-row"><span><strong>Mute or unmute C.O.D.Y.</strong><small>Toggle C.O.D.Y. voice input, wake phrases and dictation. Other apps keep their microphone access.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>M</kbd></div></div>
+                <label class="setting-row"><span><strong>Microphone muted</strong><small>Pause C.O.D.Y. voice input until you unmute it.</small></span><input type="checkbox" data-pref="microphoneMuted"></label>
                 <label class="setting-row"><span><strong>Enable shortcut</strong><small>Use the keyboard while another application is focused.</small></span><input type="checkbox" data-pref="enableHotkey"></label>
                 <label class="setting-row"><span><strong>Shortcut starts microphone</strong><small>Turn off to expand the island with Ctrl + Alt instead.</small></span><input type="checkbox" data-pref="startListeningOnHotkey"></label>
               </div>
@@ -333,6 +344,7 @@
   <option value="custom"><span class="access-entry"><span data-access-icon="settings" aria-hidden="true"></span><span><strong>Custom</strong><small class="access-subtext">Choose which permissions C.O.D.Y. can use.</small></span></span></option>
 </select></label><div class="setting-row"><span><strong>Emergency stop</strong><small>Take back control and disable further computer actions.</small></span><button id="core-emergency" class="light-action" type="button">Stop controls</button></div></div>
 <p class="setting-help">Cody controls the mouse and keyboard while computer use is active. Physical mouse movement is paused to keep actions on target. Press Esc to stop, or use your voice shortcut and say “stop”.</p><p id="core-permission-status" class="setting-help" role="status">Loading backend permissions…</p><div id="core-custom-permissions" hidden><h3 class="group-title">CUSTOM PERMISSIONS</h3><p class="setting-help">Enable the access you want C.O.D.Y. to use. Disabled permissions are blocked.</p><div class="settings-group"><label class="setting-row"><span><strong>Computer use</strong><small>Allow native mouse and keyboard control of apps.</small></span><input type="checkbox" data-native-permission="computerUse"></label><label class="setting-row"><span><strong>Background task computer use</strong><small>Let background agents use the mouse and keyboard when computer use is enabled.</small></span><input type="checkbox" data-native-permission="backgroundTasks"></label></div><h3 class="group-title">CODY BACKEND</h3><div class="settings-group"><label class="setting-row"><span><strong>Read on-screen app context</strong><small>Let the assistant include foreground app context in its replies.</small></span><input type="checkbox" data-native-permission="readApps"></label><label class="setting-row"><span><strong>Approve extra task usage automatically</strong><small>Allow background tasks to continue using paid CODY usage without asking each time.</small></span><input type="checkbox" data-native-permission="extraUsage"></label></div><h3 class="group-title">C.O.D.Y. QUICK COMMANDS</h3><p class="setting-help">These switches control built-in C.O.D.Y. commands. CODY background jobs use their own tools and the backend permissions above.</p><div class="settings-group"><label class="setting-row"><span><strong>System information</strong></span><input type="checkbox" data-core-permission="systemInfo"></label>
+<label class="setting-row"><span><strong>Windows settings</strong><small>Change Bluetooth, Wi-Fi, power mode and display brightness.</small></span><input type="checkbox" data-core-permission="systemSettings"></label>
 <label class="setting-row"><span><strong>Open applications</strong></span><input type="checkbox" data-core-permission="applications"></label>
 <label class="setting-row"><span><strong>Audio control</strong></span><input type="checkbox" data-core-permission="audio"></label>
 <label class="setting-row"><span><strong>Windows and focus</strong></span><input type="checkbox" data-core-permission="windows"></label>
