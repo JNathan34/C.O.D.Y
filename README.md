@@ -13,12 +13,12 @@
 
 C.O.D.Y. brings chat, voice controls and background tasks into an animated desktop island. It combines an Electron interface with a bundled Windows engine for computer controls, screen capture, browser connections and visual tools.
 
-**Current release: 0.15.5 · Windows x64 and ARM64 · Early development**
+**Current release: 0.15.6 · Windows x64 and ARM64 · Early development**
 
 ## Install
 
 1. Open the [latest release](https://github.com/JNathan34/C.O.D.Y/releases/latest).
-2. Choose **C.O.D.Y-Setup-0.15.5-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.5-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
+2. Choose **C.O.D.Y-Setup-0.15.6-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.6-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
 3. Open C.O.D.Y., connect your preferred AI service and review the app permissions.
 
 The installer is currently unsigned. Windows may show its publisher as unknown. AI providers require their own accounts; provider subscriptions and paid usage are not included.
@@ -31,7 +31,7 @@ Once this version is installed, **Settings → Updates** can check GitHub, downl
 - **Choose an assistant.** Connect Claude, ChatGPT Codex or ChatGPT. Some background tasks and attached-file requests still use the native Claude connection.
 - **Work in the background.** Start tasks, inspect their progress and open their outputs.
 - **Control Windows.** Use permission-controlled app, audio, window, clipboard, file and computer actions. Press **Esc** to stop computer control.
-- **Change Windows settings in the current source.** Turn Bluetooth or Wi-Fi on/off, choose a power mode, set supported display brightness and open Settings pages. See the [commands and limits](docs/GETTING-STARTED.md#windows-settings-commands-in-the-current-source); these additions are not packaged in the current release.
+- **Change Windows settings.** Turn Bluetooth or Wi-Fi on/off, choose a power mode, set supported display brightness and open Settings pages. See the [commands and limits](docs/GETTING-STARTED.md#windows-settings-commands-in-the-current-source).
 - **Capture your screen.** Take screenshots or record MP4 video, with pause and resume controls.
 - **Connect a browser.** Set up the browser extension through the app. Browser actions require that connection.
 - **Use visual tools.** Draw desktop annotations and work with interactive 3D scenes.
@@ -39,9 +39,11 @@ Once this version is installed, **Settings → Updates** can check GitHub, downl
 
 Features depend on Windows permissions, account access and connected services. The [getting-started guide](docs/GETTING-STARTED.md) covers setup and current limits.
 
-## Pictures of the current development build
+<a id="pictures-of-the-current-development-build"></a>
 
-These pictures show the latest source changes. The downloadable **0.15.5** installer predates the new microphone shortcut, pinned clock/weather and Windows settings commands. The weather picture uses an example reading.
+## Pictures of C.O.D.Y. 0.15.6
+
+These pictures show the interface included in **0.15.6**, including the microphone shortcut, pinned clock/weather and Windows settings commands. The weather picture uses an example reading.
 
 ![Expanded chat with centred suggestions and message box](docs/screenshots/expanded-chat.png)
 
@@ -69,9 +71,20 @@ The new Windows settings permission covers Bluetooth and Wi-Fi on/off, power mod
 
 [Download the latest illustrated Word guide](https://github.com/JNathan34/C.O.D.Y/raw/refs/heads/main/docs/CODY-Complete-Capability-Guide.docx) · [Repository copy](docs/CODY-Complete-Capability-Guide.docx) · [Older release copy](https://github.com/JNathan34/C.O.D.Y/releases/download/v0.15.2/CODY-Complete-Capability-Guide.docx)
 
-The handbook covers capabilities, voice commands, settings and setup, with screenshots and examples. The illustrated guide was prepared on 31 October 2026 for version 0.15.0. The repository copy was updated on 3 November with source changes to expanded chat layout, touchscreen first-tap opening and outside-tap dismissal, validation notes and proposed improvements. These source changes have not been packaged into a new installer during this update. Follow the current release notes for the newer GitHub updater and separate Windows installers.
+The handbook covers capabilities, voice commands, settings and setup, with screenshots and examples. The illustrated guide was prepared on 31 October 2026 for version 0.15.0. The repository copy was updated on 3 November with expanded chat layout, touchscreen improvements, microphone mute, pinned clock and weather, Windows settings commands, validation notes and current screenshots. These changes are included in version 0.15.6. Follow the current release notes for the newer GitHub updater and separate Windows installers.
 
 The repository guide now includes refreshed Shortcuts and Permissions pictures plus current expanded-chat, clock, weather and microphone-status pictures. Weather is labelled as an example reading. Screenshot assets are in `docs/screenshots`; `CODY-App/tools/capture-guide-screenshots.cjs` captures the current renderer, and `CODY-App/tools/update-guide-pictures.py` embeds them using the document Python runtime.
+
+## What changed in 0.15.6
+
+- Toggle C.O.D.Y.-only microphone mute with **Ctrl + Alt + M**, with persistent mute and brief unmute indicators.
+- Pin a live clock and current weather alongside RAM and other island monitors.
+- Control Bluetooth, Wi-Fi, power mode and supported display brightness through permission-checked commands.
+- Improve touchscreen first-tap opening, outside-tap dismissal and expanded chat layout.
+- Keep the drawing Clear button hidden when there is no visible content to clear.
+- Refresh the illustrated Word guide and screenshots.
+
+See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.6.md) and the [changelog](CHANGELOG.md).
 
 ## What changed in 0.15.5
 

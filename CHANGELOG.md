@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.15.6 — 3 November 2026
 
 - Add persistent clock and weather pins with “show clock”, “show weather” and named-city weather commands. Save selections across restarts, refresh the local 24-hour clock live and weather every five minutes, and support individual hide commands.
 

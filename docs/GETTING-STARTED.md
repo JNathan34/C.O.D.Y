@@ -20,7 +20,7 @@ Press **Ctrl + Alt + M** to mute or unmute C.O.D.Y. The same switch is under **S
 
 While muted, the mascot shows a coral microphone with a line drawn across it. Unmuting briefly shows a blue microphone with sound waves for about 1.25 seconds before the normal mascot returns. Reduced-motion settings use a static indicator. The developer animation studio includes isolated previews of both states.
 
-The shortcut works outside C.O.D.Y. when Windows can register it. If another application has reserved the shortcut, the focused C.O.D.Y. window provides a fallback; the Settings switch is also available. This source addition requires the updated native engine and is not yet packaged into a new installer.
+The shortcut works outside C.O.D.Y. when Windows can register it. If another application has reserved the shortcut, the focused C.O.D.Y. window provides a fallback; the Settings switch is also available. This feature is included in 0.15.6 with its updated native engine.
 
 ### Windows settings commands in the current source
 
@@ -35,11 +35,11 @@ In Custom permissions, enable **Windows settings** for radio, power-mode and bri
 
 Windows Energy saver/Battery saver is separate from the performance power mode. Requests to turn Energy saver/Battery saver on or off open its Settings page and clearly state that the toggle still needs to be changed there. Radio access can be denied by Windows, hardware switches or device policy. Turning off a radio can disconnect devices or networking; C.O.D.Y. reports success only after Windows confirms the requested state.
 
-These additions are source changes and have not been packaged into a new installer yet.
+These commands are included in 0.15.6.
 
 ## On-screen drawing controls
 
-The drawing **Clear** button appears when there is rendered drawing content or a 3D model to remove. Starting a narration or allocating an empty drawing canvas does not show it. Cleared, faded and newly empty canvases hide the old button. Clear and model close controls remain available while actual drawings are being generated. This fix is in the development source and requires the updated native engine.
+The drawing **Clear** button appears when there is rendered drawing content or a 3D model to remove. Starting a narration or allocating an empty drawing canvas does not show it. Cleared, faded and newly empty canvases hide the old button. Clear and model close controls remain available while actual drawings are being generated. This fix is included in 0.15.6.
 
 ## Keep clock and weather in the island
 
@@ -49,7 +49,7 @@ Pins stay selected until you remove them and return when C.O.D.Y. restarts. They
 
 Weather refreshes every five minutes while pinned and retries failed lookups after one minute. It needs an internet connection; failed lookups show **Weather unavailable** rather than an old temperature as if it were current.
 
-Use **“hide clock”**, **“hide weather”**, **“hide clock and weather”** or **“clear the island”** to remove pins. Ordinary questions such as “what’s the time?” and “what’s the weather?” still show temporary answers. These additions are in the development source and are not yet packaged into a new installer.
+Use **“hide clock”**, **“hide weather”**, **“hide clock and weather”** or **“clear the island”** to remove pins. Ordinary questions such as “what’s the time?” and “what’s the weather?” still show temporary answers. These additions are included in 0.15.6.
 
 ## Browser connection
 

@@ -44,7 +44,7 @@ replace_picture('Permissions settings reference', 'settings-windows-permissions.
 for paragraph in document.paragraphs:
     if paragraph.text.startswith('The screenshots show the running app.'):
         paragraph.text = ("The screenshots illustrate CODY's interface. The refreshed pictures dated 3 November "
-                          'show the current development build, with example settings selections and a sample weather reading.')
+                          'show CODY 0.15.6, with example settings selections and a sample weather reading.')
 
 # Keep the gallery inside its own tagged content control so rerunning this script
 # replaces only that gallery, preserving other guide updates added afterwards.
@@ -86,8 +86,8 @@ def figure(filename, caption, width):
         run.font.size = Pt(10)
 
 heading('Current interface pictures')
-paragraph('Captured 3 November 2026 from the current development interface. '
-          'These pictures show the newer source changes, which are not yet in a new installer.')
+paragraph('Captured 3 November 2026 from the CODY 0.15.6 interface. '
+          'These features are included in the 0.15.6 installers.')
 figure('expanded-chat.png', 'Expanded chat with centred suggestions and a centred message box.', 6.6)
 
 heading('Clock weather and microphone indicators')
