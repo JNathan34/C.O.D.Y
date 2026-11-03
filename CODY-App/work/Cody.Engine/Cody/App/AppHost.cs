@@ -4235,8 +4235,9 @@ public sealed class AppHost : INotchCardActions, IAppActions, INotchActions
 			bool isSignedIn = Services.Auth.IsSignedIn;
 			bool hasCompletedOnboardingNow = HasCompletedOnboardingNow;
 			bool flag = Real?.Tutorial.IsEngaged ?? false;
-			corePresenter.SetHoverRoutesToNotch((isSignedIn & hasCompletedOnboardingNow) && AllPermissionsGranted && !DrawnOnboardingTour.SuppressesNotchHover);
-			corePresenter.SetRoutesTextModeToNotchChat((isSignedIn & hasCompletedOnboardingNow) && !flag && !introSequenceActive);
+			bool nativeShell = !HeyClicky.App.Cody.CodyEngineBridge.EngineMode;
+			corePresenter.SetHoverRoutesToNotch(nativeShell && (isSignedIn & hasCompletedOnboardingNow) && AllPermissionsGranted && !DrawnOnboardingTour.SuppressesNotchHover);
+			corePresenter.SetRoutesTextModeToNotchChat(nativeShell && (isSignedIn & hasCompletedOnboardingNow) && !flag && !introSequenceActive);
 			SyncRestingMark();
 		}
 	}

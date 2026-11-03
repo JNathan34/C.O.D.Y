@@ -202,6 +202,8 @@ public sealed class ArcDock
 	{
 		get
 		{
+			// Electron owns the task UI; never arm the old edge-hover dock.
+			if (HeyClicky.App.Cody.CodyEngineBridge.EngineMode) return false;
 			if (Host.HasCompletedOnboarding())
 			{
 				return !Host.OnboardingHidesDock();
@@ -1312,6 +1314,31 @@ public sealed class ArcDock
 			view.Sync(DeckWindows());
 			NotifyIfFrontCardSizeChanged();
 			pointerEventDriver.EvaluateSoon();
+		}
+	}
+
+	internal object VerifyEngineShellHidden()
+	{
+		if (!HeyClicky.App.Cody.CodyEngineBridge.EngineMode) throw new InvalidOperationException("Engine-only verification.");
+		var completed = Host.HasCompletedOnboarding;
+		var hides = Host.OnboardingHidesDock;
+		var suppressed = Host.SuppressesVisualSurfaces;
+		try
+		{
+			// Reproduce settings/sign-in making the legacy shelf eligible to appear.
+			Host.HasCompletedOnboarding = () => true;
+			Host.OnboardingHidesDock = () => false;
+			Host.SuppressesVisualSurfaces = () => false;
+			Refresh();
+			view.Show(); // A direct/native reopen must also remain blocked.
+			return new { allowed = ShowsDock, visible = view.IsShowing, pointerActive = pointerEventDriver.IsRunning };
+		}
+		finally
+		{
+			Host.HasCompletedOnboarding = completed;
+			Host.OnboardingHidesDock = hides;
+			Host.SuppressesVisualSurfaces = suppressed;
+			Refresh();
 		}
 	}
 

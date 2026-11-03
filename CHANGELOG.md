@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.8 — 3 November 2026
+
+- Keep expanded chat large during the current open session, then restore its normal size and pointer bounds when the panel minimises. The next opening starts at normal size; conversation and draft content stay intact.
+
+- Prevent the legacy native task dock from appearing on top-edge hover in C.O.D.Y. engine mode. Keep its pointer listener stopped, block native reopen attempts and disable old notch hover/text routing. Background tasks remain available through C.O.D.Y.'s Tasks page.
+
+- Show updater status in the island: checking, a new version, download percentage and progress, ready to restart, installation, errors and a brief up-to-date confirmation. Tap or press Enter on the status to open Settings → Updates. Listening, recording, games and finished timer alerts retain priority; normal monitors return after transient notices expire. Downloads and restarts still require the existing buttons.
+
+- Include all 0.15.7 3D window, close-button and 10× zoom fixes.
+
 ## 0.15.7 — 3 November 2026
 
 - Keep 3D models and pointer input within the visible window content area.

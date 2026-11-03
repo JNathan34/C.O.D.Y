@@ -184,6 +184,7 @@ internal sealed class ArcDockView
 
 	public void Show()
 	{
+		if (HeyClicky.App.Cody.CodyEngineBridge.EngineMode) return;
 		if (!showing)
 		{
 			showing = true;

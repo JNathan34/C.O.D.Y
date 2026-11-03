@@ -4,6 +4,8 @@
   const $=id=>document.getElementById(id);let state;
   function render(value){
     state=value;
+    window.CODYUpdateStatus.set(value);
+    document.dispatchEvent(new CustomEvent('cody:update-state'));
     $('settings-app-version').textContent='v'+value.currentVersion;
     $('update-version').textContent='Version '+value.currentVersion;
     $('update-automatic').checked=value.enabled;
@@ -23,6 +25,16 @@
   $('update-install').addEventListener('click',()=>void run(()=>api.install()));
   $('update-releases').addEventListener('click',()=>void run(()=>api.releases()));
   $('update-automatic').addEventListener('change',event=>void run(()=>api.configure(event.target.checked)));
+  const info=$('island-info');
+  function openUpdates(event){
+    if(info.dataset.update!=='true')return;
+    event.preventDefault();event.stopImmediatePropagation();
+    window.CODYIsland.togglePanel(true);window.CODYIsland.setActiveView('settings');
+    document.querySelector('[data-tab="updates"]').click();
+    $(state.status==='ready'?'update-install':state.status==='available'?'update-download':'update-check').focus();
+  }
+  info.addEventListener('click',openUpdates,true);
+  info.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key))openUpdates(event);});
   window.assistant.on('updates-state',render);
   void run(()=>api.state());
 })();

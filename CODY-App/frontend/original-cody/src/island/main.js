@@ -224,7 +224,7 @@ function setIslandState(next) {
 }
 function setExpanded(next) {
   const desired=Boolean(next);
-  if(!desired)pickerOpen=false;
+  if(!desired){pickerOpen=false;chatExpanded=false;}
   if(desired===expanded)return;
   expanded=desired;
   if(expanded){

@@ -19,6 +19,9 @@
   window.CODYIcons.set($('island-timer-icon'),'timer');
   window.CODYIcons.set($('island-media-previous'),'skip-back');window.CODYIcons.set($('island-media-next'),'skip-forward');
   function renderTimer(){
+    const infoUpdate=$('island-info');
+    infoUpdate.dataset.update='false';infoUpdate.removeAttribute('role');infoUpdate.removeAttribute('tabindex');infoUpdate.removeAttribute('aria-label');
+    $('island-update-progress').hidden=true;
     if(wakeListening()&&!['starting','recording','paused','stopping'].includes(capture.status)){
       for(const name of ['task-layout','recording-layout','media-layout','weather-layout','timer-active','timer-finished'])document.body.classList.remove(name);
       document.body.classList.add('utility-layout','island-content-active');
@@ -34,16 +37,18 @@
     island.setMediaPlaying(Boolean(media.available&&media.playing));
     const recording=['starting','recording','paused','stopping'].includes(capture.status);
     const quick=Boolean(!recording&&!game.active&&quickCard&&quickCard.expiresAt>Date.now()&&timer?.status!=='finished');
-    const showMonitors=monitors.active&&!recording&&!game.active&&!quick;
-    const showGame=game.active&&!recording,showTimer=Boolean(timer)&&!showMonitors&&!quick&&!showGame&&!recording,showTasks=activeTasks.length>0&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame,showMedia=!showTasks&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame&&media.available&&Boolean(media.title);
+    const updateCard=window.CODYUpdateStatus?.card();
+    const showUpdate=Boolean(updateCard&&!recording&&!game.active&&!quick&&timer?.status!=='finished');
+    const showMonitors=monitors.active&&!recording&&!game.active&&!quick&&!showUpdate&&timer?.status!=='finished';
+    const showGame=game.active&&!recording,showTimer=Boolean(timer)&&!showMonitors&&!quick&&!showGame&&!recording&&!showUpdate,showTasks=activeTasks.length>0&&!showUpdate&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame,showMedia=!showUpdate&&!showTasks&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame&&media.available&&Boolean(media.title);
     document.body.classList.toggle('task-layout',Boolean(showTasks));
     document.body.classList.toggle('recording-layout',recording);document.body.dataset.recording=capture.status;
     document.body.classList.toggle('media-layout',Boolean(showMedia));
     document.body.classList.toggle('weather-layout',Boolean(quick&&quickCard.kind==='weather'));
-    document.body.classList.toggle('utility-layout',Boolean(showTasks||showMonitors||recording||showGame||(quick&&['time','date','utility'].includes(quickCard.kind))));
+    document.body.classList.toggle('utility-layout',Boolean(showUpdate||showTasks||showMonitors||recording||showGame||(quick&&['time','date','utility'].includes(quickCard.kind))));
     const button=$('island-timer');button.hidden=!showTimer;document.body.classList.toggle('timer-active',showTimer);
-    document.body.classList.toggle('island-content-active',Boolean(showTasks||showMonitors||recording||showTimer||quick||showMedia||showGame));
-    const info=$('island-info');info.hidden=!showTasks&&!showMonitors&&!recording&&!quick&&!showMedia&&!showGame;info.dataset.tasks=String(Boolean(showTasks));info.dataset.rps=String(Boolean(showGame));info.classList.toggle('showing-media',Boolean(showMedia));
+    document.body.classList.toggle('island-content-active',Boolean(showUpdate||showTasks||showMonitors||recording||showTimer||quick||showMedia||showGame));
+    const info=$('island-info');info.hidden=!showUpdate&&!showTasks&&!showMonitors&&!recording&&!quick&&!showMedia&&!showGame;info.dataset.tasks=String(Boolean(showTasks));info.dataset.rps=String(Boolean(showGame));info.classList.toggle('showing-media',Boolean(showMedia));
     if(!showMonitors)delete info.dataset.monitor;
     if(showMonitors&&monitors.items.length){
       const index=Math.floor(Date.now()/3000)%monitors.items.length,item=monitors.items[index];
@@ -89,6 +94,16 @@
       $('island-info-detail').textContent=task.progress||(task.status==='Starting'?'Starting…':'Working in background');info.title=task.title+' · Click to view background tasks';
       $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),'clock');art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
     }
+    if(showUpdate){
+      info.dataset.update='true';info.dataset.tasks='false';info.dataset.rps='false';
+      info.setAttribute('role','button');info.tabIndex=0;
+      info.title=(updateCard.tooltip||updateCard.text+' · '+updateCard.detail)+' · Open Settings → Updates';
+      info.setAttribute('aria-label',info.title);
+      $('island-info-text').textContent=updateCard.text;$('island-info-detail').textContent=updateCard.detail;
+      $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),updateCard.icon);
+      art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
+      const progress=$('island-update-progress');progress.hidden=updateCard.progress===undefined;progress.value=updateCard.progress??0;
+    }
     document.body.classList.toggle('timer-finished',timer?.status==='finished');
     if(!timer)return;
     const remaining=Math.max(0,Math.ceil((timer.deadline-Date.now())/1000));
@@ -98,6 +113,7 @@
     button.title=timer.status==='finished'?'Timer finished — click to dismiss':'Timer running — click to open chat';
     button.setAttribute('aria-label',timer.status==='finished'?'Timer finished. Dismiss timer.':`Timer: ${label} remaining. Open chat.`);
   }
+  document.addEventListener('cody:update-state',renderTimer);
   api.on('rps-state',state=>{game=state;renderTimer();});
   api.on('capture-state',state=>{capture=state;renderTimer();});
   api.on('monitor-state',state=>{monitors=state;renderTimer();});

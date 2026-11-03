@@ -17,9 +17,15 @@ app.whenReady().then(async()=>{
   win.webContents.invalidate();await new Promise(resolve=>setTimeout(resolve,400));await fs.writeFile(path.resolve(__dirname,'../reports/chat-expanded.png'),(await win.webContents.capturePage()).toPNG());
   await evaluate('window.CODYIsland.setActiveView("settings")');assert.ok(await evaluate('document.getElementById("chat-expand").hidden'));
   await evaluate('window.CODYIsland.setActiveView("chat")');assert.equal((await size()).width,900);
+  await evaluate('window.CODYIsland.setState("thinking");window.CODYIsland.setState("idle");');assert.equal((await size()).width,900);
+  await evaluate('window.CODYIsland.togglePanel(false);window.CODYIsland.togglePanel(true);');
+  assert.equal((await size()).width,520);assert.equal((await size()).height,352);
+  assert.equal(await evaluate('document.getElementById("chat-expand").getAttribute("aria-pressed")'),'false');
+  assert.equal(await evaluate('document.getElementById("quick-input").value'),'Keep my draft');
+  await click();assert.equal((await size()).width,900);
   await click();assert.equal((await size()).width,520);assert.equal(await evaluate('document.getElementById("chat-expand").getAttribute("aria-label")'),'Expand chat');
   win.setContentSize(720,560);await click();const small=await size();assert.ok(small.width<=small.viewportWidth&&small.height<=small.viewportHeight&&small.buttonInside&&small.composerInside);
-  assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,checks:['top-right expand and compact toggle','conversation and draft preserved','return from Settings preserves size','fits smaller displays'],compact,expanded,small}));
+  assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,checks:['top-right expand and compact toggle','conversation and draft preserved','return from Settings and response states preserve size','minimising resets next opening to normal size','fits smaller displays'],compact,expanded,small}));
  }catch(error){console.error(error);app.exitCode=1;}
  finally{win.destroy();app.exit(app.exitCode||0);}
 });

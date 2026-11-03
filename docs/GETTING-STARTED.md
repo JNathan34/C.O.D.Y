@@ -74,3 +74,19 @@ Older installations without the updater need one manual installation of 0.15.1 o
 - End-to-end updates need two published versions; the first release establishes the baseline.
 
 For a reproducible bug report, include the app version, Windows architecture, steps taken and the observed result. Remove personal data and credentials from screenshots and logs.
+
+## Island update status in the next version
+
+This is an **unreleased local change**, not part of the 0.15.6 installer. The island shows update checks, new versions, download percentage and progress, ready-to-install status and installation. Tap the status, or focus it and press Enter or Space, to open **Settings → Updates**. Download and restart still use the existing buttons.
+
+An up-to-date confirmation lasts eight seconds; errors last thirty seconds and remain in Updates for details and retry. Available and ready notices stay until the state changes. Listening, recording, games, quick responses and finished timer alerts keep priority. Ordinary monitors return when the notice clears.
+
+![Example download progress in the island](screenshots/update-status.png)
+
+## Legacy task panel fix in the next version
+
+An unreleased fix keeps the old native task dock and its top-edge hover listener disabled while C.O.D.Y. owns the interface. Use C.O.D.Y.'s **Tasks** button to view background work. Task execution and saved tasks are preserved. This fix needs the rebuilt native engine and is not included in the published 0.15.6 installer.
+
+## Expanded chat size in the next version
+
+In the next version, pressing Expand keeps chat large for the current open session, including while replies arrive or after returning from Settings. Minimising the panel resets its size, so the next opening uses normal chat size. The conversation and draft message are preserved. This is an unreleased local change, separate from the published 0.15.6 installers.

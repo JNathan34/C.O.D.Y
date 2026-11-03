@@ -472,6 +472,7 @@
     if(activeView==='chat'&&!window.assistant&&document.getElementById('chat-connection'))document.getElementById('chat-connection').textContent = window.CODYIsland?.backendConnected?'Connected to C.O.D.Y. backend':'Not connected in standalone GUI';
   }
   function setPanelOpen(next,notify=true){
+    if(!next&&chatExpanded)setChatExpanded(false);
     if(next)wakeUp();
     if(next&&!panelOpen)setActiveView('chat');
     panelOpen=Boolean(next);
