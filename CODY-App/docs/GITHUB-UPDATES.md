@@ -19,6 +19,12 @@ replaces the complete packaged app, including its bundled engine.
 
 ## Release a version
 
+Stable releases include all completed features, fixes and documentation changes
+since the previous release. Review both commits and local changes before building,
+and describe the full change set in the release notes. Publish a narrower hotfix
+only when explicitly requested. Once a version is public, use a higher version for
+additional changes so existing installations can receive them through the updater.
+
 1. Increase `version` in `frontend/original-cody/package.json`. Use a stable
    version greater than the published release, for example `0.15.3`.
 2. Quit the development app and run `Build-CODY-Standalone.bat`. This builds the
