@@ -52,6 +52,8 @@ const DEFAULTS = Object.freeze({
   animationSpeed: 'normal', // slow | normal | fast | off
   revealStyle: 'liquid', // liquid | simple | none
   enableHotkey: true,
+  quickMessageEnabled: true,
+  quickMessagePhrase: 'done',
   hotkeyMode: 'hold', // Ctrl+Alt is strictly push-to-talk
   startListeningOnHotkey: true,
   activityHideDelay: 1600,
@@ -113,6 +115,7 @@ function validateSettings(patch, old = settings) {
   if (!['slow','normal','fast','off'].includes(next.animationSpeed)) next.animationSpeed = 'normal';
   if (!['liquid','simple','none'].includes(next.revealStyle)) next.revealStyle = 'liquid';
   next.hotkeyMode = 'hold'; // previous toggle settings must never override push-to-talk
+  next.quickMessagePhrase = next.quickMessagePhrase.trim().slice(0, 1000);
   next.activityHideDelay = Math.max(0, Math.min(10000, next.activityHideDelay));
   if (!Object.values(mascotLooks).some(look=>look.color===next.accentColor)) next.accentColor = '#9D9DFF';
   if(!['system','independent'].includes(next.controlInputMode))next.controlInputMode='system';
@@ -503,6 +506,11 @@ function stop(){
   if(settingsWindow&&!settingsWindow.isDestroyed())settingsWindow.destroy();
 }
 function handleHotkey(action){
+  if(action==='quick-message'){
+    if(settings.quickMessageEnabled&&settings.quickMessagePhrase.trim())
+      emit('island:command',{type:'quick-message',text:settings.quickMessagePhrase});
+    return;
+  }
   if(action==='mute-up'){muteShortcutHeld=false;return;}
   if(action==='mute'){if(muteShortcutHeld)return;muteShortcutHeld=true;setMicrophoneMuted(!settings.microphoneMuted);return;}
   if(action?.type==='pointer'){

@@ -206,7 +206,15 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
         if(!operation.user)operation.user=sendMessage('user',result.utilityText);operation.answer=sendMessage('assistant','');sendUI('busy',{busy:true});
         const [answer]=await Promise.all([engine.request('submit',{turn:operation.turn,text:result.utilityText,speak:true,files:operation.files}),operation.attachmentBatch?.ids.length?attachments.clearSent(operation.chatId,operation.attachmentBatch.ids):Promise.resolve()]);
         if(active===operation){if(!operation.answer.text&&answer.text)replace(operation.answer,answer.text);finish();}
-      }else if(result.utilityText){await runUtility(operation,result.utilityText,true);}else{const spoken=active?.user?.text;finish();if(spoken)void utilities?.observe(spoken);}
+      }else if(result.utilityText){await runUtility(operation,result.utilityText,true);}else{
+        // Reconcile the final text before releasing the turn if a streaming
+        // update was missed. No answer means the session may still contain a
+        // previous turn's text (for example after a silent microphone tap).
+        if(operation.answer&&typeof result.text==='string'&&result.text.trim()){
+          if(operation.answer.text!==result.text)replace(operation.answer,result.text);
+        }
+        const spoken=active?.user?.text;finish();if(spoken)void utilities?.observe(spoken);
+      }
       return result;
     }catch(error){if(active===operation)finish(error.message);throw error;}
   };

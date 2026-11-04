@@ -26,6 +26,36 @@ public static class CodyModifierKeys {
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string name);
     private static readonly ConcurrentQueue<string> presses = new ConcurrentQueue<string>();
     private static readonly MouseHook callback = OnMouse;
+    private static readonly MouseHook keyboardCallback = OnKeyboard;
+    private static bool altGrHeld, altGrUsed;
+    private static uint altGrStarted;
+    private static IntPtr OnKeyboard(int code, IntPtr message, IntPtr data) {
+        if (code >= 0) {
+            int key = Marshal.ReadInt32(data), kind = message.ToInt32();
+            uint flags = unchecked((uint)Marshal.ReadInt32(data, 8));
+            uint time = unchecked((uint)Marshal.ReadInt32(data, 12));
+            bool down = kind == 0x0100 || kind == 0x0104;
+            bool up = kind == 0x0101 || kind == 0x0105;
+            // Only physical taps: automation must never send a quick message.
+            if ((flags & 0x10) == 0) {
+                if (key == 0xA5) {
+                    if (down && !altGrHeld) {
+                        altGrHeld = true; altGrUsed = false; altGrStarted = time;
+                        // Ctrl may be synthesized by Windows for AltGr.
+                        for (int vk = 8; vk < 255; vk++) {
+                            if (vk == 0x11 || vk == 0x12 || vk == 0xA2 || vk == 0xA3 || vk == 0xA5) continue;
+                            if ((GetAsyncKeyState(vk) & 0x8000) != 0) { altGrUsed = true; break; }
+                        }
+                    }
+                    if (up && altGrHeld) {
+                        if (!altGrUsed && unchecked(time - altGrStarted) <= 700) presses.Enqueue("ALTGR_TAP");
+                        altGrHeld = false;
+                    }
+                } else if (down && altGrHeld) altGrUsed = true;
+            }
+        }
+        return CallNextHookEx(IntPtr.Zero, code, message, data);
+    }
     private static readonly ManualResetEvent ready = new ManualResetEvent(false);
     private static Thread watcher;
     private static uint threadId;
@@ -48,10 +78,16 @@ public static class CodyModifierKeys {
             threadId = GetCurrentThreadId();
             IntPtr hook = SetWindowsHookEx(14, callback, GetModuleHandle(null), 0);
             if (hook == IntPtr.Zero) startupError = Marshal.GetLastWin32Error();
+            IntPtr keyboardHook = SetWindowsHookEx(13, keyboardCallback, GetModuleHandle(null), 0);
+            if (keyboardHook == IntPtr.Zero) startupError = Marshal.GetLastWin32Error();
             ready.Set();
-            if (hook == IntPtr.Zero) return;
+            if (startupError != 0) {
+                if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
+                if (keyboardHook != IntPtr.Zero) UnhookWindowsHookEx(keyboardHook);
+                return;
+            }
             try { Message message; while (GetMessage(out message, IntPtr.Zero, 0, 0) > 0) {} }
-            finally { UnhookWindowsHookEx(hook); }
+            finally { UnhookWindowsHookEx(hook); UnhookWindowsHookEx(keyboardHook); }
         });
         watcher.IsBackground = true;
         watcher.Start(); ready.WaitOne();

@@ -16,6 +16,7 @@
     "electron": "^38.0.0",
     "electron-builder": "^26.0.12",
     "esbuild": "0.25.0",
+    "resedit": "1.7.2",
     "three": "0.178.0"
   },
   "dependencies": {

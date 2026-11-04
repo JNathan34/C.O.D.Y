@@ -39,6 +39,7 @@
     idleReactions:'subtle',cursorTracking:true,blinkEnabled:true,reactiveExpressions:true,
     funReactions:true,sunglassesEnabled:true,pretendSleepEnabled:true,wifiReactions:true,
     startListeningOnHotkey:true,hotkeyMode:'hold',activityHideDelay:1600,
+    quickMessageEnabled:true,quickMessagePhrase:'done',
     enableHotkey:true,wakeWordEnabled:false,wakeHeyCody:true,wakeOkayCody:true,wakeCody:true,controlInputMode:'system',mascotLook:'blue',accentColor:'#9D9DFF',cursorColor:'accent',hideFloatingCursor:false,screenHighlight:true,shakeToDetach:true,voiceId:'',voiceRate:1,voicePitch:1,voiceVolume:1,micDeviceId:'',micSensitivity:1,visibility:'always'
   };
   let settings = {...DEFAULTS};
@@ -469,6 +470,7 @@
     document.getElementById('panel-settings').classList.toggle('is-selected',activeView==='settings');
     document.getElementById('panel-settings').setAttribute('aria-label',activeView==='settings'?'Back to chat':'Settings');
     document.dispatchEvent(new CustomEvent('cody:view-changed',{detail:activeView}));
+    if(activeView==='chat'||history)requestAnimationFrame(()=>{const log=document.getElementById('conversation');log.scrollTop=log.scrollHeight;});
     if(activeView==='chat'&&!window.assistant&&document.getElementById('chat-connection'))document.getElementById('chat-connection').textContent = window.CODYIsland?.backendConnected?'Connected to C.O.D.Y. backend':'Not connected in standalone GUI';
   }
   function setPanelOpen(next,notify=true){
@@ -484,7 +486,7 @@
     panel.inert=!panelOpen;
     island.tabIndex=panelOpen?-1:0;
     if(notify)api?.expand(panelOpen);
-    if(panelOpen && activeView==='chat')setTimeout(()=>{if(panelOpen && activeView==='chat')input.focus({preventScroll:true});},290);
+    if(panelOpen && activeView==='chat')setTimeout(()=>{if(panelOpen && activeView==='chat'){const log=document.getElementById('conversation');log.scrollTop=log.scrollHeight;input.focus({preventScroll:true});}},290);
     if(!panelOpen){stopMicTest();try{speechSynthesis.cancel();}catch{}}
   }
   function togglePanel(value=!panelOpen){setPanelOpen(value);}
@@ -698,6 +700,7 @@
   if(api){
     api.onHotkey(onHotkey);
     api.onCommand(action=>{
+      if(action?.type==='quick-message'){void window.CODYIsland?.onQuickMessage?.(action.text);return;}
       if(action==='pointer-open'){pointerOpenUntil=performance.now()+1500;setPanelOpen(true,false);return;}
       if(action==='start')void startMicrophone();else if(action==='stop')stopMicrophone();
       else if(action==='chat'){setActiveView('chat');setPanelOpen(true,false);}

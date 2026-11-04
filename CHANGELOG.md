@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Keep live spoken replies visible as they grow, preserve the reader's position in chat history, and reconcile the final reply if a streaming update was missed.
+- Add a configurable AltGr quick-message shortcut, defaulting to “done”, with a saved enable switch and phrase in Shortcuts settings. Preserve drafts and prevent duplicate sends.
+- Replace every embedded engine icon group and its image resources with CODY branding so Task Manager no longer selects the original HeyClick icon. Use the CODY icon in future native builds.
+
 ## 0.15.8 — 3 November 2026
 
 - Keep expanded chat large during the current open session, then restore its normal size and pointer bounds when the panel minimises. The next opening starts at normal size; conversation and draft content stay intact.

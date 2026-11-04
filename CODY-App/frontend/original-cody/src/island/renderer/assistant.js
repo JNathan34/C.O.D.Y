@@ -183,12 +183,16 @@
     renderHistory();
   }
   function updateMessage(chatId,messageId,text,delta=false){
+    const log=$('conversation');
+    // Measure before replacing the text: a new spoken line can grow by more
+    // than the follow threshold in one update.
+    const follow=log.scrollHeight-log.scrollTop-log.clientHeight<130;
     const message=app.data.chats.find(chat=>chat.id===chatId)?.messages.find(message=>message.id===messageId);
     if(message)message.text=delta?(message.text||'')+text:text;
     if(chatId!==app.data.activeChatId)return;
     const node=[...$('chat-messages').children].find(node=>node.dataset.messageId===messageId);
     if(node){island.renderMessage(node,displayText(message?.text||text)||'Thinking…',message?.role||'assistant');window.CODYAttachments?.decorateMessage(node,message||{});}
-    const log=$('conversation');if(log.scrollHeight-log.scrollTop-log.clientHeight<130)log.scrollTop=log.scrollHeight;
+    if(follow)log.scrollTop=log.scrollHeight;
   }
   function busy(value){
     app.busy=Boolean(value);island.backendBusy=app.busy;
@@ -224,9 +228,15 @@
     try{const status=await api.control.firefoxStatus();$('core-firefox-status').textContent=status.connected?'Firefox extension connected':status.error||'Extension not connected';}
     catch(error){$('core-firefox-status').textContent=error.message;}
   }
-  async function send({voice:voiceRequest=false}={}){
+  let sendingMessage=false;
+  async function send(options={}){
+    if(sendingMessage)return;
+    sendingMessage=true;
+    try{return await sendRequest(options);}finally{sendingMessage=false;}
+  }
+  async function sendRequest({voice:voiceRequest=false,quickMessage}={}){
     if(app.busy)return;
-    const text=$('quick-input').value.trim();if(!text)return;
+    const text=(quickMessage??$('quick-input').value).trim();if(!text)return;
     await window.CODYAttachments?.ready();if(app.busy)return;
     voice?.stopSpeech(); // a new request owns a new utterance and visual timeline
     if(!app.data.activeChatId){
@@ -234,9 +244,13 @@
     }
     const result=await api.sendMessage({chatId:app.data.activeChatId,text,mode:app.mode,voice:voiceRequest});
     if(result?.error||result?.blocked){note(result.error||'Request blocked');return result;}
-    if(!result?.cancelled){$('quick-input').value='';island.updateInput();}
+    if(!result?.cancelled&&quickMessage===undefined){$('quick-input').value='';island.updateInput();}
     return result;
   }
+  island.onQuickMessage=async text=>{
+    if(app.busy||sendingMessage){note('C.O.D.Y. is busy. Tap AltGr again when ready.');return;}
+    try{await send({quickMessage:text});}catch(error){note(error.message);}
+  };
   island.onPrompt=async text=>{
     $('quick-input').value=text;
     await send();
