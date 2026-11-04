@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.15.9 — 4 November 2026
 
 - Keep live spoken replies visible as they grow, preserve the reader's position in chat history, and reconcile the final reply if a streaming update was missed.
 - Add a configurable AltGr quick-message shortcut, defaulting to “done”, with a saved enable switch and phrase in Shortcuts settings. Preserve drafts and prevent duplicate sends.
