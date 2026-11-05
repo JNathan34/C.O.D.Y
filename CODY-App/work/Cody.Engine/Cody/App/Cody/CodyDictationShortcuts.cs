@@ -35,7 +35,7 @@ internal sealed class CodyDictationShortcuts:IDisposable
         }
     }
     private nint OnKey(int code,nint message,nint data){
-        if(code>=0){var key=Marshal.PtrToStructure<KeyEvent>(data);if(keys.Handle(key.Key,message==0x100||message==0x104,message==0x101||message==0x105,key.Extra,!CodyIndependentInput.Active&&!CodyEngineBridge.MicrophoneMuted,dictation.HandleShortcut,dictation.CancelActiveSession))return 1;}
+        if(code>=0&&!CodyIndependentInput.Active){var key=Marshal.PtrToStructure<KeyEvent>(data);if(keys.Handle(key.Key,message==0x100||message==0x104,message==0x101||message==0x105,key.Extra,!CodyIndependentInput.Active&&!CodyEngineBridge.MicrophoneMuted,dictation.HandleShortcut,dictation.CancelActiveSession))return 1;}
         return CallNextHookEx(hook,code,message,data);
     }
     public void Dispose(){if(hook!=0){UnhookWindowsHookEx(hook);hook=0;}}

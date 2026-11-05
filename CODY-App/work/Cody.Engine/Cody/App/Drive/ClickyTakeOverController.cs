@@ -755,7 +755,18 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 			Log.Info("drive", "begin: " + goal);
 			session.ClearDrawingForDrive();
 			DisplayInfo displayInfo = WorkDisplay();
-			overlay.Show(((object)displayInfo == null) ? Displays.UnderCursor() : MonitorFor(displayInfo), Accent(), "Getting started");
+			try
+			{
+				if (CodyEngineBridge.EngineMode && !CodyEngineBridge.EscapeCancellationAvailable)
+					throw new InvalidOperationException("Escape listener unavailable.");
+				overlay.Show(((object)displayInfo == null) ? Displays.UnderCursor() : MonitorFor(displayInfo), Accent(), "Getting started");
+			}
+			catch (Exception error)
+			{
+				Log.Warn("drive", "Could not start protected computer control: " + error.Message);
+				Finish("I couldn't protect your input, so I stopped computer control.");
+				return;
+			}
 			PlayChime("agent-launch", 0.5);
 			lock (gate)
 			{
@@ -776,6 +787,11 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 				catch (Exception ex2)
 				{
 					Log.Error("drive", "drive failed", ex2);
+					OnUi(() =>
+					{
+						if (!cancellation.IsCancellationRequested)
+							Finish("Computer control stopped after an error.");
+					});
 				}
 			});
 		}
@@ -1378,7 +1394,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 
 	public void StopBecauseUserSpoke()
 	{
-		if (CurrentPhase.Kind == PhaseKind.Idle)
+		if (CurrentPhase.Kind == PhaseKind.Idle || (CodyEngineBridge.EngineMode && IsDriving))
 		{
 			return;
 		}

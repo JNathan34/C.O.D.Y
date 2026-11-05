@@ -29,7 +29,7 @@ internal static class CodyIndependentInput
     internal static bool Active=>active;
     public static PointD CurrentPointer{get{lock(gate)return CodyEngineBridge.EngineMode&&active&&!systemInput?pointer:ClickyScreenActuator.CurrentPointer;}}
     public static bool IsLeftButtonHeld=>CodyEngineBridge.EngineMode&&!systemInput?left:ClickyScreenActuator.IsLeftButtonHeld;
-    internal static void Begin(bool? useSystemInput=null){if(!CodyEngineBridge.EngineMode)return;lock(gate){if(active)return;pointer=ClickyScreenActuator.CurrentPointer;systemInput=useSystemInput??SystemInputEnabled;inputCancellation=new CancellationTokenSource();if(systemInput)CodyMouseGuard.Start(End);active=true;generation++;target=hoverTarget=0;LastReason=LastMethod="";CodyAccessibilityInput.Reset();}}
+    internal static void Begin(bool? useSystemInput=null){if(!CodyEngineBridge.EngineMode)return;lock(gate){if(active)return;pointer=ClickyScreenActuator.CurrentPointer;systemInput=useSystemInput??SystemInputEnabled;inputCancellation=new CancellationTokenSource();int ticket=++generation;CodyMouseGuard.Start(systemInput,()=>{lock(gate){if(ticket==generation)End();}});active=true;target=hoverTarget=0;LastReason=LastMethod="";CodyAccessibilityInput.Reset();}}
     internal static void End(){if(!CodyEngineBridge.EngineMode)return;lock(gate){CodyMouseGuard.Stop();inputCancellation?.Cancel();ReleaseHeldButton();if(systemInput)ClickyScreenActuator.ReleaseStrandedKeysAfterDrive("control ended");active=false;target=0;generation++;if(hoverTarget!=0)PostMessage(hoverTarget,0x2A3,0,0);hoverTarget=0;}}
     public static async Task GlideAsync(PointD point,double seconds=.45,CancellationToken ct=default){
         if(CodyEngineBridge.EngineMode&&!active)return;

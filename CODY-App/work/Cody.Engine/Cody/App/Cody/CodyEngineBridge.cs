@@ -87,7 +87,7 @@ public static class CodyEngineBridge
         CodyDriveVisuals.Start(host.DispatcherQueue);
         CodyModelZoom.Start(host.Real.Canvas);
         CodyJobReports.Bind(host,()=>turn);
-        try{escapeCancellation=new CodyEscapeTakeBack(()=>{CodyIndependentInput.End();host.DispatcherQueue.TryEnqueue(CancelCurrent);},()=>escapeWork);}catch(Exception error){Log.Warn("cody-cancel","Esc listener unavailable: "+error.Message);}
+        try{escapeCancellation=new CodyEscapeTakeBack(()=>host.DispatcherQueue.TryEnqueue(CancelCurrent),()=>CodyMouseGuard.Active||escapeWork);}catch(Exception error){Log.Warn("cody-cancel","Esc listener unavailable: "+error.Message);}
         Consent.Changed+=requests=>Emit("computer-approvals",requests);
         host.NotchUi.EnterEngineMode();
         host.Services.Shortcuts.Stop();
@@ -285,6 +285,7 @@ public static class CodyEngineBridge
                         }
                         return new { muted=MicrophoneMuted };
                     case "begin":
+                        if(CodyIndependentInput.Active)throw new InvalidOperationException("Press Esc to stop computer use first.");
                         if(MicrophoneMuted)throw new InvalidOperationException("C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.");
                         StopSpeech(request.TryGetProperty("gameDuplex", out var duplex) && duplex.GetBoolean());
                         string textTarget=request.TryGetProperty("captureText",out var captureText)&&captureText.GetBoolean()?await CodyProofread.Capture(request.GetProperty("clientPid").GetInt32()):null;
@@ -354,7 +355,7 @@ public static class CodyEngineBridge
     public static System.Text.Json.Nodes.JsonObject RouteVoiceUtility()
     {
         if(!IsRunning || !voiceEnding || string.IsNullOrWhiteSpace(lastTranscript)) return null;
-        if(CodyControlCommands.IsStop(lastTranscript)){
+        if(!CodyIndependentInput.Active&&CodyControlCommands.IsStop(lastTranscript)){
             voiceControlStopped=true;CodyIndependentInput.End();host.DispatcherQueue.TryEnqueue(()=>host.ClickyDrive?.HandleEscape());
             ((CompanionSession)host.Services.Companion).InterruptForDrive();return null;
         }

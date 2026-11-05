@@ -13,9 +13,11 @@ test('utility result unlocks the interface while speech is still pending',async(
 test('recognised voice utility runs locally once and avoids an AI submission',async()=>{const s=setup();await s.invoke('native-begin');const turn=s.calls.find(c=>c.command==='begin').args.turn;s.engine.emit('classify-utility',{turn,text:'turn the volume up'});await new Promise(r=>setImmediate(r));assert.equal(s.calls.find(c=>c.command==='utility-route').args.handled,true);await s.invoke('native-end');assert.deepEqual(s.runs,['turn the volume up']);assert.equal(s.calls.some(c=>c.command==='submit'),false);assert.equal(s.invoke('state').busy,false);});
 test('compound or unfamiliar spoken requests remain with the native AI',async()=>{const s=setup();await s.invoke('native-begin');const turn=s.calls.find(c=>c.command==='begin').args.turn;s.engine.emit('classify-utility',{turn,text:'turn the volume up and explain how speakers work'});await new Promise(r=>setImmediate(r));assert.equal(s.calls.find(c=>c.command==='utility-route').args.handled,false);});
 
-test('Ctrl+Alt can interrupt active computer control and a spoken stop is acknowledged locally',async()=>{
+test('voice capture leaves active computer control running for Escape',async()=>{
  const s=setup();await s.invoke('native-begin');
- s.engine.request=async(command,args)=>{s.calls.push({command,args});if(command==='drive-state')return{active:true};if(command==='end')return{controlStopped:true,transcript:'cancel',text:''};return{};};
- await s.invoke('native-begin');assert.ok(s.calls.some(c=>c.command==='drive-stop'));assert.equal(s.calls.filter(c=>c.command==='begin').length,2);
- await s.invoke('native-end');assert.equal(s.messages.at(-1).text,'Stopped.');assert.equal(s.calls.some(c=>c.command==='submit'),false);assert.equal(s.invoke('state').busy,false);
+ s.engine.request=async(command,args)=>{s.calls.push({command,args});if(command==='drive-state')return{active:true};return{};};
+ await assert.rejects(s.invoke('native-begin'),/Press Esc to stop computer use first/);
+ assert.equal(s.calls.some(c=>c.command==='drive-stop'),false);
+ assert.equal(s.calls.filter(c=>c.command==='begin').length,1);
+ assert.equal(s.invoke('state').busy,true);
 });

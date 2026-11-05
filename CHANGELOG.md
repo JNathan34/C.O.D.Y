@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.10 — 5 November 2026
+
+- Block physical keyboard and mouse input in both computer-use modes. Press Esc to stop and restore input. Trackpad and touchscreen events translated into mouse input are also blocked. Native touch and precision-trackpad gestures may still work where Windows does not grant UIAccess.
+
 ## 0.15.9 — 4 November 2026
 
 - Keep live spoken replies visible as they grow, preserve the reader's position in chat history, and reconcile the final reply if a streaming update was missed.
