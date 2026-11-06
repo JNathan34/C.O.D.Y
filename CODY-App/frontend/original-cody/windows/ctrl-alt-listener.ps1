@@ -1,4 +1,4 @@
-# Watches voice modifiers and pointer presses; Electron owns the Ctrl+Alt+C shortcut.
+# Watches voice modifiers and pointer presses; Electron owns the Ctrl+Alt shortcuts.
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
@@ -36,6 +36,7 @@ public static class CodyModifierKeys {
             uint time = unchecked((uint)Marshal.ReadInt32(data, 12));
             bool down = kind == 0x0100 || kind == 0x0104;
             bool up = kind == 0x0101 || kind == 0x0105;
+            if (key == 0x48 && up) presses.Enqueue("VISIBILITY_RELEASE");
             // Only physical taps: automation must never send a quick message.
             if ((flags & 0x10) == 0) {
                 if (key == 0xA5) {
@@ -102,7 +103,7 @@ public static class CodyModifierKeys {
 }
 '@
 $held = $false
-$chatChord = $false
+$shortcutChord = $false
 $muteKeyHeld = $false
 [CodyModifierKeys]::StartPointerWatch()
 try {
@@ -117,17 +118,18 @@ try {
         $both = $ctrl -and $alt -and -not $altGr
         $chatKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x43)) -band 0x8000) -ne 0
         $muteKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x4D)) -band 0x8000) -ne 0
+        $visibilityKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x48)) -band 0x8000) -ne 0
         if ($muteKeyHeld -and -not $muteKey) { [Console]::Out.WriteLine('MUTE_RELEASE'); [Console]::Out.Flush() }
         $muteKeyHeld = $muteKey
-        if (-not $both) { $chatChord = $false }
-        if ($both -and ($chatKey -or $muteKey) -and -not $chatChord) {
-            $chatChord = $true
+        if (-not $both) { $shortcutChord = $false }
+        if ($both -and ($chatKey -or $muteKey -or $visibilityKey) -and -not $shortcutChord) {
+            $shortcutChord = $true
             $held = $false
             [Console]::Out.WriteLine('CANCEL')
             [Console]::Out.Flush()
         }
-        # Chat and mic-mute chords never submit voice or restart capture before release.
-        if ($chatChord) { Start-Sleep -Milliseconds 25; continue }
+        # App shortcuts suppress voice until the modifiers are released.
+        if ($shortcutChord) { Start-Sleep -Milliseconds 25; continue }
         if ($both -ne $held) {
             $held = $both
             if ($held) { [Console]::Out.WriteLine('DOWN') }

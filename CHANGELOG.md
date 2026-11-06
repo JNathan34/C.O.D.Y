@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.11 — 6 November 2026
+
+- Press **Ctrl+Alt+H** to hide the island or bring it back in compact mode.
+
 ## 0.15.10 — 5 November 2026
 
 - Block physical keyboard and mouse input in both computer-use modes. Press Esc to stop and restore input. Trackpad and touchscreen events translated into mouse input are also blocked. Native touch and precision-trackpad gestures may still work where Windows does not grant UIAccess.
