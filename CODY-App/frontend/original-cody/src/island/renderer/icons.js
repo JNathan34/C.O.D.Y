@@ -24,6 +24,16 @@
   paths["shield-alert"]="<!-- @license lucide-static v1.62.0 - ISC -->\n<svg\n  class=\"lucide lucide-shield-alert\"\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\" />\n  <path d=\"M12 8v4\" />\n  <path d=\"M12 16h.01\" />\n</svg>\n";
   paths["clock"]="<!-- @license lucide-static v1.62.0 - ISC -->\n<svg\n  class=\"lucide lucide-clock\"\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <circle cx=\"12\" cy=\"12\" r=\"10\" />\n  <path d=\"M12 6v6l4 2\" />\n</svg>\n";
   paths["calendar-days"]="<!-- @license lucide-static v1.62.0 - ISC -->\n<svg\n  class=\"lucide lucide-calendar-days\"\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M8 2v3\" />\n  <path d=\"M16 2v3\" />\n  <rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\" />\n  <path d=\"M3 9h18\" />\n  <path d=\"M8 13h.01\" />\n  <path d=\"M12 13h.01\" />\n  <path d=\"M16 13h.01\" />\n  <path d=\"M8 17h.01\" />\n  <path d=\"M12 17h.01\" />\n  <path d=\"M16 17h.01\" />\n</svg>\n";
+  // Lucide Static 1.62.0, ISC.
+  paths.brain=`
+    <path d="M12 18V5"/>
+    <path d="M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4"/>
+    <path d="M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294"/>
+    <path d="M17.996 5.125a4 4 0 012.526 5.77"/>
+    <path d="M18 18a4 4 0 002-7.465"/>
+    <path d="M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517"/>
+    <path d="M6 18a4 4 0 01-2-7.465"/>
+    <path d="M6.004 5.125a4 4 0 00-2.526 5.77"/>`;
   paths.camera='<path d="M14 4h-4L8 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z"/><circle cx="12" cy="13" r="4"/>';
   paths.activity='<path d="M2 12h4l3-9 6 18 3-9h4"/>';
   paths.users='<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/><circle cx="9" cy="7" r="4"/>';
@@ -42,7 +52,7 @@
   window.CODYIcons={set};
   const controls={'new-chat':'square-pen','panel-settings':'settings','panel-mic':'mic','panel-send':'arrow-up','core-speaker':'volume-x','core-stop':'square'};
   for(const [id,icon]of Object.entries(controls))set(document.getElementById(id),icon);
-  const navigation={general:'settings',voice:'audio-lines',microphone:'mic',appearance:'palette',shortcuts:'keyboard',cursor:'mouse-pointer-2',behaviour:'activity',integrations:'plug',agents:'users',permissions:'shield-check',developer:'code-xml'};
+  const navigation={general:'settings',memory:'brain',voice:'audio-lines',microphone:'mic',appearance:'palette',shortcuts:'keyboard',cursor:'mouse-pointer-2',behaviour:'activity',integrations:'plug',agents:'users',permissions:'shield-check',developer:'code-xml'};
   for(const button of document.querySelectorAll('.nav-item[data-tab]'))set(button.querySelector('.nav-glyph'),navigation[button.dataset.tab]);
   for(const marker of document.querySelectorAll('.nav-external'))set(marker,'external-link');
   for(const marker of document.querySelectorAll("[data-access-icon]"))set(marker,marker.dataset.accessIcon);

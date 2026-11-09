@@ -301,7 +301,9 @@ public static class CodyEngineBridge
                         lastTranscript = routedUtility = null;
                         byte[] audioPrefix=Array.Empty<byte>();
                         if(request.TryGetProperty("audioPrefix",out var prefixAudio)){
-                            string encoded=prefixAudio.GetString();if(encoded==null||encoded.Length>128000)throw new ArgumentException("Invalid wake audio prefix.");
+                            string encoded=prefixAudio.GetString();
+                            int maxEncodedLength=(CodyKeywordListener.MaxPrefixBytes+2)/3*4;
+                            if(encoded==null||encoded.Length>maxEncodedLength)throw new ArgumentException("Invalid wake audio prefix.");
                             audioPrefix=Convert.FromBase64String(encoded);if(audioPrefix.Length%2!=0)throw new ArgumentException("Invalid wake audio samples.");
                         }
                         if(MicrophoneMuted)throw new InvalidOperationException("C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.");

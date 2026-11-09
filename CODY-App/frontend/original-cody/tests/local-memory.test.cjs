@@ -6,6 +6,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {MemoryService}=require('../src/memory/service');
+const {registerMemoryIpc}=require('../src/memory/ipc');
 const {installNativeIpc}=require('../src/native-ipc');
 
 test('private notes use their own local source and remain searchable after a restart',t=>{
@@ -30,6 +31,50 @@ test('private notes use their own local source and remain searchable after a res
     memory.deleteRecord(notes[0].id);
     assert.deepEqual(memory.localNotes(),[]);
   }finally{memory.close();}
+});
+
+test('memory backups round-trip every local note without restoring provider access',async t=>{
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'cody-memory-backup-'));
+  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+  const cipher={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value),decryptString:buffer=>buffer.toString()};
+  const original=new MemoryService({directory:path.join(directory,'original'),cipher});
+  const restored=new MemoryService({directory:path.join(directory,'restored'),cipher});
+  const file=path.join(directory,'memory.json');
+  let cancelled=false;
+  function install(memory){
+    const handlers=new Map();
+    registerMemoryIpc({ipcMain:{handle:(name,fn)=>handlers.set(name,fn)},authorise:()=>{},window:()=>null,memory,dialog:{
+      showSaveDialog:async()=>({canceled:cancelled,filePath:file}),
+      showOpenDialog:async()=>({canceled:cancelled,filePaths:[file]})
+    }});
+    return action=>handlers.get('memory-local-'+action)({});
+  }
+  try{
+    const notes=Array.from({length:102},(_,i)=>`My memory ${i}`);
+    const source=original.addSource({label:'Previously shared',kind:'local-memory',permissions:{codex:true}});
+    original.import(source.id,notes.map(text=>({text,origin:{enteredByUser:true}})));
+    const history=original.addSource({label:'Account import',kind:'conversation-history'});
+    original.import(history.id,[{text:'Account history'}]);
+    const exportBackup=install(original),importBackup=install(restored);
+    assert.equal(original.localNotes().length,100);
+    assert.deepEqual(await exportBackup('export'),{exported:true,count:102});
+    const backup=JSON.parse(fs.readFileSync(file,'utf8'));
+    assert.equal(backup.format,'cody-local-memory-v1');
+    assert.deepEqual([...backup.notes].sort(),[...notes].sort());
+    restored.saveLocal(notes[0]);
+    assert.deepEqual(await importBackup('import'),{added:101,duplicates:1,skippedSecrets:0});
+    assert.deepEqual(await importBackup('import'),{added:0,duplicates:102,skippedSecrets:0});
+    assert.equal(restored.context('memory','codex').records.length,0);
+    assert.equal(restored.exportLocalNotes().length,102);
+    fs.writeFileSync(file,JSON.stringify({...backup,notes:['Valid but never stored',null]}));
+    await assert.rejects(importBackup('import'),/invalid notes/);
+    assert.equal(restored.exportLocalNotes().length,102);
+    fs.writeFileSync(file,JSON.stringify({...backup,notes:['password: test-only-secret']}));
+    assert.deepEqual(await importBackup('import'),{added:0,duplicates:0,skippedSecrets:1});
+    cancelled=true;
+    assert.deepEqual(await importBackup('import'),{cancelled:true});
+    assert.deepEqual(await exportBackup('export'),{cancelled:true});
+  }finally{original.close();restored.close();}
 });
 
 function fixture(){

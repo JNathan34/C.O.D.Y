@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.16 — 9 November 2026
+
+- Export local memories as readable JSON and restore them from **Settings → Memory → Memory Backup**. Import skips duplicates and credential-like notes and restores eligible notes to private local storage.
+- Improve recognition of quieter multi-word wake phrases and preserve buffered speech through microphone handoff. Re-arm the detector after a wake arrives while C.O.D.Y. is busy.
+
 ## 0.15.15 — 9 November 2026
 
 - Smooth island concealment through Ctrl+Alt+H, On hover and Activity only. Let the fold finish before hiding the Windows overlay and reverse from the current shape when reopened.

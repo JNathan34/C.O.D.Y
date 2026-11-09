@@ -11,6 +11,9 @@
   const list=byId('local-memory-notes');
   const saveForm=byId('memory-save-form');
   const searchForm=byId('memory-search-form');
+  const importButton=byId('local-memory-import');
+  const exportButton=byId('local-memory-export');
+  const backupStatus=byId('local-memory-backup-status');
   const errorText=error=>error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/,'');
   let modeBusy=false,notesBusy=false;
 
@@ -60,7 +63,7 @@
   async function updateNotes(change){
     if(notesBusy)return;
     notesBusy=true;
-    const controls=[...saveForm.elements,...searchForm.elements];
+    const controls=[...saveForm.elements,...searchForm.elements,importButton,exportButton];
     for(const control of controls)control.disabled=true;
     try{
       const message=await change?.();
@@ -73,7 +76,30 @@
     }
   }
 
+  function runBackup(action){
+    return updateNotes(async()=>{
+      backupStatus.hidden=true;
+      backupStatus.textContent='';
+      try{
+        const result=await memory[action]();
+        if(result.cancelled)return;
+        if(action==='export'){
+          backupStatus.textContent=`Exported ${result.count} ${result.count===1?'note':'notes'} to JSON.`;
+        }else{
+          query.value='';
+          const messages=[`Imported ${result.added} ${result.added===1?'note':'notes'}.`];
+          if(result.duplicates)messages.push(`Skipped ${result.duplicates} ${result.duplicates===1?'duplicate':'duplicates'}.`);
+          if(result.skippedSecrets)messages.push(`Skipped ${result.skippedSecrets} ${result.skippedSecrets===1?'note':'notes'} that looked like credentials.`);
+          backupStatus.textContent=messages.join(' ');
+        }
+      }catch(error){backupStatus.textContent=errorText(error);}
+      finally{backupStatus.hidden=!backupStatus.textContent;}
+    });
+  }
+
   toggle.addEventListener('change',()=>void changeMode(true));
+  importButton.addEventListener('click',()=>void runBackup('import'));
+  exportButton.addEventListener('click',()=>void runBackup('export'));
   document.querySelector('[data-tab="memory"]').addEventListener('click',()=>{
     void changeMode(false);
     void updateNotes();

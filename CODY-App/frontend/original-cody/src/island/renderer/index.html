@@ -166,7 +166,7 @@
           <nav class="settings-nav" aria-label="Settings categories">
             <div class="nav-group-caption">PREFERENCES</div>
             <button class="nav-item selected" data-tab="general" type="button"><span class="nav-glyph">⚙</span>General</button>
-            <button class="nav-item" data-tab="memory" type="button"><span class="nav-glyph" aria-hidden="true">▤</span>Memory</button>
+            <button class="nav-item" data-tab="memory" type="button"><span class="nav-glyph" aria-hidden="true"></span>Memory</button>
             <button class="nav-item" data-tab="voice" type="button"><span class="nav-glyph">◖))</span>Voice</button>
             <button class="nav-item" data-tab="microphone" type="button"><span class="nav-glyph">♩</span>Microphone</button>
             <button class="nav-item" data-tab="appearance" type="button"><span class="nav-glyph">◈</span>Appearance</button>
@@ -207,6 +207,12 @@
                 <label class="setting-row"><span><strong>Local memory only</strong><small>Keep memories on this PC. Pauses Claude through HeyClicky, which can add account memories to replies.</small></span><input type="checkbox" id="local-memory-only" aria-describedby="memory-mode-status" disabled></label>
               </div>
               <p class="setting-help" id="memory-mode-status" role="status"></p>
+              <h3 class="group-title">MEMORY BACKUP</h3>
+              <div class="settings-group">
+                <div class="setting-row"><span><strong>Export memories</strong><small>Save your local notes in a readable, unencrypted JSON file.</small></span><button id="local-memory-export" class="light-action" type="button">Export</button></div>
+                <div class="setting-row"><span><strong>Import memories</strong><small>Add notes from a C.O.D.Y. memory backup. Existing notes stay in place.</small></span><button id="local-memory-import" class="light-action" type="button">Import</button></div>
+              </div>
+              <p class="setting-help" id="local-memory-backup-status" role="status" hidden></p>
               <h3 class="group-title">SAVED ON THIS PC</h3>
               <p class="setting-help">Add a detail you want to keep here, or type “Remember locally that my name is Alex” in chat.</p>
               <form id="memory-save-form">

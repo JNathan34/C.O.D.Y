@@ -12,6 +12,28 @@ function fixture(){let now=10000,reason=null,captureReason=null;const calls=[],c
 test('wake addresses are removed without changing the actual request',()=>{for(const s of ['Hey Cody, what is the time?','OK Cody what is the time?','Okay, Cody: what is the time?','Cody what is the time?','Hey C.O.D.Y., what is the time?','HeyCody what is the time?'])assert.equal(stripWakeText(s),'what is the time?');assert.equal(stripWakeText('tell Cody the time'),'tell Cody the time');assert.equal(stripWakeText('Hey Cody'),'');});
 test('standby never begins a voice request from partial guesses or generic speech',async()=>{const f=fixture();await f.start();for(const type of ['activity','speech'])f.listener.receive({type,phrase:'hey cody',text:'Hey Cody',epoch:f.listener.epoch});assert.equal(f.listener.mode,'listening');assert.deepEqual(f.calls,[]);f.listener.close();});
 test('confirmed wake waits for the microphone handoff and preserves buffered speech',async()=>{const f=fixture();await f.start();f.wake();await flush();assert.equal(f.listener.capture,true);assert.equal(f.listener.mode,'armed');assert.deepEqual(f.calls.map(c=>c[0]),['begin','cue']);assert.deepEqual(f.calls[0][1],{wake:true,audioPrefix:'AAAA'});assert.equal(f.listener.wire,'pause');f.listener.close();});
+test('a wake received before the listening acknowledgement survives until handoff',async()=>{
+ const f=fixture();
+ const starting=f.start();
+ assert.equal(f.listener.confirmed,null);
+ f.wake();
+ assert.equal(f.calls.length,0);
+ await starting;
+ assert.equal(f.listener.capture,true);
+ assert.equal(f.calls.filter(([action])=>action==='begin').length,1);
+ f.listener.close();
+});
+test('a transient busy result resets the latched detector even if the next poll is idle',async()=>{
+ const f=fixture();await f.start();
+ let first=true;
+ f.listener.canListen=()=>{if(!first)return null;first=false;return 'C.O.D.Y. is busy.';};
+ f.wake();await flush();
+ assert.deepEqual(f.children[0].writes.map(({mode})=>mode),['listen','pause','listen']);
+ assert.equal(f.listener.mode,'listening');
+ f.wake();await flush();
+ assert.equal(f.calls.filter(([action])=>action==='begin').length,1);
+ f.listener.close();
+});
 test('stale results and disabled wake aliases cannot open the microphone',async()=>{const f=fixture();await f.start();f.listener.receive({type:'wake',phrase:'hey cody',epoch:f.listener.epoch-1});f.listener.receive({type:'wake',phrase:'hello cody',epoch:f.listener.epoch});await flush();assert.deepEqual(f.calls,[]);f.listener.close();});
 test('ordinary ambient audio and the wake address alone time out without submitting',async()=>{const f=fixture();await f.start();f.wake();await flush();f.listener.heard('Hey Cody');for(let i=0;i<8;i++){f.advance(1000);f.listener.meter({state:'Listening',level:.01});f.listener.update();}await flush();assert.equal(f.calls.filter(c=>c[0]==='end').length,0);assert.equal(f.calls.filter(c=>c[0]==='cancel').length,1);f.listener.close();});
 test('request ends after speech and a quiet pause without needing a keybind',async()=>{const f=fixture();await f.start();f.wake();await flush();f.advance(500);f.listener.meter({state:'Listening',level:.4});f.advance(100);f.listener.meter({state:'Listening',level:.4});f.advance(1799);f.listener.update();assert.equal(f.calls.filter(c=>c[0]==='end').length,0);f.advance(1);f.listener.update();await flush();assert.equal(f.calls.filter(c=>c[0]==='end').length,1);f.listener.close();});

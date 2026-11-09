@@ -31,7 +31,7 @@ class KeywordWakeListener extends EventEmitter{
  status(mode,message){if(mode===this.mode&&message===this.message)return;this.mode=mode;this.message=message;this.emit('change',this.snapshot());}
  configure(prefs){const phrases=phrasesFor(prefs),changed=JSON.stringify(phrases)!==JSON.stringify(this.phrases);this.phrases=phrases;this.enabled=prefs.wakeWordEnabled===true;if(changed||!this.enabled)this.stop();if(!this.enabled)this.status('off','Hands-free listening is off.');else this.update();return this.snapshot();}
  stop(){
-  this.generation++;this.finishing=false;this.aborting=false;clearTimeout(this.startup);clearTimeout(this.retry);this.retry=null;this.ready=false;this.wire=null;this.confirmed=null;this.lastState=null;this.cancelCandidate=null;
+  this.generation++;this.finishing=false;this.aborting=false;clearTimeout(this.startup);clearTimeout(this.retry);this.retry=null;this.ready=false;this.wire=null;this.confirmed=null;this.lastState=null;this.cancelCandidate=null;this.queuedWake=null;
   const pending=this.pending;this.pending=null;if(pending){clearTimeout(pending.timer);pending.reject(Error('Wake listener stopped.'));}
   const child=this.child;this.child=null;if(child)try{child.stdin.end(JSON.stringify({mode:'quit',epoch:++this.epoch})+'\n');child.kill();}catch{}
   if(this.capture||this.opening){this.capture=false;this.opening=false;void this.cancelVoice?.().catch(error=>this.emit('diagnostic',error.message));}
@@ -45,14 +45,14 @@ class KeywordWakeListener extends EventEmitter{
   this.child=child;let buffer='';child.stdout.setEncoding('utf8');
   child.stdout.on('data',chunk=>{if(this.child!==child)return;buffer+=chunk;if(buffer.length>300000){this.fault('Invalid wake listener response.');return;}let i;while((i=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,i);buffer=buffer.slice(i+1);try{this.receive(JSON.parse(line));}catch{}}});
   child.stdin.on?.('error',()=>{});child.stderr.on('data',()=>{});
-  child.once('error',error=>{if(this.child===child)this.fault(error.message);});child.once('close',()=>{if(this.child===child)this.fault('Local wake detection stopped.');});
-  this.startup=setTimeout(()=>{if(this.child===child&&!this.ready)this.fault('Local wake detection took too long to start.');},15000);this.startup.unref?.();
+  child.once('error',error=>{if(this.child===child)this.fault(error.message);});child.once('close',code=>{if(this.child===child)this.fault(code?'Local wake detection stopped (exit '+code+').':'Local wake detection stopped.');});
+  this.startup=setTimeout(()=>{if(this.child===child&&!this.ready)this.fault('Local wake detection took too long to start.');},30000);this.startup.unref?.();
  }
  request(mode){
   if(this.pending?.mode===mode)return this.pending.promise;
   if(this.wire===mode&&this.confirmed===this.epoch)return Promise.resolve(this.lastState);
   if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(Error('Wake microphone mode changed.'));this.pending=null;}
-  const epoch=++this.epoch;this.wire=mode;this.confirmed=null;
+  const epoch=++this.epoch;this.wire=mode;this.confirmed=null;this.queuedWake=null;
   let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});promise.catch(()=>{});
   const timer=setTimeout(()=>{if(this.pending?.epoch===epoch)this.fault('Wake microphone did not acknowledge '+mode+'.');},4000);timer.unref?.();this.pending={epoch,mode,resolve,reject,promise,timer};
   try{this.child.stdin.write(JSON.stringify({mode,epoch})+'\n');}catch(error){this.fault(error.message);}return promise;
@@ -65,7 +65,12 @@ class KeywordWakeListener extends EventEmitter{
   if(this.cancelCandidate&&(this.capture||this.finishing)&&this.now()-this.cancelCandidate.since>=250&&this.now()-this.lastSpeech>=200){void this.abort('Cancelled. Say a wake phrase when ready.');return;}
   if(this.capture){const reason=this.canCapture();if(reason){void this.abort(reason);return;}this.tickCapture();return;}
   if(this.opening||this.finishing)return;
-  const reason=this.canListen();if(reason||this.now()<this.cooldown){void this.request('pause');this.status('paused',reason||this.cooldownMessage||'Waiting for the reply to finish…');return;}
+  const reason=this.canListen();
+  if(reason||this.now()<this.cooldown){
+   void this.request('pause');
+   if(this.mode!=='error'||this.now()>=this.cooldown)this.status('paused',reason||this.cooldownMessage||'Waiting for the reply to finish…');
+   return;
+  }
   void this.request('listen');if(this.confirmed===this.epoch)this.status('listening','Ready for '+this.phrases.map(p=>p.replace('cody','Cody')).join(' / ')+'.');
  }
  receive(value){
@@ -76,13 +81,26 @@ class KeywordWakeListener extends EventEmitter{
   if(value.type==='state'){
    if(value.epoch!==this.epoch)return;this.confirmed=value.epoch;this.lastState=value;
    if(this.pending?.epoch===value.epoch){clearTimeout(this.pending.timer);this.pending.resolve(value);this.pending=null;}
-   if(value.mode==='listening')this.failures=0;this.update();return;
+   if(value.mode==='listening')this.failures=0;
+   const queued=this.queuedWake;this.queuedWake=null;
+   this.update();
+   if(queued&&queued.epoch===this.epoch)this.receive(queued);
+   return;
   }
-  if(value.type==='wake'&&value.epoch===this.epoch&&this.confirmed===this.epoch&&this.wire==='listen'&&this.phrases.includes(value.phrase))void this.wake();
+  if(value.type==='wake'&&value.epoch===this.epoch&&this.wire==='listen'&&this.phrases.includes(value.phrase)){
+   if(this.confirmed!==this.epoch)this.queuedWake=value;
+   else void this.wake();
+  }
  }
  async wake(){
   if(this.muted)return false;
-  if(this.opening||this.capture||this.finishing||this.canListen()||this.now()<this.cooldown)return false;
+  if(this.opening||this.capture||this.finishing)return false;
+  if(this.canListen()||this.now()<this.cooldown){
+   // The detector latches after a hit. Reset it even if the busy state clears
+   // before the next poll and would otherwise leave the same stream armed.
+   void this.request('pause');
+   return false;
+  }
   const generation=this.generation;this.opening=true;this.status('arming','Opening the microphone…');
   try{
    const state=await this.request('pause');if(generation!==this.generation||!this.enabled||this.canListen())return false;
@@ -91,7 +109,7 @@ class KeywordWakeListener extends EventEmitter{
    if(!result?.listening)throw Error(result?.error||'Voice recognition did not start. Check your microphone and HeyClicky sign-in.');
    this.capture=true;this.started=this.now();this.lastSpeech=0;this.heardSpeech=false;this.speechFrames=0;this.noise=.02;this.transcript='';this.cancelCandidate=null;this.levels=[];this.lastTranscriptAt=this.started;this.pauseTolerance=0;this.status('armed','Listening for your request…');
    try{await this.onWake();}catch{}return true;
-  }catch(error){if(generation===this.generation){this.emit('diagnostic',error.message);this.cooldown=this.now()+1500;this.status('error',error.message);await this.cancelVoice?.().catch(()=>{});}return false;}
+  }catch(error){if(generation===this.generation){this.emit('diagnostic',error.message);this.cooldown=this.now()+1500;this.status('error','Wake phrase heard. '+error.message);await this.cancelVoice?.().catch(()=>{});}return false;}
   finally{if(generation===this.generation)this.opening=false;}
  }
  meter(value){

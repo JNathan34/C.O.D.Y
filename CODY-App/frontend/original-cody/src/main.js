@@ -190,7 +190,7 @@ function registerIpc(){
   ipcMain.handle('backend-refresh',e=>{fromAnnotationUI(e);return heyclicky.refresh();});
   const fromCody=e=>{if(!win||e.sender!==win.webContents)throw Error('Computer controls are only accessible from the C.O.D.Y interface')};
   const fromAnnotationUI=e=>{fromCody(e);if(e.senderFrame!==win.webContents.mainFrame)throw Error('Annotations require the trusted main C.O.D.Y frame');};
-  registerMemoryIpc({ipcMain,dialog,window:()=>win,authorise:fromAnnotationUI,memory,error:memoryError,codex:codexAgent,onAccessChange:()=>{if(activeTurn?.engine==='codex-bridge')activeTurn.abortController.abort();for(const chat of store.data.chats)delete chat.codexBridgeThreadId;store.save();}});
+  registerMemoryIpc({ipcMain,dialog,window:()=>win,authorise:fromAnnotationUI,memory,error:memoryError,codex:codexAgent,withFileDialog:island.withFileDialog,onAccessChange:()=>{if(activeTurn?.engine==='codex-bridge')activeTurn.abortController.abort();for(const chat of store.data.chats)delete chat.codexBridgeThreadId;store.save();}});
   ipcMain.handle('annotations-settings',e=>{fromAnnotationUI(e);return annotations.status();});
   ipcMain.handle('annotations-configure',(e,patch)=>{fromAnnotationUI(e);const result=annotations.configure(patch);store.settings({annotations:result.settings});sendUI('settings-changed',store.data.settings);return result;});
   ipcMain.handle('annotations-clear',e=>{fromAnnotationUI(e);annotations.clearImmediate('cleared by user');return {cleared:true};});

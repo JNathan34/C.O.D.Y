@@ -92,6 +92,11 @@ let lastPointerTime = performance.now();
 let isQuitting = false;
 let mouseIgnored = null;
 let pickerOpen = false;
+let fileDialogs = 0;
+async function withFileDialog(action){
+  fileDialogs++;
+  try{return await action();}finally{fileDialogs--;}
+}
 let wifiDisconnected = false;
 let wifiKnown = false;
 let wifiCheckInProgress = false;
@@ -338,7 +343,7 @@ function pollCursor(clickedPoint=null) {
   if(clickedPoint&&shouldRecoverPointer({visible:interactive,expanded,hit:silhouetteHit,button:clickedPoint.button||'left'})){
     mascotSleeping=false;wakeClickUntil=0;setExpanded(true);emit('island:command','pointer-open');
   }
-  if(clickedPoint&&interactive&&expanded&&!captureUIBusy()&&!pickerOpen&&!onPanel&&!silhouetteHit)setExpanded(false);
+  if(clickedPoint&&interactive&&expanded&&!captureUIBusy()&&!pickerOpen&&!fileDialogs&&!onPanel&&!silhouetteHit)setExpanded(false);
   const ignoreMouse = !(interactive && (pickerOpen || silhouetteHit || onPanel));
   if (ignoreMouse !== mouseIgnored) {
     islandWindow.setIgnoreMouseEvents(ignoreMouse,{forward:true});
@@ -412,8 +417,8 @@ function createIsland() {
     if(concealFallback){clearTimeout(concealFallback);concealFallback=null;}
   });
   islandWindow.on('blur',()=>{
-    if (!expanded || !shouldShow() || gameActive || fileDragActive || captureUIBusy()) return;
-    setTimeout(()=>{ if(shouldShow()&&!captureUIBusy()&&!gameActive&&!fileDragActive&&islandWindow&&!islandWindow.isDestroyed()&&!islandWindow.isFocused()) setExpanded(false); },220);
+    if (!expanded || !shouldShow() || gameActive || fileDragActive || fileDialogs || captureUIBusy()) return;
+    setTimeout(()=>{ if(shouldShow()&&!captureUIBusy()&&!gameActive&&!fileDragActive&&!fileDialogs&&islandWindow&&!islandWindow.isDestroyed()&&!islandWindow.isFocused()) setExpanded(false); },220);
   });
   // Screen snipping and desktop transitions can hide a native overlay without
   // changing our visibility preference. Restore it without taking keyboard focus.
@@ -584,4 +589,4 @@ function handleHotkey(action){
   if(action==='down')suspended=false;
   onModifierEvent(action==='down'?'DOWN':'UP');
 }
-module.exports={setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact(){suspended=false;mount();setExpanded(false);updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value){timerVisible=Boolean(value);updateVisibility();},hide(){suspended=true;updateVisibility();},show(){hiddenByShortcut=false;suspended=false;mount();if(expanded)updateVisibility();else setExpanded(true);islandWindow.show();islandWindow.focus();},window:()=>islandWindow};
+module.exports={withFileDialog,setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact(){suspended=false;mount();setExpanded(false);updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value){timerVisible=Boolean(value);updateVisibility();},hide(){suspended=true;updateVisibility();},show(){hiddenByShortcut=false;suspended=false;mount();if(expanded)updateVisibility();else setExpanded(true);islandWindow.show();islandWindow.focus();},window:()=>islandWindow};
