@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HeyClicky.Agents;
 using HeyClicky.Agents.Harness;
+using HeyClicky.App.Cody;
 using HeyClicky.App.Proactive;
 using HeyClicky.App.Shell;
 using HeyClicky.Core;
@@ -242,6 +243,16 @@ public sealed class RealStack : IAsyncDisposable
 		double value2 = Lap();
 		AgentRuntimeOptions agentRuntimeOptions = new AgentRuntimeOptions();
 		AppHost.PrepareStoredSettings(core.Settings, agentRuntimeOptions);
+		if (CodyEngineBridge.EngineMode)
+		{
+			CodyAgentUsage.Load();
+			core.Http.WorkerRequestPolicy = request =>
+			{
+				CodyMemoryPolicy.CheckWorkerRequest(request);
+				CodyAgentUsage.CheckWorkerRequest(request);
+			};
+			agentRuntimeOptions.EnableRoutines = false;
+		}
 		AgentService agents = new AgentService(core.Endpoints, (CancellationToken ct) => core.Auth.GetValidAccessTokenAsync(ct), core.Http.Client, core.Identity, agentRuntimeOptions);
 		agents.CurrentUserId = () => (!core.Auth.IsSignedIn) ? null : core.Auth.UserId;
 		agents.Routines.AgentAllowanceResetsAt = () => core.Billing.UsageResetsDate;
@@ -519,12 +530,21 @@ public sealed class RealStack : IAsyncDisposable
 		Core.StartAsync();
 		if (Core.Auth.IsSignedIn)
 		{
-			Agents.PrewarmAsync();
+			PrewarmAgents();
 		}
 		if (!OverlayWindow.Offscreen)
 		{
 			Shortcuts.Start();
 		}
+	}
+
+	internal void PrewarmAgents()
+	{
+		if (!CodyAgentUsage.Enabled || CodyMemoryPolicy.LocalOnly)
+			return;
+		if (CodyEngineBridge.EngineMode)
+			Agents.Routines.Start();
+		_ = Agents.PrewarmAsync();
 	}
 
 	public async ValueTask DisposeAsync()

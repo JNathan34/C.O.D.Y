@@ -58,6 +58,37 @@ test('FPS provider failures remain unavailable instead of breaking every monitor
   const monitors=new IslandMonitors({fpsProvider:()=>{throw Error('provider stopped');}});
   try{await monitors.execute(monitorCommand('show FPS and RAM'));assert.equal(monitors.values.fps.text,'FPS N/A');assert.match(monitors.values.ram.text,/RAM/);}finally{monitors.close();}
 });
+test('FPS measures desktop frame deltas, including idle and counter resets',async()=>{
+  let time=1000,frames=200,applicationFps,reads=0;
+  const monitors=new IslandMonitors({now:()=>time,fpsProvider:()=>applicationFps,readDesktopFrames:async()=>{reads++;return {time,frames};}});
+  try{
+    await monitors.execute(monitorCommand('show FPS 24/7'));await flush();
+    assert.equal(monitors.values.fps.text,'FPS …');
+    time+=1000;frames+=47;monitors.sample();await flush();
+    assert.equal(monitors.values.fps.text,'FPS 47');
+    assert.equal(monitors.values.fps.detail,'Desktop');
+    time+=1000;monitors.sample();await flush();
+    assert.equal(monitors.values.fps.text,'FPS 0');
+    time+=1000;frames=10;monitors.sample();await flush();
+    assert.equal(monitors.values.fps.text,'FPS …');
+    applicationFps=92;time+=1000;monitors.sample();await flush();
+    assert.equal(monitors.values.fps.text,'FPS 92');
+    assert.equal(monitors.values.fps.detail,'Application');
+    assert.equal(reads,4);
+  }finally{monitors.close();}
+});
+test('hiding FPS discards pending samples and stops desktop frame polling',async()=>{
+  let time=1000,resolve,reads=0;
+  const monitors=new IslandMonitors({now:()=>time,readDesktopFrames:()=>{reads++;return new Promise(done=>{resolve=done;});}});
+  try{
+    await monitors.execute(monitorCommand('show FPS'));
+    await monitors.execute(monitorCommand('hide FPS counter'));
+    resolve({time,frames:100});await flush();
+    time+=1000;monitors.sample();
+    assert.deepEqual(monitors.snapshot().items,[]);
+    assert.equal(reads,1);
+  }finally{monitors.close();}
+});
 test('monitor commands support multiple metrics, individual removal and clearing',()=>{
   assert.deepEqual(monitorCommand('show my cpu usage and ram'),{action:'show',metrics:['cpu','ram']});
   assert.deepEqual(monitorCommand('show me gpu temp'),{action:'show',metrics:['gpu']});

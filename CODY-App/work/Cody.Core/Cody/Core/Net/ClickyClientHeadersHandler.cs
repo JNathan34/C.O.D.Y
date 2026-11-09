@@ -13,6 +13,8 @@ public sealed class ClickyClientHeadersHandler : DelegatingHandler
 
 	private readonly ClientIdentity identity;
 
+	internal Action<HttpRequestMessage>? WorkerRequestPolicy { get; init; }
+
 	public ClickyClientHeadersHandler(ClickyEndpoints endpoints, ClientIdentity identity, HttpMessageHandler inner)
 		: base(inner)
 	{
@@ -34,6 +36,7 @@ public sealed class ClickyClientHeadersHandler : DelegatingHandler
 		Uri requestUri = request.RequestUri;
 		if ((object)requestUri != null && IsClickyBackendUrl(requestUri, endpoints))
 		{
+			WorkerRequestPolicy?.Invoke(request);
 			Apply(request.Headers, identity);
 		}
 		return base.SendAsync(request, cancellationToken);
@@ -44,6 +47,7 @@ public sealed class ClickyClientHeadersHandler : DelegatingHandler
 		Uri requestUri = request.RequestUri;
 		if ((object)requestUri != null && IsClickyBackendUrl(requestUri, endpoints))
 		{
+			WorkerRequestPolicy?.Invoke(request);
 			Apply(request.Headers, identity);
 		}
 		return base.Send(request, cancellationToken);

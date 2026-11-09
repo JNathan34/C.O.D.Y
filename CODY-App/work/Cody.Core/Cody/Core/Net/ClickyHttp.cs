@@ -27,6 +27,8 @@ public sealed class ClickyHttp : IDisposable
 
 	public ClientIdentity Identity { get; }
 
+	public Action<HttpRequestMessage>? WorkerRequestPolicy { get; set; }
+
 	public ClickyHttp(ClickyEndpoints endpoints, ClientIdentity identity)
 	{
 		Endpoints = endpoints;
@@ -57,7 +59,10 @@ public sealed class ClickyHttp : IDisposable
 		socketsHttpHandler.SslOptions = sslClientAuthenticationOptions;
 		socketsHandler = socketsHttpHandler;
 		Invoker = new HttpMessageInvoker(socketsHandler, disposeHandler: false);
-		Client = new HttpClient(new ClickyClientHeadersHandler(endpoints, identity, socketsHandler), disposeHandler: false)
+		Client = new HttpClient(new ClickyClientHeadersHandler(endpoints, identity, socketsHandler)
+		{
+			WorkerRequestPolicy = request => WorkerRequestPolicy?.Invoke(request)
+		}, disposeHandler: false)
 		{
 			Timeout = Timeout.InfiniteTimeSpan,
 			DefaultRequestVersion = HttpVersion.Version20,

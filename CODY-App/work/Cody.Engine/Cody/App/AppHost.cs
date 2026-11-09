@@ -1710,7 +1710,7 @@ public sealed class AppHost : INotchCardActions, IAppActions, INotchActions
 			if (isSignedIn)
 			{
 				NoteAccountSignedIn();
-				real.Agents.PrewarmAsync();
+				real.PrewarmAgents();
 				real.Core.StartAsync();
 				real.BrainContext.Refresh();
 				ConnectedApps.RefreshAsync();

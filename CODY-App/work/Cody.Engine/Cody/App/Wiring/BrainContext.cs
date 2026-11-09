@@ -41,7 +41,12 @@ public sealed class BrainContext
 	public string? RosterNote()
 	{
         string note=JobsNote==null?ClickyNotes.RosterNote(agents.Clickys, agents.Tasks, LastReport, DateTimeOffset.Now):JobsNote();
-        return HeyClicky.App.Cody.CodyEngineBridge.EngineMode?HeyClicky.App.Cody.CodyIdentity.Context(note+"\n\n"+HeyClicky.App.Cody.CodyPermissions.Context):note;
+        if (!HeyClicky.App.Cody.CodyEngineBridge.EngineMode)
+            return note;
+        string policy = HeyClicky.App.Cody.CodyAgentUsage.Enabled
+            ? HeyClicky.App.Cody.CodyPermissions.Context
+            : "Agent usage is off in C.O.D.Y. Settings > Agents. Answer normally, but do not launch or continue agent work, use routines, or offer screen takeover.";
+        return HeyClicky.App.Cody.CodyIdentity.Context(note+"\n\n"+policy);
 	}
 
 	public string? PlanNote()

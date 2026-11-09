@@ -106,6 +106,7 @@
       <div id="island-rps-controls" class="island-rps-controls" role="group" aria-label="Choose rock, paper or scissors" hidden><button type="button" data-rps-move="rock" aria-label="Rock">🪨</button><button type="button" data-rps-move="paper" aria-label="Paper">📃</button><button type="button" data-rps-move="scissors" aria-label="Scissors">✂️</button></div>
       <div id="island-media-controls" class="island-media-controls" hidden><button id="island-media-previous" type="button" aria-label="Previous media item"></button><button id="island-media-toggle" type="button" aria-label="Play or pause media"></button><button id="island-media-next" type="button" aria-label="Next media item"></button></div>
     </div>
+    <div id="island-fps" class="island-fps" role="img" hidden><strong id="island-fps-value"></strong><span id="island-fps-source"></span></div>
     <div id="file-drop-hint" hidden>Drop files here<small>Then ask C.O.D.Y. about them</small></div>
     <section class="quick-panel" id="quick-panel" aria-label="C.O.D.Y. assistant" aria-hidden="true" inert>
       <header class="panel-header">
@@ -162,6 +163,7 @@
           <nav class="settings-nav" aria-label="Settings categories">
             <div class="nav-group-caption">PREFERENCES</div>
             <button class="nav-item selected" data-tab="general" type="button"><span class="nav-glyph">⚙</span>General</button>
+            <button class="nav-item" data-tab="memory" type="button"><span class="nav-glyph" aria-hidden="true">▤</span>Memory</button>
             <button class="nav-item" data-tab="voice" type="button"><span class="nav-glyph">◖))</span>Voice</button>
             <button class="nav-item" data-tab="microphone" type="button"><span class="nav-glyph">♩</span>Microphone</button>
             <button class="nav-item" data-tab="appearance" type="button"><span class="nav-glyph">◈</span>Appearance</button>
@@ -195,6 +197,26 @@
               <h3 class="group-title">CONVERSATIONS</h3><div class="settings-group"><div class="setting-row"><span><strong>Conversation history</strong><small>Browse previous chats and continue a conversation.</small></span><button id="core-history" class="light-action" type="button">Open history</button></div></div><h3 class="group-title">ABOUT</h3>
               <div class="settings-group"><div class="setting-row"><span><strong>C.O.D.Y. Dynamic Island</strong><small>Dynamic Island 1.8.0 · Integrated Windows assistant</small></span><span class="subtle-value">Up to date locally</span></div></div>
               <p class="setting-help">Your preferences are saved automatically.</p>
+            </div>
+            <div class="settings-tab" data-content="memory" hidden>
+              <h2>Memory</h2>
+              <h3 class="group-title">PRIVACY</h3>
+              <div class="settings-group">
+                <label class="setting-row"><span><strong>Local memory only</strong><small>Keep memories on this PC. Pauses Claude through HeyClicky, which can add account memories to replies.</small></span><input type="checkbox" id="local-memory-only" aria-describedby="memory-mode-status" disabled></label>
+              </div>
+              <p class="setting-help" id="memory-mode-status" role="status"></p>
+              <h3 class="group-title">SAVED ON THIS PC</h3>
+              <p class="setting-help">Add a detail you want to keep here, or type “Remember locally that my name is Alex” in chat.</p>
+              <form id="memory-save-form">
+                <textarea id="memory-editor" rows="3" maxlength="8000" aria-label="New local memory" placeholder="A name, preference or other detail" required></textarea>
+                <button class="light-action" type="submit">Save memory</button>
+              </form>
+              <form id="memory-search-form">
+                <input id="local-memory-query" type="search" maxlength="2000" aria-label="Search local memories" placeholder="Search memories">
+                <button class="light-action" type="submit">Search</button>
+              </form>
+              <p class="setting-help" id="local-memory-status" role="status"></p>
+              <div id="local-memory-notes" class="settings-group memory-results" aria-label="Local memories"></div>
             </div>
             <div class="settings-tab" data-content="voice" hidden>
               <h2>Voice</h2>
@@ -338,6 +360,7 @@
                 <div class="setting-row" id="agents-reset-row" hidden><span><strong>Reset to default folder</strong><small id="agents-default-folder"></small></span><button id="agents-reset" class="light-action" type="button">Reset</button></div>
               </div><p class="setting-help">Agents create their projects here. The default is in local app data, so OneDrive doesn't sync their scratch files.</p>
               <h3 class="group-title">AUTONOMY</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Allow agent usage</strong><small>Lets C.O.D.Y. use its agent allowance for tasks, routines, and screen takeovers. Turning this off stops active agent work.</small></span><input type="checkbox" data-agent-setting="usageEnabled" disabled></label>
                 <label class="setting-row"><span><strong>Auto-approve extra usage</strong><small>Let long tasks keep running without asking each time. Uses more of your CODY plan's agent messages.</small></span><input type="checkbox" data-agent-setting="extraUsage" disabled></label>
               </div><h3 class="group-title">ANNOUNCEMENTS</h3><div class="settings-group">
                 <label class="setting-row"><span><strong>Speak when a job starts or finishes</strong><small>Cody tells you what a job got done.</small></span><input type="checkbox" data-agent-setting="voice" disabled></label>
@@ -392,5 +415,6 @@
   </div>
 </main>
 <script src="icons.js"></script><script src="media-art.js"></script><script src="idle-presence.js"></script><script src="../../../ui/voice-client.js"></script><script src="../../../ui/push-to-talk.js"></script><script src="../../../ui/native-voice-ui.js"></script><script src="mascot-looks.js"></script><script src="chat-format.js"></script><script src="ui.js"></script><script src="attachments.js"></script><script src="update-island.js"></script><script src="assistant.js"></script><script src="task-format.js"></script><script src="task-appearance.js"></script><script src="background-tasks.js"></script><script src="browser-setup.js"></script><script src="plugins.js"></script><script src="agents.js"></script><script src="updates.js"></script><script src="agent-usage.js"></script><script src="rock-paper-scissors.js"></script>
+<script src="memory-settings.js"></script>
 </body>
 </html>

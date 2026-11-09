@@ -239,7 +239,7 @@ public sealed class ProactiveCoordinator : IDisposable
 		}
 	}
 
-	public bool IsEnabled => ProactiveLanePause.IsLaneEnabled(real.Core.Settings.Read((AppSettings s) => s.ProactiveAgentSuggestionsEnabled));
+	public bool IsEnabled => HeyClicky.App.Cody.CodyAgentUsage.Enabled && !HeyClicky.App.Cody.CodyMemoryPolicy.LocalOnly && ProactiveLanePause.IsLaneEnabled(real.Core.Settings.Read((AppSettings s) => s.ProactiveAgentSuggestionsEnabled));
 
 	private bool HasCompletedOnboarding => real.Core.Settings.Read((AppSettings s) => s.Onboarding.HasCompletedOnboarding);
 

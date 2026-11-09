@@ -360,7 +360,9 @@ public sealed class BrainSession : IDisposable
 		AfterNewSession(ended);
 	}
 
-	public void StartFreshSession(string? userId)
+	public void StartFreshSession(string? userId) => StartFreshSession(userId, submitPrevious: true);
+
+	public void StartFreshSession(string? userId, bool submitPrevious)
 	{
 		AdoptAccount(userId);
 		Ended ended;
@@ -378,7 +380,7 @@ public sealed class BrainSession : IDisposable
 			ScheduleIdleSessionEndLocked();
 		}
 		OneBrainStats.Shared.Note("fresh session (Settings)");
-		AfterNewSession(ended);
+		AfterNewSession(submitPrevious ? ended : null);
 		SaveToDisk();
 	}
 

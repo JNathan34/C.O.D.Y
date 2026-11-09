@@ -194,7 +194,7 @@ public static class CodyEngineBridge
                     case "plugins-list":return await CodyPlugins.List(host);
                     case "agents-state":return CodyAgents.State(host);
                     case "heyclicky-usage":return await CodyAgents.Usage(host);
-                    case "agents-configure":return CodyAgents.Configure(host,request);
+                    case "agents-configure":return await CodyAgents.Configure(host,request);
                     case "agents-privacy":return CodyAgents.OpenPrivacy(host,Text("capability"));
                     case "plugins-action":return await CodyPlugins.Act(host,Text("pluginId"),Text("action"),Text("accountId"));
                     case "plugins-add":return CodyPlugins.Add(host,Text("name"),Text("url"),Text("apiKey"));
@@ -253,7 +253,13 @@ public static class CodyEngineBridge
                         Consent.Decide(Text("approvalId"),Text("decision"));return new { answered=true };
                     case "status":
                         return new { engineDirectory=AppContext.BaseDirectory,processId=Environment.ProcessId,dataDirectory=AppPaths.Root,stateDirectory=CodyPaths.StateRoot,recognitionLanguage = RecognitionLanguage, automaticUpdatesEnabled = AutomaticUpdatesEnabled, signedIn = host.Services.Auth.IsSignedIn, state = cachedSpeaking ? "Responding" : session.State.ToString(), cachedPlaybacks, customSpeech, voice = host.Real.Core.Settings.Read(s => s.VoiceIdentifier), speed = host.Real.Core.Settings.Read(s => s.SpeechSpeed), voiceReplies = host.Services.Settings.LibraryModeEnabled, audioPlaybackStarts = session.AudioPlaybackBeganCount };
+                    case "memory-mode-state": return new { localOnly = CodyMemoryPolicy.LocalOnly };
+                    case "memory-mode-configure":
+                        if(customSpeech || cachedSpeaking)throw new InvalidOperationException("Finish the current voice session before changing memory mode.");
+                        CodyMemoryPolicy.Configure(host,request.GetProperty("localOnly").GetBoolean());
+                        return new { localOnly = CodyMemoryPolicy.LocalOnly };
                     case "submit":
+                        if(CodyMemoryPolicy.LocalOnly)throw new InvalidOperationException(CodyMemoryPolicy.BlockedMessage);
                         StopSpeech();
                         if (!host.Services.Auth.IsSignedIn) throw new InvalidOperationException("Sign in to HeyClicky first.");
                         if (session.State != VoiceState.Idle) throw new InvalidOperationException("A native turn is already active.");
@@ -291,7 +297,7 @@ public static class CodyEngineBridge
                         StopSpeech(request.TryGetProperty("gameDuplex", out var duplex) && duplex.GetBoolean());
                         string textTarget=request.TryGetProperty("captureText",out var captureText)&&captureText.GetBoolean()?await CodyProofread.Capture(request.GetProperty("clientPid").GetInt32()):null;
                         turn = Text("turn", id);
-                        utilityOnly = request.TryGetProperty("utilityOnly", out var onlyUtility) && onlyUtility.GetBoolean();
+                        utilityOnly = CodyMemoryPolicy.LocalOnly || (request.TryGetProperty("utilityOnly", out var onlyUtility) && onlyUtility.GetBoolean());
                         lastTranscript = routedUtility = null;
                         byte[] audioPrefix=Array.Empty<byte>();
                         if(request.TryGetProperty("audioPrefix",out var prefixAudio)){
@@ -313,6 +319,7 @@ public static class CodyEngineBridge
                     case "fresh": session.StartFreshSession(); return new { fresh = true };
                     case "clear": host.Real.Canvas.Clear(); return new { cleared = true };
                     case "audio-state": return JsonSerializer.Deserialize<JsonElement>(NativeAudioControl.State());
+                    case "desktop-frames": return CodyDesktopFrames.Snapshot();
                     case "audio-set":
                         NativeAudioControl.SetVolume(Math.Clamp(request.GetProperty("level").GetInt32(), 0, 100));
                         return JsonSerializer.Deserialize<JsonElement>(NativeAudioControl.State());

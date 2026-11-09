@@ -39,6 +39,8 @@ const ACTIONS = Object.freeze({
   'app.close': {permission:'applications',risk:'always',description:'Gracefully close an approved application window'},
   'audio.set': {permission:'audio',risk:'low',description:'Set Windows master volume (0–100)'},
   'audio.mute': {permission:'audio',risk:'low',description:'Mute or unmute Windows audio'},
+  'discord.voice': {permission:'audio',requires:['uiAutomation'],risk:'low',directOnly:true,description:'Change your own Discord mute or deafen state'},
+  'discord.share': {permission:'screenshots',requires:['uiAutomation'],risk:'low',directOnly:true,description:'Share the requested screen or window in your current Discord call'},
   'spotify.control': {permission:'audio',risk:'low',description:'Control Spotify desktop playback'},
   'media.control': {permission:'audio',risk:'low',description:'Control the media player displayed in the Island'},
   'plezy.play': {permission:'audio',risk:'low',description:'Search for an exact title in the installed Plezy app and start playback'},
@@ -152,7 +154,7 @@ function needsApproval(action,perms,origin='gui',context={}){
   if(policy.risk==='always'||sensitiveBrowserAction(action,context.args,context))return true;
   return policy.permission==='filesWrite'&&!['file.backup','folder.create'].includes(action);
 }
-function availableActions(perms){return Object.entries(ACTIONS).map(([name,entry])=>({name,...entry,enabled:!!perms.enabled&&!!perms[entry.permission]&&(entry.requires||[]).every(permission=>!!perms[permission])}));}
+function availableActions(perms){return Object.entries(ACTIONS).filter(([,entry])=>!entry.directOnly).map(([name,entry])=>({name,...entry,enabled:!!perms.enabled&&!!perms[entry.permission]&&(entry.requires||[]).every(permission=>!!perms[permission])}));}
 function permissionError(action,permissions){
   if(!ACTIONS[action])return 'Unsupported action';
   if(!permissions.enabled || permissions.level==='off')return 'Computer control is disabled. Enable it in C.O.D.Y settings first.';

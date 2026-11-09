@@ -18,6 +18,17 @@
   art.addEventListener('error',()=>{if(artIndex+1<artCandidates.length)art.src=artCandidates[++artIndex];});
   window.CODYIcons.set($('island-timer-icon'),'timer');
   window.CODYIcons.set($('island-media-previous'),'skip-back');window.CODYIcons.set($('island-media-next'),'skip-forward');
+  function renderFps(){
+    const item=monitors.items.find(item=>item.id==='fps');
+    const badge=$('island-fps');
+    badge.hidden=!item;
+    if(!item)return;
+    const value=$('island-fps-value'),source=$('island-fps-source');
+    if(value.textContent!==item.text)value.textContent=item.text;
+    if(source.textContent!==item.detail)source.textContent=item.detail;
+    const label=item.text+' · '+(item.tooltip||item.detail);
+    if(badge.getAttribute('aria-label')!==label)badge.setAttribute('aria-label',label);
+  }
   function renderTimer(){
     const infoUpdate=$('island-info');
     infoUpdate.dataset.update='false';infoUpdate.removeAttribute('role');infoUpdate.removeAttribute('tabindex');infoUpdate.removeAttribute('aria-label');
@@ -38,7 +49,8 @@
     const quick=Boolean(!recording&&!game.active&&quickCard&&quickCard.expiresAt>Date.now()&&timer?.status!=='finished');
     const updateCard=window.CODYUpdateStatus?.card();
     const showUpdate=Boolean(updateCard&&!recording&&!game.active&&!quick&&timer?.status!=='finished');
-    const showMonitors=monitors.active&&!recording&&!game.active&&!quick&&!showUpdate&&timer?.status!=='finished';
+    const rotatingMonitors=monitors.items.filter(item=>item.id!=='fps');
+    const showMonitors=rotatingMonitors.length>0&&!recording&&!game.active&&!quick&&!showUpdate&&timer?.status!=='finished';
     const showGame=game.active&&!recording,showTimer=Boolean(timer)&&!showMonitors&&!quick&&!showGame&&!recording&&!showUpdate,showTasks=activeTasks.length>0&&!showUpdate&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame,showMedia=!showUpdate&&!showTasks&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame&&media.available&&Boolean(media.title);
     document.body.classList.toggle('task-layout',Boolean(showTasks));
     document.body.classList.toggle('recording-layout',recording);document.body.dataset.recording=capture.status;
@@ -49,8 +61,8 @@
     document.body.classList.toggle('island-content-active',Boolean(showUpdate||showTasks||showMonitors||recording||showTimer||quick||showMedia||showGame));
     const info=$('island-info');info.hidden=!showUpdate&&!showTasks&&!showMonitors&&!recording&&!quick&&!showMedia&&!showGame;info.dataset.tasks=String(Boolean(showTasks));info.dataset.rps=String(Boolean(showGame));info.classList.toggle('showing-media',Boolean(showMedia));
     if(!showMonitors)delete info.dataset.monitor;
-    if(showMonitors&&monitors.items.length){
-      const index=Math.floor(Date.now()/3000)%monitors.items.length,item=monitors.items[index];
+    if(showMonitors){
+      const index=Math.floor(Date.now()/3000)%rotatingMonitors.length,item=rotatingMonitors[index];
       $('island-info-text').textContent=item.text;$('island-info-detail').textContent=item.detail;
       info.dataset.monitor=item.id;
       $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),item.icon||'activity');art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
@@ -110,7 +122,7 @@
   document.addEventListener('cody:update-state',renderTimer);
   api.on('rps-state',state=>{game=state;renderTimer();});
   api.on('capture-state',state=>{capture=state;renderTimer();});
-  api.on('monitor-state',state=>{monitors=state;renderTimer();});
+  api.on('monitor-state',state=>{monitors=state;renderFps();renderTimer();});
   api.on('timer-changed',value=>{timer=value;renderTimer();});
   api.on('island-card',value=>{quickCard=value;renderTimer();});
   api.on('spotify-changed',value=>{media=value;renderTimer();});
@@ -131,7 +143,7 @@
   });
   $('island-info').addEventListener('click',event=>{event.stopPropagation();if($('island-info').dataset.tasks==='true'){window.CODYTasks?.open();return;}if(quickCard?.captureKind&&!['starting','recording','paused','stopping'].includes(capture.status))void api.capture.reveal(quickCard.captureKind);});
   $('island-timer').addEventListener('click',event=>{event.stopPropagation();if(timer?.status==='finished')void api.dismissTimer();else{island.setActiveView('chat');island.togglePanel(true);}});
-  renderTimer();setInterval(renderTimer,250);
+  renderFps();renderTimer();setInterval(renderTimer,250);
   // The native picker can occupy transparent host space beyond the Island.
   let pickerTimer=null,pickerWasOpen=false;
   function syncPicker(){

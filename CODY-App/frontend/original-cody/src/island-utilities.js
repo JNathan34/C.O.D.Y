@@ -6,6 +6,7 @@ const {parseMediaCommand}=require('./media-commands');
 const {parseAppCommand}=require('./app-commands');
 const {isProofreadCommand}=require('./proofread-command');
 const {parseSystemCommand}=require('./control/system-settings');
+const {parseDiscordCommand}=require('./control/discord');
 
 const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy'};
 const APP_ALIASES={'google chrome':'chrome','microsoft edge':'edge','mozilla firefox':'firefox','windows explorer':'file explorer'};
@@ -32,6 +33,7 @@ class IslandUtilities {
   constructor({tasks,monitors,capture,rps,weather,timer,spotify,controller,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{tasks,monitors,capture,rps,weather,timer,spotify,controller,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input){
     const system=parseSystemCommand(input);if(system)return {kind:'direct',...system,text:input};
+    const discord=parseDiscordCommand(input);if(discord)return {kind:'direct',...discord};
     if(/^(?:(?:show|open|view)(?: me)? (?:my |the )?(?:background )?tasks|background tasks)$/i.test(commandText(input,{preserveShow:true})))return {kind:'local',action:'background-tasks'};
     if(isProofreadCommand(input))return {kind:'direct',action:'text.proofread',args:{}};
     const appLayout=parseAppCommand(input);if(appLayout)return {kind:'direct',...appLayout,text:input};
@@ -55,7 +57,7 @@ class IslandUtilities {
     if(relative)return {kind:'direct',action:'audio.adjust',delta:(/up|louder/.test(relative[1]||relative[2])?1:-1)*Number(relative[3]||10),text};
     return null;
   }
-  cancel(){this.generation=(this.generation||0)+1;}
+  cancel(){this.generation=(this.generation||0)+1;this.discordAbort?.abort();}
   volumeCard(state,generation=this.generation){if(generation!==this.generation)return "";const card={kind:'utility',text:state.muted?'Muted':state.level+'%',detail:'Volume',icon:state.muted?'volume-x':'volume-2'};this.showCard(card);return state.muted?'Sound is muted.':`Volume is ${state.level}%.`;}
   mediaCard(fallback){const media=this.spotify.snapshot();this.clearCard();this.refreshMedia();if(!media.available||!media.title)this.showCard({kind:'utility',text:fallback||'No track playing',detail:'Music',icon:'music'});return media;}
   async run(input,chatId,context={}){
@@ -79,6 +81,18 @@ class IslandUtilities {
         case 'timer':reply=this.timer.execute(route.timer,chatId);if(['start','cancel'].includes(route.timer.action))this.clearCard();this.refreshMedia();confirmation=route.timer.action==='start'?'Timer set.':route.timer.action==='cancel'?'Timer stopped.':undefined;break;
         case 'spotify-status':{const media=this.mediaCard();reply=media.available?`${media.playing?'Playing':'Paused'}: ${media.title||'Music'}${media.artist?' — '+media.artist:''}.`:'Open a music player and start a track to show it in the Island.';break;}
         case 'volume-status':reply=this.volumeCard(await this.audioState(),generation);break;
+        case 'discord.voice':case 'discord.share':{
+          if(this.discordAbort)throw Error('A Discord command is already running. Try again when it finishes.');
+          const operation=this.discordAbort=new AbortController();
+          try{
+            const result=await this.controller.execute(route.action,route.args,{origin:'chat',signal:operation.signal});
+            if(operation.signal.aborted||result.cancelled)return {handled:true,cancelled:true,reply:'Action cancelled.'};
+            if(!result.ok)throw Error(result.error||'Discord did not confirm the action.');
+            reply=result.result.reply;
+            show({kind:'utility',text:result.result.card,detail:'Discord',icon:route.action==='discord.share'?'monitor':'mic'});
+          }finally{if(this.discordAbort===operation)this.discordAbort=null;}
+          break;
+        }
         default:{
           let action=route.action,args=route.args;
           if(action==='text.proofread'){args=context.proofreadTarget?{target:context.proofreadTarget}:{};show({kind:'utility',text:'Checking spelling…',detail:'Keeping your wording',icon:'pencil'});}

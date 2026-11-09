@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.13 — 9 November 2026
+
+- Add **Allow agent usage** under **Settings → Agents**. Turning it off stops active agent work and blocks new tasks, routines and screen takeovers.
+- Add a persistent **Desktop FPS** reading when a measured application rate is unavailable. The FPS widget labels its measurement source.
+- Add local typed and spoken Discord mute, deafen and screen-sharing commands for the Windows desktop client.
+- Add **Settings → Memory** for encrypted local notes. **Local memory only** pauses Claude through HeyClicky to keep its account memory out of C.O.D.Y. sessions.
+- Update the Word capability guide through 0.15.13.
+
 ## 0.15.12 — 9 November 2026
 
 - Add a 50%–200% cursor size slider under **Settings → Cursor**.

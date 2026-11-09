@@ -5,9 +5,10 @@ const {RpsVoice}=require('./rps-voice');
 const {taskState}=require('./background-tasks');
 const {selection,providerPatch}=require('./agent-provider');
 const {setPersonalCodexEnabled}=require('./usage-policy');
+const {localMemoryText,SHARED_PAUSED}=require('./memory/commands');
 const NATIVE_VOICES=Object.freeze(['cedar','marin','alloy','ash','ballad','coral','echo','sage','shimmer','verse']);
-function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExternal=async()=>{},externalBusy=()=>false,connectProvider,codexUsage,getState,getWindow,utilities,rps,capture,attachments,chooseFiles,controller,chooseWorkingFolder,captureTextEnabled=()=>false,onTasks=()=>{},showFiles=()=>{},fileDragging=()=>{},showApprovals=()=>{},cancelLocalApprovals=()=>{},isMicrophoneMuted=()=>false}){
-  let active=null;
+function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExternal=async()=>{},externalBusy=()=>false,connectProvider,codexUsage,getState,getWindow,utilities,rps,capture,attachments,chooseFiles,controller,chooseWorkingFolder,captureTextEnabled=()=>false,onTasks=()=>{},showFiles=()=>{},fileDragging=()=>{},showApprovals=()=>{},cancelLocalApprovals=()=>{},isMicrophoneMuted=()=>false,localMemoryOnly=()=>false,saveLocalMemory,onMemoryModeChange=()=>{}}){
+  let active=null,changingMemoryMode=false;
   const turnChats=new Map(),reports=new Set();
   let tasks=taskState(null,false);
   function updateTasks(value,connected=true){tasks=taskState(value,connected);onTasks(tasks);sendUI('tasks-changed',tasks);return tasks;}
@@ -24,6 +25,19 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   const rememberPermissions=value=>{if(store.data?.settings&&store.setNativePermissions){store.setNativePermissions(value);sendUI('settings-changed',store.data.settings);}return value;};
   engine.on('permissions-changed',rememberPermissions);
   handle('audio-output-devices',()=>engine.request('audio-output-devices'));
+  handle('memory-mode-state',()=>({localOnly:localMemoryOnly()}));
+  handle('memory-mode-configure',async localOnly=>{
+    if(typeof localOnly!=='boolean')throw Error('Choose a memory mode.');
+    if(changingMemoryMode||active||externalBusy())throw Error('Finish the current reply before changing memory mode.');
+    changingMemoryMode=true;
+    try{
+      const previous=localMemoryOnly();
+      const state=await engine.request('memory-mode-configure',{localOnly});
+      if(state.localOnly!==previous)onMemoryModeChange(state.localOnly);
+      return state;
+    }
+    finally{changingMemoryMode=false;}
+  });
   handle('audio-output-select',deviceId=>{
     if(typeof deviceId!=='string'||deviceId.length>512)throw Error('Invalid output device.');
     return engine.request('audio-output-select',{deviceId});
@@ -51,8 +65,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   handle('agents-configure',async change=>{
     if(!change||typeof change!=='object'||Array.isArray(change))throw Error('Invalid agent settings');
     const patch={};
-    for(const key of Object.keys(change)){if(!['extraUsage','voice','cursorUpdates','folder'].includes(key))throw Error('Unknown agent setting');if(key==='folder'){if(change[key]!==null)throw Error('Use the folder picker');}else if(typeof change[key]!=='boolean')throw Error('Invalid agent setting');patch[key]=change[key];}
-    const state=await engine.request('agents-configure',patch);rememberPermissions(await engine.request('permissions-state'));return state;
+    for(const key of Object.keys(change)){if(!['usageEnabled','extraUsage','voice','cursorUpdates','folder'].includes(key))throw Error('Unknown agent setting');if(key==='folder'){if(change[key]!==null)throw Error('Use the folder picker');}else if(typeof change[key]!=='boolean')throw Error('Invalid agent setting');patch[key]=change[key];}
+    const state=await engine.request('agents-configure',patch);if('extraUsage' in patch||'folder' in patch)rememberPermissions(await engine.request('permissions-state'));return state;
   });
   handle('agents-folder',async()=>{const folder=await chooseWorkingFolder?.();if(!folder)return null;const state=await engine.request('agents-configure',{folder});rememberPermissions(await engine.request('permissions-state'));return state;});
   handle('agents-privacy',capability=>{if(!['broadFileSystemAccess','documentsLibrary','picturesLibrary','contacts','appointments','microphone','webcam','location'].includes(capability))throw Error('Unknown privacy setting');return engine.request('agents-privacy',{capability});});
@@ -79,7 +93,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     handle('computer-emergency-stop',async()=>{await engine.request('permissions-configure',{enabled:false});await engine.request('drive-stop');await cancel();controller.configure({enabled:false});sendUI('settings-changed',store.data.settings);return{stopped:true};});
     if(chooseWorkingFolder)handle('browse-folder',async()=>{const folder=await chooseWorkingFolder();if(!folder)return null;const native=await engine.request('permissions-configure',{workingFolder:folder});store.settings({workingFolder:folder});rememberPermissions(native);return folder;});
   }
-  const sendMessage=(role,text)=>{const message=store.addMessage(active.chatId,role,text,'heyclicky');if(role==='user'&&active.files?.length){message.attachments=active.files.map(file=>({path:file,name:require('node:path').basename(file)}));store.save();}sendUI('message-added',{chatId:active.chatId,message});return message;};
+  const sendMessage=(role,text,provider='heyclicky')=>{const message=store.addMessage(active.chatId,role,text,provider);if(role==='user'&&active.files?.length){message.attachments=active.files.map(file=>({path:file,name:require('node:path').basename(file)}));store.save();}sendUI('message-added',{chatId:active.chatId,message});return message;};
   function replace(message,text){if(!active||!message)return;store.updateMessage(active.chatId,message.id,text,{persist:false});sendUI('message-replace',{chatId:active.chatId,messageId:message.id,text});}
   function finish(error){if(!active)return;const current=active;if(error){if(!current.answer)current.answer=sendMessage('assistant',error);else if(!current.answer.text)replace(current.answer,error);sendUI('diagnostic',error);}active=null;store.save();sendUI('busy',{busy:false});sendUI('chats-changed',store.publicState());}
   async function runUtility(operation,text,speak){
@@ -92,13 +106,19 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     active.answer=sendMessage('assistant',result.reply);
     finish();
     if(gameRequest&&rps?.active&&rps.phase==='ready'){void gameVoice.start();return result;}
-    if(speak&&!result.error&&!result.cancelled)void engine.request('speak',{turn:operation.turn,text:result.confirmation||result.reply}).catch(error=>sendUI('diagnostic',error.message));
+    if(speak&&!localMemoryOnly()&&!result.error&&!result.cancelled)void engine.request('speak',{turn:operation.turn,text:result.confirmation||result.reply}).catch(error=>sendUI('diagnostic',error.message));
     return result;
   }
-  engine.on('classify-utility',data=>{void engine.request('utility-route',{turn:data.turn,handled:Boolean(active?.voice&&active.turn===data.turn&&(active.files?.length||utilities?.match(data.text)))}).catch(()=>{});});
+  engine.on('classify-utility',data=>{void engine.request('utility-route',{turn:data.turn,handled:Boolean(active?.voice&&active.turn===data.turn&&(active.files?.length||utilities?.match(data.text)||localMemoryText(data.text,localMemoryOnly())))}).catch(()=>{});});
   engine.on('phase',data=>{sendUI('native-phase',data);if(data.state!=='Idle')sendUI('busy',{busy:Boolean(active)&&data.state!=='Listening'});});
   engine.on('meter',data=>sendUI('native-meter',data));
-  engine.on('transcript',data=>{if(!active||active.turn!==data.turn)return;if(active.wake){data={...data,text:stripWakeText(data.text)};if(!data.text)return;}if(!active.user)active.user=sendMessage('user',data.text);else replace(active.user,data.text);});
+  engine.on('transcript',data=>{
+    if(!active||active.turn!==data.turn)return;
+    const transcript=active.wake?stripWakeText(data.text):data.text;
+    if(!transcript)return;
+    const text=localMemoryText(transcript,localMemoryOnly())?'Private memory request':transcript;
+    if(!active.user)active.user=sendMessage('user',text);else replace(active.user,text);
+  });
   engine.on('response',data=>{if(!active||active.turn!==data.turn)return;if(!active.answer)active.answer=sendMessage('assistant',data.text);else replace(active.answer,data.text);});
   engine.on('failure',data=>{finish(data.Message);sendUI('native-phase',{state:'Idle'});});
   engine.on('offline',()=>{finish('CODY engine disconnected. Restart C.O.D.Y.');sendUI('native-phase',{state:'Idle'});});
@@ -167,21 +187,34 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     text=String(text||'').trim();if(!text||text.length>25000)return {error:'Enter a message under 25,000 characters'};
     if(!store.chat(chatId))return {error:'Select a conversation'};
     if(gameVoice?.running)await gameVoice.cancel();
+    if(changingMemoryMode)return {error:'Wait for C.O.D.Y. to finish changing memory mode.'};
+    const note=localMemoryText(text,localMemoryOnly());
+    if(note!==null){
+      if(!saveLocalMemory)return {error:'Local memory is unavailable.'};
+      const result=saveLocalMemory(note);
+      for(const [role,message] of [['user','Private memory request'],['assistant',result.added?'Saved on this PC. Open Settings → Memory to view it.':'This memory is already saved on this PC.']])
+        sendUI('message-added',{chatId,message:store.addMessage(chatId,role,message,'local')});
+      return {local:true};
+    }
     if(utilities?.match(text)){
       active={turn:randomUUID(),chatId,utility:true};active.user=sendMessage('user',text);sendUI('busy',{busy:true});
       const operation=active;
       void runUtility(operation,text,voice||store.data.settings.voiceAutoSpeak).catch(error=>{if(active===operation)finish(error.message);});
       return {started:true,local:true,utility:true};
     }
-    let batch;try{batch=attachments?await attachments.prepare(chatId):{paths:[],ids:[]};}catch(error){return {error:error.message};}const files=batch.paths;if(active)return {error:'Another reply is in progress'};
+    if(selection(store.data.settings).provider==='heyclicky'&&localMemoryOnly())return {error:SHARED_PAUSED};
+    let batch;try{batch=attachments?await attachments.prepare(chatId):{paths:[],ids:[]};}catch(error){return {error:error.message};}const files=batch.paths;if(active||changingMemoryMode)return {error:'Another operation is in progress'};
     const chosen=selection(store.data.settings);
+    if(chosen.provider==='heyclicky'&&localMemoryOnly())return {error:SHARED_PAUSED};
     if(chosen.provider!=='heyclicky'){
       if(!submitExternal)return {error:'This AI connection is unavailable.'};
       if(files.length)return {error:'Attached files currently require Claude. Remove the attachments or select Claude.'};
       return submitExternal({chatId,text,voice,mode:chosen.provider});
     }
-    const status=await engine.refresh();if(!status.signedIn)return {error:'Sign in to the existing AI connection in Settings → Plugins.'};
-    if(active)return {error:'Another reply is in progress'};
+    const status=await engine.refresh();
+    if(changingMemoryMode||active)return {error:'Another operation is in progress'};
+    if(localMemoryOnly())return {error:SHARED_PAUSED};
+    if(!status.signedIn)return {error:'Sign in to the existing AI connection in Settings → Plugins.'};
     active={turn:randomUUID(),chatId,files};active.user=sendMessage('user',text);active.answer=sendMessage('assistant','');sendUI('busy',{busy:true});
     remember(active);
     const operation=active;
@@ -190,7 +223,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     return {started:true,provider:'heyclicky'};
   };
   handle('send-message',submit);
-  const beginVoice=async({audioPrefix,wake=false}={})=>{if(isMicrophoneMuted())throw Error('C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.');if(externalBusy()&&!await cancelExternal())throw Error('Finish or stop the current reply first');if(gameVoice?.running)return {listening:gameVoice.capture};if(active){const drive=await engine.request('drive-state');throw Error(drive.active?'Press Esc to stop computer use first.':'Finish the current reply first');}const operation=active={turn:randomUUID(),chatId:store.data.activeChatId,voice:true,wake,provider:selection(store.data.settings).provider};remember(operation);try{operation.attachmentBatch=attachments?await attachments.prepare(operation.chatId):{paths:[],ids:[]};operation.files=operation.attachmentBatch.paths;if(active!==operation)return {listening:false};if(isMicrophoneMuted())throw Error('C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.');const result=await engine.request('begin',{turn:operation.turn,...(wake?{wake:true}:{}),captureText:captureTextEnabled(),clientPid:process.pid,...(operation.files.length||wake||operation.provider!=='heyclicky'?{utilityOnly:true}:{}),...(audioPrefix?{audioPrefix}:{})});operation.proofreadTarget=result.textTarget;return result;}catch(error){if(active===operation)finish(error.message);throw error;}};
+  const beginVoice=async({audioPrefix,wake=false}={})=>{if(isMicrophoneMuted())throw Error('C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.');if(externalBusy()&&!await cancelExternal())throw Error('Finish or stop the current reply first');if(changingMemoryMode)throw Error('Wait for C.O.D.Y. to finish changing memory mode.');if(gameVoice?.running)return {listening:gameVoice.capture};if(active){const drive=await engine.request('drive-state');throw Error(drive.active?'Press Esc to stop computer use first.':'Finish the current reply first');}const operation=active={turn:randomUUID(),chatId:store.data.activeChatId,voice:true,wake,provider:selection(store.data.settings).provider};remember(operation);try{operation.attachmentBatch=attachments?await attachments.prepare(operation.chatId):{paths:[],ids:[]};operation.files=operation.attachmentBatch.paths;if(active!==operation)return {listening:false};if(isMicrophoneMuted())throw Error('C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.');const result=await engine.request('begin',{turn:operation.turn,...(wake?{wake:true}:{}),captureText:captureTextEnabled(),clientPid:process.pid,...(operation.files.length||wake||localMemoryOnly()||operation.provider!=='heyclicky'?{utilityOnly:true}:{}),...(audioPrefix?{audioPrefix}:{})});operation.proofreadTarget=result.textTarget;return result;}catch(error){if(active===operation)finish(error.message);throw error;}};
   handle('native-begin',()=>beginVoice());
   const endVoice=async()=>{
     if(isMicrophoneMuted())return {listening:false,muted:true};
@@ -199,6 +232,15 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
       const result=await engine.request('end');if(active!==operation)return result;
       if(operation.wake){result.utilityText=stripWakeText(result.utilityText||result.transcript||'');if(!result.utilityText||isListeningCancellation(result.utilityText)){finish();return {...result,empty:!result.utilityText,cancelled:Boolean(result.utilityText)};}}
       if(result.controlStopped){if(!operation.user&&result.transcript)operation.user=sendMessage('user',result.transcript);operation.answer=sendMessage('assistant','Stopped.');finish();}
+      else if(localMemoryText(result.utilityText,localMemoryOnly())){
+        if(operation.user)replace(operation.user,'Private memory request');
+        else operation.user=sendMessage('user','Private memory request','local');
+        operation.answer=sendMessage('assistant','Type this memory or add it in Settings → Memory.','local');finish();
+      }
+      else if(result.utilityText&&localMemoryOnly()&&operation.provider==='heyclicky'&&!utilities?.match(result.utilityText)){
+        if(!operation.user)operation.user=sendMessage('user',result.utilityText);
+        operation.answer=sendMessage('assistant',SHARED_PAUSED,'local');finish();
+      }
       else if(operation.provider!=='heyclicky'&&result.utilityText&&!utilities?.match(result.utilityText)){
         const text=result.utilityText;
         const chat=store.chat(operation.chatId);

@@ -34,7 +34,7 @@ function toolReadiness(human,permissions,{workingFolder='',firefoxConnected=fals
 // not a privileged system role; the dispatcher independently enforces policy.
 function capabilityStatus(perms,{workingFolder='',firefoxConnected=false}={}){
  if(!perms?.enabled||perms.level==='off')return 'Computer control: OFF. Never claim Windows/Firefox access.';
- const enabled=Object.entries(ACTIONS).filter(([,a])=>Boolean(perms[a.permission])).map(([a])=>a);
+ const enabled=Object.entries(ACTIONS).filter(([,a])=>!a.directOnly&&Boolean(perms[a.permission])).map(([a])=>a);
  const full=['full','advanced'].includes(perms.level);
  return `Computer control level: ${full?'Full access':perms.level}; enabled actions: ${enabled.join(', ')||'none'}; file root: ${full?'Full access: absolute file paths on any local drive are allowed; relative paths use '+(workingFolder||require('node:os').homedir()):workingFolder?'user-approved folder selected':'NOT SELECTED'}; Firefox extension: ${firefoxConnected?'connected':'disconnected'}. C.O.D.Y locally validates each requested action. ${full?'Full access enables every tool category without per-action approval. Use accessRoot returned by file tools to resolve relative result paths, and backupRoot for file.restore. Windows account permissions and tool argument checks still apply.':'Files remain inside the approved folder. Potentially unsafe actions require approval.'}`;
 }

@@ -5,7 +5,7 @@ const {commandText}=require('./command-text');
 const {Weather,parseWeatherRequest}=require('./weather');
 const METRICS=['cpu','ram','gpu','fps','wifi','wifiDetails','wifiSpeed','speedtest','clock','weather'];
 const canonicalMetric=id=>({cpuTemp:'cpu',gpuTemp:'gpu'})[id]||id;
-const aliases={cpu:'cpu','cpu usage':'cpu',processor:'cpu','processor usage':'cpu',temp:'cpuTemp',temperature:'cpuTemp','cpu temp':'cpuTemp','cpu temperature':'cpuTemp',ram:'ram',memory:'ram','ram usage':'ram','memory usage':'ram',gpu:'gpu','gpu usage':'gpu','gpu temp':'gpuTemp','gpu temperature':'gpuTemp',fps:'fps','frame rate':'fps',wifi:'wifi','wi fi':'wifi','wifi details':'wifiDetails','wi fi details':'wifiDetails','wifi speed':'wifiSpeed','wi fi speed':'wifiSpeed','network speed':'wifiSpeed','speed test':'speedtest'};
+const aliases={cpu:'cpu','cpu usage':'cpu',processor:'cpu','processor usage':'cpu',temp:'cpuTemp',temperature:'cpuTemp','cpu temp':'cpuTemp','cpu temperature':'cpuTemp',ram:'ram',memory:'ram','ram usage':'ram','memory usage':'ram',gpu:'gpu','gpu usage':'gpu','gpu temp':'gpuTemp','gpu temperature':'gpuTemp',fps:'fps','fps counter':'fps','desktop fps':'fps','frame rate':'fps',wifi:'wifi','wi fi':'wifi','wifi details':'wifiDetails','wi fi details':'wifiDetails','wifi speed':'wifiSpeed','wi fi speed':'wifiSpeed','network speed':'wifiSpeed','speed test':'speedtest'};
 function monitorCommand(input){
   const explicitDisplay=/^(?:show|display|monitor|keep showing|pin)(?: me)?\s/i.test(commandText(input,{preserveShow:true}));
   let text=commandText(input).toLowerCase().replace(/[’']/g,'').replace(/wi-fi/g,'wifi').trim();
@@ -32,8 +32,9 @@ function monitorCommand(input){
 }
 function cpuSample(){const cores=os.cpus();return {idle:cores.reduce((sum,core)=>sum+core.times.idle,0),total:cores.reduce((sum,core)=>sum+Object.values(core.times).reduce((a,b)=>a+b,0),0)};}
 class IslandMonitors extends EventEmitter{
-  constructor({settingsFile,fetcher=fetch,readWindows,now=Date.now,fpsProvider=null,weather}={}){
-    super();Object.assign(this,{settingsFile,fetcher,now,fpsProvider});this.selected=new Set();this.previousCpu=cpuSample();this.data={};this.values={};this.lastWifi=null;this.readWindows=readWindows||(()=>new Promise((resolve,reject)=>{this.child=execFile('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'../windows/telemetry-snapshot.ps1').replace('app.asar'+path.sep,'app.asar.unpacked'+path.sep),'-Metrics',[...this.selected].join(',')],{windowsHide:true,timeout:12000,maxBuffer:200000},(error,stdout)=>{this.child=null;if(error)reject(Error('Windows sensor data is unavailable'));else{try{resolve(JSON.parse(stdout));}catch{reject(Error('Windows sensor data is unavailable'));}}});}));
+  constructor({settingsFile,fetcher=fetch,readWindows,now=Date.now,fpsProvider=null,readDesktopFrames,weather}={}){
+    super();Object.assign(this,{settingsFile,fetcher,now,fpsProvider,readDesktopFrames});this.selected=new Set();this.previousCpu=cpuSample();this.data={};this.values={};this.lastWifi=null;this.readWindows=readWindows||(()=>new Promise((resolve,reject)=>{this.child=execFile('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'../windows/telemetry-snapshot.ps1').replace('app.asar'+path.sep,'app.asar.unpacked'+path.sep),'-Metrics',[...this.selected].join(',')],{windowsHide:true,timeout:12000,maxBuffer:200000},(error,stdout)=>{this.child=null;if(error)reject(Error('Windows sensor data is unavailable'));else{try{resolve(JSON.parse(stdout));}catch{reject(Error('Windows sensor data is unavailable'));}}});}));
+    this.resetFps();
     this.weather=weather||new Weather({fetcher,now});this.weatherLocation='';this.weatherGeneration=0;this.weatherNextUpdate=0;
     this.clockFormat=new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
     this.clockDateFormat=new Intl.DateTimeFormat('en-GB',{weekday:'short',day:'numeric',month:'short'});
@@ -47,8 +48,8 @@ class IslandMonitors extends EventEmitter{
   async execute(route){
     if(route.metrics){route={...route,metrics:[...new Set(route.metrics.map(canonicalMetric))]};if(route.metrics.some(id=>!METRICS.includes(id)))throw Error('Unknown Island monitor.');}
     if(route.weatherLocation!==undefined&&(typeof route.weatherLocation!=='string'||route.weatherLocation.length>100||!route.metrics?.includes('weather')))throw Error('Invalid weather location.');
-    if(route.action==='clear'){this.selected.clear();this.weatherGeneration++;this.weatherPending=null;this.speedAbort?.abort();this.save();this.publish();return {reply:'Island monitors cleared.',confirmation:'Done.'};}
-    if(route.action==='hide'){for(const metric of route.metrics)this.selected.delete(metric);if(route.metrics.includes('weather')){this.weatherGeneration++;this.weatherPending=null;}if(!this.selected.has('speedtest'))this.speedAbort?.abort();this.save();this.publish();return {reply:'Stopped showing '+route.metrics.map(id=>id.replace(/([A-Z])/g,' $1').toLowerCase()).join(' and ')+'.',confirmation:'Done.'};}
+    if(route.action==='clear'){this.selected.clear();this.resetFps();this.weatherGeneration++;this.weatherPending=null;this.speedAbort?.abort();this.save();this.publish();return {reply:'Island monitors cleared.',confirmation:'Done.'};}
+    if(route.action==='hide'){for(const metric of route.metrics)this.selected.delete(metric);if(route.metrics.includes('fps'))this.resetFps();if(route.metrics.includes('weather')){this.weatherGeneration++;this.weatherPending=null;}if(!this.selected.has('speedtest'))this.speedAbort?.abort();this.save();this.publish();return {reply:'Stopped showing '+route.metrics.map(id=>id.replace(/([A-Z])/g,' $1').toLowerCase()).join(' and ')+'.',confirmation:'Done.'};}
     if(route.action==='speedtest'){
       if(this.speedRunning)return {reply:'The Wi-Fi speed test is already running.'};
       this.selected.add('speedtest');this.save();this.values.speedtest={text:'Speed test',detail:'Testing…'};this.publish();void this.speedTest();return {reply:'Wi-Fi speed test started. Results will stay in the Island.',confirmation:'Done.'};
@@ -73,7 +74,7 @@ class IslandMonitors extends EventEmitter{
     const temperature=(label,value)=>({text:label+' '+(Number.isFinite(value)?Math.round(value)+'°C':'temp N/A'),detail:Number.isFinite(value)?'Live temperature':'Unavailable: no supported temperature sensor provider'});
     this.values.cpuTemp=temperature('CPU',this.data.cpuTemp);this.values.gpuTemp=temperature('GPU',this.data.gpuTemp);
     this.values.gpu={text:'GPU '+(Number.isFinite(this.data.gpu)&&!stale?Math.round(Math.max(0,Math.min(100,this.data.gpu)))+'%':'N/A'),detail:tempText(this.data.gpuTemp),tooltip:(this.data.gpuName||'Graphics processor')+' · '+(this.sensorError||(!Number.isFinite(this.data.gpu)||stale?'Usage counter unavailable':'Live usage'))+' · '+(Number.isFinite(this.data.gpuTemp)&&!stale?'Temperature '+this.data.gpuTemp+'°C':'Temperature sensor unavailable')};
-    let fps=null;try{fps=this.fpsProvider?.();}catch{}const validFps=Number.isFinite(fps)&&fps>=0;this.values.fps={text:'FPS '+(validFps?Math.round(fps):'N/A'),detail:validFps?'Live frame rate':'No FPS provider',tooltip:validFps?'Measured application frame rate':'Unavailable: no supported FPS provider is running'};
+    if(this.selected.has('fps'))this.sampleFps();
     const wifi=stale?null:this.data.wifi;
     const wifiMissing=wifi?.connected===false?'Wi-Fi offline':'Wi-Fi N/A';
     this.values.wifi={text:wifi?.connected?(wifi.ssid||'Wi-Fi connected'):wifiMissing,detail:wifi?.connected?`${wifi.signal!=null?wifi.signal+'% · ':''}${wifi.radio||'Connected'}`:'No current Wi-Fi reading',tooltip:wifi?.error||wifi?.adapter||'Wi-Fi connection status'};
@@ -87,6 +88,57 @@ class IslandMonitors extends EventEmitter{
         if(current?.connected&&previous&&current.adapter===previous.adapter&&time>previous.time&&current.received>=previous.received&&current.sent>=previous.sent){this.rx=(current.received-previous.received)*8/(time-previous.time)/1000;this.tx=(current.sent-previous.sent)*8/(time-previous.time)/1000;}else{this.rx=null;this.tx=null;}
         if(current?.connected)this.lastWifi={...current,time};else{this.lastWifi=null;this.rx=null;this.tx=null;}
       }).catch(error=>{this.sensorError=error.message;}).finally(()=>{this.pending=false;if(!this.closed)this.sample();});
+    }
+  }
+  resetFps(){
+    this.desktopBaseline=null;
+    this.fpsPending=null;
+    this.fpsNextRead=-Infinity;
+    delete this.values.fps;
+  }
+  sampleFps(){
+    let applicationFps;
+    try{applicationFps=this.fpsProvider?.();}catch{}
+    if(Number.isFinite(applicationFps)&&applicationFps>=0){
+      this.resetFps();
+      this.values.fps={text:'FPS '+Math.round(applicationFps),detail:'Application',tooltip:'Measured application frame rate'};
+      return;
+    }
+    if(!this.readDesktopFrames){
+      this.values.fps={text:'FPS N/A',detail:'No FPS provider',tooltip:'No frame measurement is available'};
+      return;
+    }
+    const now=this.now();
+    if(this.values.fps?.detail!=='Desktop'||(this.desktopBaseline&&now-this.fpsReadAt>3500)){
+      this.values.fps={text:'FPS …',detail:'Desktop',tooltip:'Measuring Windows desktop composition'};
+    }
+    if(!this.fpsPending&&now>=this.fpsNextRead)void this.refreshDesktopFps(now);
+  }
+  async refreshDesktopFps(now){
+    const request=this.fpsPending={};
+    this.fpsNextRead=now+1000;
+    try{
+      const sample=await this.readDesktopFrames();
+      if(this.fpsPending!==request)return;
+      if(!Number.isSafeInteger(sample?.frames)||sample.frames<0||!Number.isFinite(sample.time))throw Error('No desktop frame sample');
+      const previous=this.desktopBaseline;
+      this.desktopBaseline=sample;
+      this.fpsReadAt=this.now();
+      const elapsed=sample.time-previous?.time;
+      if(elapsed>0&&elapsed<=5000&&sample.frames>=previous.frames){
+        const fps=Math.round((sample.frames-previous.frames)*1000/elapsed);
+        this.values.fps={text:'FPS '+fps,detail:'Desktop',tooltip:'Measured Windows desktop composition rate'};
+      }else{
+        this.values.fps={text:'FPS …',detail:'Desktop',tooltip:'Measuring Windows desktop composition'};
+      }
+    }catch{
+      if(this.fpsPending!==request)return;
+      this.desktopBaseline=null;
+      this.fpsReadAt=this.now();
+      this.fpsNextRead=this.fpsReadAt+5000;
+      this.values.fps={text:'FPS N/A',detail:'Desktop',tooltip:'Windows desktop composition is unavailable'};
+    }finally{
+      if(this.fpsPending===request){this.fpsPending=null;this.publish();}
     }
   }
   async refreshWeather(){
@@ -114,6 +166,6 @@ class IslandMonitors extends EventEmitter{
     }catch(error){this.values.speedtest={text:'Speed test',detail:controller.signal.aborted?'Stopped or timed out':error.message};}
     finally{clearTimeout(timer);this.speedRunning=false;this.speedAbort=null;this.save();this.publish();}
   }
-  close(){this.closed=true;this.weatherGeneration++;clearInterval(this.timer);this.speedAbort?.abort();this.child?.kill();}
+  close(){this.closed=true;this.resetFps();this.weatherGeneration++;clearInterval(this.timer);this.speedAbort?.abort();this.child?.kill();}
 }
 module.exports={IslandMonitors,monitorCommand};

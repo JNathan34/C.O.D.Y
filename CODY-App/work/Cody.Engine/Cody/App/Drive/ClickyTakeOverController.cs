@@ -325,6 +325,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 
 	private string HandleTool(string name, string argumentsJson)
 	{
+        if(!CodyAgentUsage.Enabled&&name!="end_screen_takeover")return Result("blocked",CodyAgentUsage.DisabledMessage);
         if(HeyClicky.App.Cody.CodyEngineBridge.EngineMode&&!HeyClicky.App.Cody.CodyPermissions.CanUseComputer&&name!="end_screen_takeover")return Result("blocked","Computer control is disabled in C.O.D.Y. Settings > Permissions.");
 		JsonObject jsonObject;
 		try
@@ -687,6 +688,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 
 	public void Begin(string goal)
 	{
+        if(!CodyAgentUsage.Enabled)return;
         if(HeyClicky.App.Cody.CodyEngineBridge.EngineMode&&!HeyClicky.App.Cody.CodyPermissions.CanUseComputer)return;
 		if (!ui.HasThreadAccess)
 		{

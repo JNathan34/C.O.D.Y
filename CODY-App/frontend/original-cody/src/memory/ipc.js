@@ -5,6 +5,8 @@ function registerMemoryIpc({ipcMain,dialog,window,authorise,memory,error,codex,o
  const handle=(name,fn)=>ipcMain.handle(name,async(event,...args)=>{authorise(event);if(!memory)throw Error(error||'Memory is unavailable');return fn(...args);});
  ipcMain.handle('memory-status',event=>{authorise(event);return {available:!!memory,reason:error||'',liveChatGPT:false,retrieval:'Offline search with concept matching (experimental).',sources:memory?memory.sources():[]};});
  handle('memory-search',(query,sourceId)=>query?memory.search(query,{sourceId}):memory.records({sourceId}).slice(-100).reverse());
+ handle('memory-local-notes',query=>memory.localNotes(query));
+ handle('memory-local-save',text=>memory.saveLocal(text));
  handle('memory-source',(id,patch)=>{const value=memory.configure(id,patch);onAccessChange();return value;});
  handle('memory-delete-source',id=>{const value=memory.deleteSource(id);onAccessChange();return value;});
  handle('memory-delete-record',id=>{const value=memory.deleteRecord(id);onAccessChange();return value;});

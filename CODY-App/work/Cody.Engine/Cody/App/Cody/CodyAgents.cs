@@ -45,21 +45,24 @@ internal static class CodyAgents
         }catch{return "Unknown";}
     }
     public static object State(AppHost host)=>host.Real.Core.Settings.Read(s=>new{
+        usageEnabled=CodyAgentUsage.Enabled,
         folder=s.AgentFolderPath,defaultFolder=AgentFolders.Default,extraUsage=s.AgentAutoApproveExtraUsage,
         voice=s.AgentAnnouncementsVoiceEnabled,cursorUpdates=s.AgentCursorTextAnnouncementsEnabled,
         privacy=Privacy.Select(p=>new{id=p.id,name=p.name,status=Status(p.id)}).ToArray()
     });
-    public static object Configure(AppHost host,JsonElement request){
+    public static async System.Threading.Tasks.Task<object> Configure(AppHost host,JsonElement request){
         bool? Bool(string key)=>request.TryGetProperty(key,out var value)?value.GetBoolean():null;
-        var extra=Bool("extraUsage");var voice=Bool("voice");var cursor=Bool("cursorUpdates");
+        var enabled=Bool("usageEnabled");var extra=Bool("extraUsage");var voice=Bool("voice");var cursor=Bool("cursorUpdates");
         var hasFolder=request.TryGetProperty("folder",out var value);string folder=null;
         if(hasFolder&&value.ValueKind!=JsonValueKind.Null){folder=value.GetString();if(string.IsNullOrWhiteSpace(folder)||!Path.IsPathFullyQualified(folder)||!Directory.Exists(folder))throw new ArgumentException("Choose an existing absolute folder.");}
-        host.Real.Core.Settings.Update(s=>{
-            if(extra.HasValue)s.AgentAutoApproveExtraUsage=extra.Value;
-            if(voice.HasValue)s.AgentAnnouncementsVoiceEnabled=voice.Value;
-            if(cursor.HasValue)s.AgentCursorTextAnnouncementsEnabled=cursor.Value;
-            if(hasFolder)s.AgentFolderPath=folder;
-        });
+        if(enabled.HasValue)await CodyAgentUsage.ConfigureAsync(host,enabled.Value);
+        if(extra.HasValue||voice.HasValue||cursor.HasValue||hasFolder)
+            host.Real.Core.Settings.Update(s=>{
+                if(extra.HasValue)s.AgentAutoApproveExtraUsage=extra.Value;
+                if(voice.HasValue)s.AgentAnnouncementsVoiceEnabled=voice.Value;
+                if(cursor.HasValue)s.AgentCursorTextAnnouncementsEnabled=cursor.Value;
+                if(hasFolder)s.AgentFolderPath=folder;
+            });
         return State(host);
     }
     public static object OpenPrivacy(AppHost host,string id){var entry=Privacy.FirstOrDefault(p=>p.id==id);if(entry.id==null)throw new ArgumentException("Unknown privacy setting.");host.OpenUrl(entry.uri);return new{opened=true};}

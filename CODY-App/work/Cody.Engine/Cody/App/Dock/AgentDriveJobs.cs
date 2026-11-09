@@ -30,6 +30,8 @@ internal sealed class AgentDriveJobs(AgentService agents, Action<string, string>
 
 	public void SubmitFollowUp(string threadId, string text, string? preauthorizedLeaseId)
 	{
+		if (!HeyClicky.App.Cody.CodyAgentUsage.Enabled)
+			return;
 		Run(() => agents.SubmitThreadFollowUpAsync(threadId, text, preauthorizedLeaseId), "follow-up");
 	}
 

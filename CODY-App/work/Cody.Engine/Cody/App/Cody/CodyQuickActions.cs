@@ -11,6 +11,8 @@ internal static class CodyQuickActions
 {
     internal static bool IsForeground(AgentTaskDetail detail)=>detail?.LaunchSource==CodyActionRouting.ForegroundSource;
     internal static async Task<string> Handle(BrainToolCall call,CompanionToolContext context,CancellationToken ct,Func<BrainToolCall,CompanionToolContext,CancellationToken,Task<string>> normal,AgentService agents,Func<string[]> connected){
+        if(!CodyAgentUsage.Enabled&&call.Name is ("sessions_spawn" or "sessions_send" or "sessions_answer_request" or "routines"))
+            return ToolResults.Status("blocked",CodyAgentUsage.DisabledMessage);
         if(call.Name!="sessions_spawn"||!CodyActionRouting.Immediate(context.UserWords))return await normal(call,context,ct);
         ct.ThrowIfCancellationRequested();
         string request=context.UserWords;string controlRequest=request+(context.AttachedFilePaths.Count>0?"\nUser-attached files (use only as requested):\n"+string.Join("\n",context.AttachedFilePaths):"");string plugin=CodyActionRouting.ConnectedApp(request,connected());

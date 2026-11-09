@@ -17,6 +17,7 @@ const {splitMetadata}=require('../visuals/ledger');
 const {splitApps,validateSplitApps,appPin}=require('./app-layout');
 const {normalizeApp}=require('../app-commands');
 const {validateSystemArgs,buildSystemScript}=require('./system-settings');
+const {validateDiscordArgs,runDiscordCommand}=require('./discord');
 
 function ensureArgs(action,args){
   if(!args||typeof args!=='object'||Array.isArray(args))throw Error('Action arguments must be an object');
@@ -37,6 +38,7 @@ function ensureArgs(action,args){
     case 'text.proofread':if(args.target!==undefined&&(typeof args.target!=='string'||!/^[a-f0-9-]{36}$/i.test(args.target)))throw Error('Invalid text target');return args.target?{target:args.target}:{};
     case 'window.pin':{const app=normalizeApp(args.app);if(!app||typeof args.pinned!=='boolean')throw Error('Choose a supported app and pin state.');return {app,pinned:args.pinned};}
     case 'audio.set':return {level:integer(args.level,0,100,'volume')};
+    case 'discord.voice':case 'discord.share':return validateDiscordArgs(action,args);
     case 'spotify.control':if(!['play','pause','toggle','next','previous'].includes(args.command))throw Error('Invalid Spotify command');return {command:args.command};
     case 'media.control':{
       if(!['play','pause','toggle','next','previous','seek'].includes(args.command))throw Error('Invalid media command');
@@ -138,6 +140,7 @@ class ComputerController {
     clean=scope.args;
     const policy=ACTIONS[action];
     if(!['gui','chat','ai-chat'].includes(context.origin))throw Error('Invalid action origin');
+    if(policy.directOnly&&context.origin!=='chat')throw Error('Use a direct C.O.D.Y. command for Discord control.');
     if(context.origin==='ai-chat'&&context.verifiedUserIntent!==true)throw Error('AI-origin control requires a verified human request');
     if(context.origin==='chat' && policy.risk!=='low'&&!['full','custom'].includes(this.permissions().level))throw Error('This action requires the dedicated controls in the C.O.D.Y GUI');
     if(needsApproval(action,this.permissions(),context.origin,{args:clean,humanTask:context.humanTask||''})){
@@ -166,6 +169,7 @@ class ComputerController {
       case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);break;
       case 'window.pin':result=await appPin(clean.app,clean.pinned,{runner:this.runner});break;
       case 'audio.set':result=this.nativeAudio?await this.nativeAudio.set(clean.level):await this.runner(windows.audioSet(clean.level));break;
+      case 'discord.voice':case 'discord.share':result=await runDiscordCommand(action,clean,{runner:this.runner,signal:context.signal});break;
       case 'spotify.control':if(!this.spotify)throw Error('Spotify media control is unavailable.');result=await this.spotify.command(clean.command);break;
       case 'media.control':if(!this.spotify)throw Error('Windows media control is unavailable.');result=await this.spotify.command(clean.command,{target:clean.target||'active',source:clean.source,seconds:clean.seconds});break;
       case 'plezy.play':if(!this.plezy)throw Error('Plezy control is unavailable.');result=await this.plezy.play(clean.title);break;
