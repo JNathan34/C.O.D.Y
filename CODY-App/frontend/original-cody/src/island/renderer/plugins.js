@@ -4,7 +4,7 @@
  const $=id=>document.getElementById(id),list=$('plugins-list'),status=$('plugins-status'),pending=new Map(),busy=new Set();let browserState={offline:true},catalog=null,loading=false,filter='all',confirmRemoval=null,lastLoaded=0;
  const visible=()=>!page.hidden&&document.body.classList.contains('settings-open');
  const element=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
- const signin=element('button','light-action','Sign in');signin.id='plugins-signin';signin.hidden=true;status.after(signin);
+ const signin=element('button','light-action','Sign in to Claude Code');signin.id='plugins-signin';signin.hidden=true;status.after(signin);
  function button(text,action,disabled=false){const node=element('button','light-action',text);node.type='button';node.disabled=disabled;node.addEventListener('click',action);return node;}
  function all(){return [...['Chrome','Edge'].map(name=>({id:'browser-'+name.toLowerCase(),name,description:'Connect '+name+' so Cody can work with its websites and tabs.',browser:name,connected:browserState.connectedBrowsers?.includes(name)===true,kind:'browser',status:'available'})),...(catalog?.plugins||[]),...(catalog?.custom||[])].sort((a,b)=>Number(b.connected)-Number(a.connected)||a.name.localeCompare(b.name));}
  function render(){
@@ -51,7 +51,7 @@
  document.querySelector('[data-tab="integrations"]').addEventListener('click',()=>void refresh());
  $('plugins-refresh').addEventListener('click',()=>void refresh());$('plugins-search').addEventListener('input',render);
  document.querySelectorAll('[data-plugin-filter]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.pluginFilter;document.querySelectorAll('[data-plugin-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));render();}));
- $('plugins-signin').addEventListener('click',()=>void window.assistant.webSignIn().then(()=>{status.textContent='Finish signing in through your browser, then refresh plugins.';}).catch(error=>status.textContent=error.message));
+ $('plugins-signin').addEventListener('click',()=>void window.assistant.webSignIn().then(()=>{status.textContent='Finish signing in to Claude Code in your browser, then refresh plugins.';}).catch(error=>status.textContent=error.message));
  $('plugins-add-form').addEventListener('submit',async event=>{
   event.preventDefault();const submit=$('plugins-add-submit');submit.disabled=true;
   try{await api.add({name:$('plugins-add-name').value,url:$('plugins-add-url').value,apiKey:$('plugins-add-key').value});$('plugins-add-form').reset();await refresh();status.textContent='MCP plugin added. Use Connect if the server needs browser sign-in.';}

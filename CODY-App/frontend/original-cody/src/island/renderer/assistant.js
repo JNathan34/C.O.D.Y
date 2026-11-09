@@ -27,7 +27,6 @@
       document.body.classList.add('utility-layout','island-content-active');
       for(const id of ['island-timer','island-recording-dot','island-recording-controls','island-media-controls','island-rps-controls'])$(id).hidden=true;
       const info=$('island-info');info.hidden=false;info.dataset.tasks='false';info.dataset.rps='false';delete info.dataset.monitor;info.classList.remove('showing-media','showing-game');
-      info.title='C.O.D.Y. is listening for your request';
       $('island-info-text').textContent='Listening…';$('island-info-detail').textContent='Speak your request';
       $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),'mic');art.hidden=true;
       return;
@@ -53,7 +52,7 @@
     if(showMonitors&&monitors.items.length){
       const index=Math.floor(Date.now()/3000)%monitors.items.length,item=monitors.items[index];
       $('island-info-text').textContent=item.text;$('island-info-detail').textContent=item.detail;
-      info.dataset.monitor=item.id;info.title=monitors.items.map(value=>value.text+' — '+value.detail+(value.tooltip?' · '+value.tooltip:'')).join('\n');
+      info.dataset.monitor=item.id;
       $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),item.icon||'activity');art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
     }
     $('island-recording-dot').hidden=!recording;$('island-recording-controls').hidden=!recording;
@@ -61,12 +60,11 @@
       const elapsed=Math.max(0,Math.floor((capture.elapsedMs+(capture.status==='recording'?Date.now()-capture.capturedAt:0))/1000));
       $('island-info-text').textContent=capture.status==='starting'?'Starting…':capture.status==='stopping'?'Saving…':Math.floor(elapsed/60).toString().padStart(2,'0')+':'+(elapsed%60).toString().padStart(2,'0');
       $('island-info-detail').textContent=capture.status==='paused'?'PAUSED':'REC';
-      info.title='Screen recording · '+capture.status+' · Pause/resume or stop and save';
       $('island-info-icon').hidden=true;art.hidden=true;$('island-media-controls').hidden=true;
       $('island-rps-controls').hidden=true;info.classList.remove('showing-game');
       const pause=$('island-recording-pause'),stop=$('island-recording-stop'),icon=capture.status==='paused'?'play':'pause';
       if(pause.dataset.icon!==icon)window.CODYIcons.set(pause,icon);if(stop.dataset.icon!=='square')window.CODYIcons.set(stop,'square');
-      pause.title=capture.status==='paused'?'Resume recording':'Pause recording';pause.setAttribute('aria-label',pause.title);pause.setAttribute('aria-pressed',String(capture.status==='paused'));
+      pause.setAttribute('aria-label',capture.status==='paused'?'Resume recording':'Pause recording');pause.setAttribute('aria-pressed',String(capture.status==='paused'));
       pause.disabled=stop.disabled=capturePending||!['recording','paused'].includes(capture.status);
     }
     if(showGame){
@@ -74,13 +72,11 @@
       $('island-info-text').textContent=status==='countdown'?String(game.voice.countdown):status==='reveal'?'Say it now!':status==='listening'?'Listening…':status==='preparing'?'Getting ready…':status==='processing'?'Hearing you…':game.phase==='result'?({win:'You win!',lose:'C.O.D.Y. wins!',draw:'Draw!'})[game.outcome]:'Rock paper scissors';
       const hands={rock:'🪨',paper:'📃',scissors:'✂️'};
       $('island-info-detail').textContent=status==='countdown'?'Get ready':status==='reveal'?'C.O.D.Y.: '+hands[game.cody]:status==='listening'?'Say your move':game.phase==='result'?hands[game.you]+' vs '+hands[game.cody]+' · '+game.score.you+'–'+game.score.cody:'You '+game.score.you+' · C.O.D.Y. '+game.score.cody;
-      info.title=(game.voice?.message||game.message)+' · You '+game.score.you+', C.O.D.Y. '+game.score.cody+', draws '+game.score.draws+'. Hover for moves. Click after a round to play again. Escape or right-click to end.';
       $('island-info-icon').hidden=false;art.hidden=true;$('island-media-controls').hidden=true;window.CODYIcons.set($('island-info-icon'),'hand');
     }
     if(quick||showMedia){
       $('island-info-text').textContent=quick?quickCard.text:media.title;
       $('island-info-detail').textContent=quick?(quickCard.detail||''):`${media.playing?'':'Paused · '}${media.artist||media.app||'Media'}`;
-      info.title=quick?(quickCard.tooltip||quickCard.text):`${media.title} — ${media.artist||media.app||'Media'}${media.app?' · '+media.app:''}`;
       $('island-info-icon').hidden=Boolean(showMedia);art.hidden=!showMedia;
       if(quick)window.CODYIcons.set($('island-info-icon'),quickCard.icon||'calculator');
       else{const candidates=window.CODYMediaArt.candidates(media),key=JSON.stringify(candidates);if(key!==artKey){artKey=key;artCandidates=candidates;artIndex=0;art.src=candidates[0];}}
@@ -91,14 +87,13 @@
     if(showTasks){
       const task=activeTasks.find(task=>task.status==='WaitingForUser')||activeTasks[Math.floor(Date.now()/5000)%activeTasks.length];
       $('island-info-text').textContent=task.status==='WaitingForUser'?'Needs you':activeTasks.length>1?`${activeTasks.length} tasks working`:task.title;
-      $('island-info-detail').textContent=task.progress||(task.status==='Starting'?'Starting…':'Working in background');info.title=task.title+' · Click to view background tasks';
+      $('island-info-detail').textContent=task.progress||(task.status==='Starting'?'Starting…':'Working in background');
       $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),'clock');art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
     }
     if(showUpdate){
       info.dataset.update='true';info.dataset.tasks='false';info.dataset.rps='false';
       info.setAttribute('role','button');info.tabIndex=0;
-      info.title=(updateCard.tooltip||updateCard.text+' · '+updateCard.detail)+' · Open Settings → Updates';
-      info.setAttribute('aria-label',info.title);
+      info.setAttribute('aria-label',(updateCard.tooltip||updateCard.text+' · '+updateCard.detail)+' · Open Settings → Updates');
       $('island-info-text').textContent=updateCard.text;$('island-info-detail').textContent=updateCard.detail;
       $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),updateCard.icon);
       art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
@@ -110,7 +105,6 @@
     const hours=Math.floor(remaining/3600),minutes=Math.floor(remaining/60)%60,seconds=remaining%60;
     const label=(hours?hours+':':'')+String(minutes).padStart(2,'0')+':'+String(seconds).padStart(2,'0');
     $('island-timer-value').textContent=label;
-    button.title=timer.status==='finished'?'Timer finished — click to dismiss':'Timer running — click to open chat';
     button.setAttribute('aria-label',timer.status==='finished'?'Timer finished. Dismiss timer.':`Timer: ${label} remaining. Open chat.`);
   }
   document.addEventListener('cody:update-state',renderTimer);
@@ -132,7 +126,7 @@
   for(const [id,action]of [['island-recording-pause',()=>capture.status==='paused'?'resume':'pause'],['island-recording-stop',()=> 'stop']])$(id).addEventListener('click',async event=>{
     event.stopPropagation();if(capturePending)return;capturePending=true;renderTimer();
     try{await api.capture.action(action());capture=await api.capture.state();}
-    catch(error){$('island-info').title=error.message;}
+    catch(error){note(error.message);}
     finally{capturePending=false;renderTimer();}
   });
   $('island-info').addEventListener('click',event=>{event.stopPropagation();if($('island-info').dataset.tasks==='true'){window.CODYTasks?.open();return;}if(quickCard?.captureKind&&!['starting','recording','paused','stopping'].includes(capture.status))void api.capture.reveal(quickCard.captureKind);});
@@ -312,6 +306,26 @@
   $('core-approval-deny').addEventListener('click',()=>void decide('decline'));
   $('core-approval-allow').addEventListener('click',()=>void decide('accept'));
   $('core-history').addEventListener('click',()=>{island.setActiveView('history');renderHistory();});
+  const importSettings=$('settings-import'),exportSettings=$('settings-export'),backupStatus=$('settings-backup-status');
+  async function runSettingsBackup(action){
+    importSettings.disabled=exportSettings.disabled=true;
+    backupStatus.hidden=true;
+    backupStatus.textContent='';
+    try{
+      const result=await api.settingsBackup[action]();
+      if(result.cancelled)return;
+      if(result.imported)void voice.refresh().catch(error=>note(error.message));
+      backupStatus.textContent=result.imported?'Settings imported.':'Settings exported.';
+    }catch(error){
+      const message=error.message.replace(/^Error invoking remote method '[^']+': Error: /,'');
+      backupStatus.textContent=message;
+    }finally{
+      backupStatus.hidden=!backupStatus.textContent;
+      importSettings.disabled=exportSettings.disabled=false;
+    }
+  }
+  importSettings.addEventListener('click',()=>void runSettingsBackup('import'));
+  exportSettings.addEventListener('click',()=>void runSettingsBackup('export'));
   $('history-search').addEventListener('input',renderHistory);
   $('history-new').addEventListener('click',()=>void island.onNewChat());
   $('history-close').addEventListener('click',()=>island.setActiveView('chat'));

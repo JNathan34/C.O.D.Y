@@ -29,9 +29,10 @@ const SETTINGS_WIDTH = 900;
 const SETTINGS_HEIGHT = 716;
 const DEFAULTS = Object.freeze({
   schemaVersion: 7,
-  accentColor: '#9D9DFF',
+  accentColor: mascotLooks.blue.color,
   mascotLook: 'blue',
   cursorColor: 'accent',
+  cursorSize: 100,
   controlInputMode: 'system',
   hideFloatingCursor: false, screenHighlight: true, shakeToDetach: true,
   wakeWordEnabled: false, wakeHeyCody: true, wakeOkayCody: true, wakeCody: true,
@@ -112,17 +113,18 @@ function validateSettings(patch, old = settings) {
     next[key] = value;
   }
   if (!['always','activity','hover'].includes(next.visibility)) next.visibility = 'always';
-  if (!(next.islandSize in SIZES)) next.islandSize = 'medium';
+  if (!Object.hasOwn(SIZES,next.islandSize)) next.islandSize = 'medium';
   if (!['off','subtle','playful'].includes(next.idleReactions)) next.idleReactions = 'subtle';
   if (!['slow','normal','fast','off'].includes(next.animationSpeed)) next.animationSpeed = 'normal';
   if (!['liquid','simple','none'].includes(next.revealStyle)) next.revealStyle = 'liquid';
   next.hotkeyMode = 'hold'; // previous toggle settings must never override push-to-talk
   next.quickMessagePhrase = next.quickMessagePhrase.trim().slice(0, 1000);
   next.activityHideDelay = Math.max(0, Math.min(10000, next.activityHideDelay));
-  if (!Object.values(mascotLooks).some(look=>look.color===next.accentColor)) next.accentColor = '#9D9DFF';
+  if (!Object.values(mascotLooks).some(look=>look.color===next.accentColor)) next.accentColor = DEFAULTS.accentColor;
   if(!['system','independent'].includes(next.controlInputMode))next.controlInputMode='system';
   if(!Object.hasOwn(mascotLooks,next.mascotLook))next.mascotLook='blue';
   if(next.cursorColor!=='accent'&&!Object.values(mascotLooks).some(look=>look.color===next.cursorColor))next.cursorColor='accent';
+  next.cursorSize = Number.isFinite(next.cursorSize)?Math.min(200,Math.max(50,Math.round(next.cursorSize/25)*25)):100;
   next.voiceRate = Number.isFinite(next.voiceRate)?Math.min(1.4,Math.max(.7,next.voiceRate)):1;
   next.voicePitch = Number.isFinite(next.voicePitch)?Math.min(1.2,Math.max(.8,next.voicePitch)):1;
   next.voiceVolume = Number.isFinite(next.voiceVolume)?Math.min(1,Math.max(0,next.voiceVolume)):1;
@@ -143,9 +145,30 @@ function readSettings() {
     }
   } catch { settings = { ...DEFAULTS }; }
 }
-function saveSettings() {
-  fs.mkdirSync(path.dirname(preferencesFile()), { recursive:true });
-  fs.writeFileSync(preferencesFile(),JSON.stringify(settings,null,2));
+function saveSettings(value=settings) {
+  const file=preferencesFile(),temporary=file+'.tmp';
+  fs.mkdirSync(path.dirname(file), { recursive:true });
+  fs.writeFileSync(temporary,JSON.stringify(value,null,2));
+  fs.renameSync(temporary,file);
+}
+function updatePreferences(patch) {
+  const old=settings;
+  const next=validateSettings(patch);
+  saveSettings(next);
+  settings=next;
+  for(const listener of preferenceListeners){try{listener({...settings});}catch(error){console.warn(error.message);}}
+  emit('island:settings',settings);
+  if (settingsWindow&&!settingsWindow.isDestroyed()) settingsWindow.webContents.send('island:settings',settings);
+  if (old.visibility!==settings.visibility) { hoverVisible=false; forcedVisible=false; }
+  if (old.wifiReactions !== settings.wifiReactions) {
+    if (!settings.wifiReactions) {pendingWifiRestore=false; if (['offline','restored'].includes(state)) setIslandState('idle');}
+    if (settings.wifiReactions && wifiDisconnected && state==='idle') setIslandState('offline');
+  }
+  // Avoid a stuck microphone if the user disables the shortcut mid-hold.
+  if (old.enableHotkey && !settings.enableHotkey && hotkeyHeld) onModifierEvent('UP');
+  positionWindow();updateVisibility();
+  if (process.platform==='win32' && app.isPackaged) app.setLoginItemSettings({openAtLogin:settings.launchAtLogin});
+  return settings;
 }
 function emit(channel, value) {
   if (islandWindow && !islandWindow.isDestroyed()) islandWindow.webContents.send(channel, value);
@@ -419,27 +442,7 @@ function setupIpc() {
   handle('island:read-settings',()=>settings);
   handle('island:read-state',()=>state);
   handle('island:read-network',()=>({wifiKnown,offline:wifiDisconnected,platform:process.platform}));
-  handle('island:update-settings',(_event,patch)=>{
-    const old=settings;
-    settings=validateSettings(patch);
-    saveSettings();
-    for(const listener of preferenceListeners){try{listener({...settings});}catch(error){console.warn(error.message);}}
-    emit('island:settings',settings);
-    if (settingsWindow&&!settingsWindow.isDestroyed()) settingsWindow.webContents.send('island:settings',settings);
-    if (old.visibility!==settings.visibility) { hoverVisible=false; forcedVisible=false; }
-    if (old.wifiReactions !== settings.wifiReactions) {
-      if (!settings.wifiReactions) {pendingWifiRestore=false; if (['offline','restored'].includes(state)) setIslandState('idle');}
-      if (settings.wifiReactions && wifiDisconnected && state==='idle') setIslandState('offline');
-    }
-    // Avoid a stuck microphone if the user disables the shortcut mid-hold.
-    if (old.enableHotkey && !settings.enableHotkey && hotkeyHeld) {
-      onModifierEvent('UP');
-    }
-    // A persisted toggle setting is intentionally ignored in this version.
-    positionWindow();updateVisibility();
-    if (process.platform==='win32' && app.isPackaged) app.setLoginItemSettings({openAtLogin:settings.launchAtLogin});
-    return settings;
-  });
+  handle('island:update-settings',(_event,patch)=>updatePreferences(patch));
   on('island:set-state',(_event,next)=>setIslandState(next));
   on('island:picker-open',(_event,value)=>{pickerOpen=expanded&&value===true;});
   on('island:audio-level',(_event,level)=>emit('island:audio-level',Math.max(0,Math.min(1,Number(level)||0))));
@@ -563,4 +566,4 @@ function handleHotkey(action){
   if(action==='down')suspended=false;
   onModifierEvent(action==='down'?'DOWN':'UP');
 }
-module.exports={setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact(){suspended=false;mount();setExpanded(false);updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value){timerVisible=Boolean(value);updateVisibility();},hide(){suspended=true;setExpanded(false);updateVisibility();},show(){hiddenByShortcut=false;suspended=false;mount();setExpanded(true);islandWindow.show();islandWindow.focus();},window:()=>islandWindow};
+module.exports={setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact(){suspended=false;mount();setExpanded(false);updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value){timerVisible=Boolean(value);updateVisibility();},hide(){suspended=true;setExpanded(false);updateVisibility();},show(){hiddenByShortcut=false;suspended=false;mount();setExpanded(true);islandWindow.show();islandWindow.focus();},window:()=>islandWindow};

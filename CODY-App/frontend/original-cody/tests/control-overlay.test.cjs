@@ -28,7 +28,7 @@ test('agent launches use a coloured Cody mascot flight to the island on every mo
 test('accent changes recolour existing windows and monitor changes rebuild geometry',async()=>{
   const {overlay,engine,created,screen,setAccent}=setup();engine.emit('computer-control',{active:true,x:10,y:10});await new Promise(resolve=>setImmediate(resolve));
   setAccent('#F377BC');overlay.render();assert.equal(created[0].sent.at(-1).data.accent,'#F377BC');assert.equal(created.length,2);
-  setAccent('invalid');overlay.render();assert.equal(created[0].sent.at(-1).data.accent,'#9D9DFF');
+  setAccent('invalid');overlay.render();assert.equal(created[0].sent.at(-1).data.accent,'#47A8FF');
   screen.displays.pop();screen.emit('display-removed');await new Promise(resolve=>setImmediate(resolve));assert.equal(overlay.windows.size,1);assert.ok(created[0].destroyed);overlay.close();
 });
 test('disconnect and application close clear visuals and detach listeners',async()=>{

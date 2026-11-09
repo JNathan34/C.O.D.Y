@@ -5,6 +5,7 @@ const {RpsVoice}=require('./rps-voice');
 const {taskState}=require('./background-tasks');
 const {selection,providerPatch}=require('./agent-provider');
 const {setPersonalCodexEnabled}=require('./usage-policy');
+const NATIVE_VOICES=Object.freeze(['cedar','marin','alloy','ash','ballad','coral','echo','sage','shimmer','verse']);
 function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExternal=async()=>{},externalBusy=()=>false,connectProvider,codexUsage,getState,getWindow,utilities,rps,capture,attachments,chooseFiles,controller,chooseWorkingFolder,captureTextEnabled=()=>false,onTasks=()=>{},showFiles=()=>{},fileDragging=()=>{},showApprovals=()=>{},cancelLocalApprovals=()=>{},isMicrophoneMuted=()=>false}){
   let active=null;
   const turnChats=new Map(),reports=new Set();
@@ -22,6 +23,11 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   const handle=(name,fn)=>{ipcMain.removeHandler(name);ipcMain.handle(name,(event,...args)=>{if(event.sender!==getWindow()?.webContents||event.senderFrame!==event.sender.mainFrame)throw Error('Untrusted interface');return fn(...args);});};
   const rememberPermissions=value=>{if(store.data?.settings&&store.setNativePermissions){store.setNativePermissions(value);sendUI('settings-changed',store.data.settings);}return value;};
   engine.on('permissions-changed',rememberPermissions);
+  handle('audio-output-devices',()=>engine.request('audio-output-devices'));
+  handle('audio-output-select',deviceId=>{
+    if(typeof deviceId!=='string'||deviceId.length>512)throw Error('Invalid output device.');
+    return engine.request('audio-output-select',{deviceId});
+  });
   handle('plugins-list',()=>engine.request('plugins-list'));
   handle('agents-state',()=>engine.request('agents-state'));
   handle('heyclicky-usage',()=>engine.request('heyclicky-usage'));
@@ -227,7 +233,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   const backend=async()=>{const status=await engine.refresh();return {defaultProvider:selection(store.data.settings).provider,autoAvailable:false,voiceProvider:'CODY native voice and microphone',toolsProvider:'CODY native drawing, 3D and agent tools',heyclicky:{connected:true,reason:status.signedIn?'C.O.D.Y.’s built-in engine is connected.': 'Built-in engine ready. Sign in to your CODY account.',installation:{detected:true,bundled:true,version:'1.1.3',architecture:'x64'}}};};
   handle('backend-status',backend);handle('backend-refresh',backend);
   handle('voice-status',async()=>({...(await engine.refresh()),available:true,engine:'heyclicky',recognition:'heyclicky',language:engine.status.recognitionLanguage||'en',recognitionModel:'CODY native speech recognition',output:{available:true}}));
-  handle('voice-voices',()=>({voices:['cedar','marin','alloy','ash','ballad','coral','echo','sage','shimmer','verse'].map(id=>({id,name:id[0].toUpperCase()+id.slice(1),playable:true})),hint:'CODY native voice'}));
+  handle('voice-voices',()=>({voices:NATIVE_VOICES.map(id=>({id,name:id[0].toUpperCase()+id.slice(1),playable:true})),hint:'CODY native voice'}));
   handle('voice-configure',settings=>engine.request('configure',{...(settings.speed!==undefined?{speed:settings.speed}:{}),...(settings.voice?{voice:settings.voice}:{}),...(settings.recognitionLanguage?{recognitionLanguage:settings.recognitionLanguage}:{})}));
   handle('native-preview',async()=>{if(active)throw Error('Finish the current turn first');await engine.request('submit',{text:'Say hello in one short sentence.',speak:true});return {played:true};});
   for(const name of ['visuals-clear','visuals-clear-all','annotations-clear'])handle(name,()=>engine.request('clear'));
@@ -238,4 +244,4 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   const muteVoice=async()=>{if(gameVoice?.running)await gameVoice.cancel();if(active?.voice&&engine.status?.state==='Listening'){await engine.request('cancel');finish();}};
   return {cancel,gameVoice,submit,beginVoice,endVoice,muteVoice,endWakeVoice:()=>active?.wake?endVoice():Promise.resolve({listening:false}),cancelWakeVoice:()=>active?.wake?cancel():Promise.resolve(false),isBusy:()=>Boolean(active||externalBusy())};
 }
-module.exports={installNativeIpc};
+module.exports={installNativeIpc,NATIVE_VOICES};

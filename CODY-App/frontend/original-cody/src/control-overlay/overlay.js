@@ -4,6 +4,7 @@
   let last=null,glowKey='',cursorColour='',frame=null,listen=0,loading=0,previous=performance.now(),lastPoint=null,heading=0,targetHeading=0;
   const tinted=document.createElement('canvas'),reduced=matchMedia('(prefers-reduced-motion: reduce)');
   const seenFlights=new Set();
+  const cursorUnit=state=>(state.cursorSize??100)/100/(state.scale||1);
   function agentFlight(flight){
     if(seenFlights.has(flight.id))return;seenFlights.add(flight.id);if(seenFlights.size>256)seenFlights.delete(seenFlights.values().next().value);
     const duration=reduced.matches?250:1100,elapsed=Date.now()-flight.startedAt;if(elapsed>=duration)return;
@@ -42,7 +43,7 @@
     for(const flight of state.agentFlights||[])agentFlight(flight);
     const bubble=document.getElementById('agent-message');bubble.hidden=!state.message||!state.cursor;
     bubble.textContent=state.message||'';
-    if(!bubble.hidden){const w=bubble.offsetWidth,h=bubble.offsetHeight;bubble.style.left=Math.max(8,Math.min(state.width-w-8,state.cursor.x+30))+'px';bubble.style.top=Math.max(8,Math.min(state.height-h-8,state.cursor.y+28))+'px';}
+    if(!bubble.hidden){const w=bubble.offsetWidth,h=bubble.offsetHeight,size=(state.cursorSize??100)/100;bubble.style.left=Math.max(8,Math.min(state.width-w-8,state.cursor.x+30*size))+'px';bubble.style.top=Math.max(8,Math.min(state.height-h-8,state.cursor.y+28*size))+'px';}
     if(state.pointerOnly){listen=0;loading=0;}
     last=state;const scale=state.scale||1,key=[state.width,state.height,scale,state.accent].join(':'),color=state.cursorColor||state.accent;
     glow.hidden=state.glow===false;
@@ -56,14 +57,14 @@
       context.strokeStyle='#'+[1,3,5].map(i=>Math.round(parseInt(color.slice(i,i+2),16)*.74).toString(16).padStart(2,'0')).join('');context.lineWidth=1.25;context.lineJoin='round';context.stroke(pointerOutline);
     }
     if(cursor.width!==80){cursor.width=80;cursor.height=80;}
-    cursor.style.width=(80/scale)+'px';cursor.style.height=(80/scale)+'px';
+    cursor.style.width=cursor.style.height=(80*cursorUnit(state))+'px';
     cursor.dataset.phase=state.phase==='Listening'?'listening':state.phase==='Processing'?'loading':'pointer';
     if(frame===null){previous=performance.now();frame=requestAnimationFrame(animate);}
   }
   function animate(now){
     frame=null;if(!last||cursor.hidden)return;
-    const scale=last.scale||1;cursor.style.opacity=String(.96*(last.cursorOpacity??1));cursor.style.transformOrigin=`${34/scale}px ${34/scale}px`;
-    cursor.style.transform=`translate(${last.cursor.x-16/scale}px,${last.cursor.y-16/scale}px) scale(${last.cursorScale??1})`;
+    const unit=cursorUnit(last);cursor.style.opacity=String(.96*(last.cursorOpacity??1));cursor.style.transformOrigin=`${34*unit}px ${34*unit}px`;
+    cursor.style.transform=`translate(${last.cursor.x-16*unit}px,${last.cursor.y-16*unit}px) scale(${last.cursorScale??1})`;
     const dt=Math.min(80,now-previous);previous=now;const ease=reduced.matches?1:1-Math.exp(-dt/95),targetListen=last.phase==='Listening'?1:0,targetLoad=last.phase==='Processing'?1:0;
     listen+=(targetListen-listen)*ease;loading+=(targetLoad-loading)*ease;
     cursor.dataset.morph=`${Math.round(listen*100)},${Math.round(loading*100)}`;

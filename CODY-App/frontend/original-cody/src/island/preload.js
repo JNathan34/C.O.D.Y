@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('assistant',{
   browserSetup:{state:()=>ipcRenderer.invoke('browser-setup-state'),choose:value=>ipcRenderer.invoke('browser-setup-choice',value),folder:()=>ipcRenderer.invoke('browser-setup-folder')},
   updates:{state:()=>ipcRenderer.invoke('updates-state'),check:()=>ipcRenderer.invoke('updates-check'),download:()=>ipcRenderer.invoke('updates-download'),install:()=>ipcRenderer.invoke('updates-install'),configure:value=>ipcRenderer.invoke('updates-configure',value),releases:()=>ipcRenderer.invoke('updates-releases')},
   state:()=>ipcRenderer.invoke('state'),
+  settingsBackup:{import:()=>ipcRenderer.invoke('settings-import'),export:()=>ipcRenderer.invoke('settings-export')},
   tasks:{clear:id=>ipcRenderer.invoke('task-clear',id),clearFinished:()=>ipcRenderer.invoke('tasks-clear-finished'),open:value=>ipcRenderer.invoke('task-open-output',value),expand:value=>ipcRenderer.send('island:task-detail',value===true),state:()=>ipcRenderer.invoke('tasks-state'),preview:id=>ipcRenderer.invoke('task-preview',id),detail:id=>ipcRenderer.invoke('task-detail',id),action:value=>ipcRenderer.invoke('task-action',value),chat:id=>ipcRenderer.invoke('task-chat',id)},
   files:{state:()=>ipcRenderer.invoke('attachments-state'),add:files=>{const paths=Array.from(files,file=>webUtils.getPathForFile(file)).filter(Boolean);if(!paths.length)throw Error('Drop files saved on your computer.');return ipcRenderer.invoke('attachments-add',paths);},remove:id=>ipcRenderer.invoke('attachments-remove',id),pick:()=>ipcRenderer.invoke('attachments-pick'),dragging:value=>ipcRenderer.invoke('attachments-drag',Boolean(value))},
   approvals:{state:()=>ipcRenderer.invoke('computer-approval-state'),decide:(id,decision)=>ipcRenderer.invoke('computer-approval-decision',id,decision)},
@@ -30,6 +31,7 @@ contextBridge.exposeInMainWorld('assistant',{
   sendMessage:args=>ipcRenderer.invoke('send-message',args),
   stop:()=>ipcRenderer.invoke('stop-turn'),
   wake:{status:()=>ipcRenderer.invoke('wake-word-status')},
+  audioOutput:{list:()=>ipcRenderer.invoke('audio-output-devices'),select:deviceId=>ipcRenderer.invoke('audio-output-select',deviceId)},
   voice:{
     begin:()=>ipcRenderer.invoke('native-begin'),
     end:()=>ipcRenderer.invoke('native-end'),

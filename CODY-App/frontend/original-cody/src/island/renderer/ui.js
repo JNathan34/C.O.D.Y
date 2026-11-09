@@ -14,6 +14,10 @@
   const note = document.getElementById('integration-note');
   const chatView = document.getElementById('view-chat');
   const settingsView = document.getElementById('view-settings');
+  const outputApi = demoMode ? null : window.assistant?.audioOutput;
+  const outputChoices = document.getElementById('output-choices');
+  const outputStatus = document.getElementById('output-device-status');
+  let outputBusy = false, outputLoaded = false, outputDeviceId = '';
   let activeView = 'chat';
   let chatExpanded=false;
   const expandChatButton=document.getElementById('chat-expand');
@@ -40,7 +44,7 @@
     funReactions:true,sunglassesEnabled:true,pretendSleepEnabled:true,wifiReactions:true,
     startListeningOnHotkey:true,hotkeyMode:'hold',activityHideDelay:1600,
     quickMessageEnabled:true,quickMessagePhrase:'done',
-    enableHotkey:true,wakeWordEnabled:false,wakeHeyCody:true,wakeOkayCody:true,wakeCody:true,controlInputMode:'system',mascotLook:'blue',accentColor:'#9D9DFF',cursorColor:'accent',hideFloatingCursor:false,screenHighlight:true,shakeToDetach:true,voiceId:'',voiceRate:1,voicePitch:1,voiceVolume:1,micDeviceId:'',micSensitivity:1,visibility:'always'
+    enableHotkey:true,wakeWordEnabled:false,wakeHeyCody:true,wakeOkayCody:true,wakeCody:true,controlInputMode:'system',mascotLook:'blue',accentColor:window.CODYLooks.blue.color,cursorColor:'accent',cursorSize:100,hideFloatingCursor:false,screenHighlight:true,shakeToDetach:true,voiceId:'',voiceRate:1,voicePitch:1,voiceVolume:1,micDeviceId:'',micSensitivity:1,visibility:'always'
   };
   let settings = {...DEFAULTS};
   settings.microphoneMuted=false;
@@ -221,7 +225,7 @@
     body.dataset.size=settings.islandSize;
     body.dataset.motion=settings.animationSpeed;
     body.dataset.style=settings.revealStyle;
-    body.style.setProperty('--ui-accent',settings.accentColor||'#9D9DFF');
+    body.style.setProperty('--ui-accent',settings.accentColor||DEFAULTS.accentColor);
     refreshPreferences();
     if(settings.idleReactions==='off'){
       gazeTarget={x:0,y:0};
@@ -470,6 +474,7 @@
     document.getElementById('panel-settings').classList.toggle('is-selected',activeView==='settings');
     document.getElementById('panel-settings').setAttribute('aria-label',activeView==='settings'?'Back to chat':'Settings');
     document.dispatchEvent(new CustomEvent('cody:view-changed',{detail:activeView}));
+    if(activeView==='settings'&&!outputChoices.closest('.settings-tab').hidden)void updateAudioOutputs();
     if(activeView==='chat'||history)requestAnimationFrame(()=>{const log=document.getElementById('conversation');log.scrollTop=log.scrollHeight;});
     if(activeView==='chat'&&!window.assistant&&document.getElementById('chat-connection'))document.getElementById('chat-connection').textContent = window.CODYIsland?.backendConnected?'Connected to C.O.D.Y. backend':'Not connected in standalone GUI';
   }
@@ -532,6 +537,9 @@
     });
     document.querySelectorAll('[data-mascot-look]').forEach(button=>{const selected=button.dataset.mascotLook===(settings.mascotLook||'blue');button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));});
     document.querySelectorAll('[data-cursor-color]').forEach(button=>{const selected=button.dataset.cursorColor===(settings.cursorColor||'accent');button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));});
+    const cursorSizeLabel=settings.cursorSize+'%';
+    document.getElementById('cursor-size').setAttribute('aria-valuetext',cursorSizeLabel);
+    document.querySelector('[data-for="cursorSize"]').value=cursorSizeLabel;
     for(const name of ['voiceRate','voicePitch','voiceVolume','micSensitivity']){
       const output=document.querySelector(`[data-for="${name}"]`);
       if(output)output.textContent=name==='voiceVolume'?Math.round(Number(settings[name]??1)*100)+'%':Number(settings[name]??1).toFixed(name==='micSensitivity'?1:2)+(name==='voicePitch'?'':'×');
@@ -576,6 +584,7 @@
       item.hidden=!showing;item.classList.toggle('selected',showing);
     });
     document.getElementById('settings-content').scrollTop=0;
+    if(tab==='microphone')void updateAudioOutputs();
   }
   document.querySelectorAll('.nav-item').forEach(button=>button.addEventListener('click',()=>setSettingsTab(button.dataset.tab)));
   document.querySelectorAll('[data-pref]').forEach(control=>{
@@ -641,7 +650,39 @@
       label.textContent='Available for voice input';
     }catch(error){label.textContent=error.name==='NotAllowedError'?'Access denied by Windows or app':'Could not access microphone';}
   }
-  document.getElementById('refresh-microphones').addEventListener('click',()=>void getMicrophoneAccess());
+  async function updateAudioOutputs(deviceId){
+    if(!outputApi||outputBusy)return;
+    outputBusy=true;
+    outputChoices.disabled=true;
+    try{
+      const {selectedId,devices}=await (deviceId===undefined?outputApi.list():outputApi.select(deviceId));
+      const selected=devices.find(device=>device.id.toLowerCase()===selectedId?.toLowerCase());
+      outputDeviceId=selected?.id??selectedId??'';
+      outputChoices.replaceChildren(new Option('System default',''),...devices.map(device=>new Option(device.name,device.id)));
+      const disconnected=outputDeviceId&&!selected;
+      if(disconnected){
+        const unavailable=new Option('Unavailable output',outputDeviceId);
+        unavailable.disabled=true;
+        outputChoices.add(unavailable);
+      }
+      outputChoices.value=outputDeviceId;
+      outputStatus.textContent=disconnected?'Selected device is disconnected. Using the Windows default.':'';
+      outputLoaded=true;
+    }catch(error){
+      outputChoices.value=outputDeviceId;
+      outputStatus.textContent=deviceId===undefined?'Could not load audio outputs. Try refreshing devices.':'Could not switch audio output. Try refreshing devices.';
+      console.warn('[C.O.D.Y.] Audio output:',error);
+    }finally{
+      outputBusy=false;
+      outputChoices.disabled=!outputLoaded;
+      outputStatus.hidden=!outputStatus.textContent;
+    }
+  }
+  outputChoices.addEventListener('change',()=>void updateAudioOutputs(outputChoices.value));
+  document.getElementById('refresh-microphones').addEventListener('click',()=>{
+    void getMicrophoneAccess();
+    void updateAudioOutputs();
+  });
   document.getElementById('request-mic-permission').addEventListener('click',async()=>{
     if(microphoneMuted){document.getElementById('mic-permission-status').textContent='C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.';return;}
     if(window.CODYIsland?.voiceCapturing){note.textContent='Finish voice input before testing the microphone.';return;}

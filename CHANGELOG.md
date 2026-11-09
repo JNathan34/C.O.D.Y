@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.12 — 9 November 2026
+
+- Add a 50%–200% cursor size slider under **Settings → Cursor**.
+- Add a playback device selector under **Settings → Microphone** for C.O.D.Y.'s voice and voice cues.
+- Use Original Blue as the default accent on first launch and preserve saved accent choices.
+- Add JSON export and import for portable preferences under **Settings → General → Settings Backup**.
+- Label the signed-out Plugins prompt and button **Sign in to Claude Code**.
+- Remove hover tooltips from compact island status displays and game and recording controls. Show recording errors in the interface.
+
 ## 0.15.11 — 6 November 2026
 
 - Press **Ctrl+Alt+H** to hide the island or bring it back in compact mode.

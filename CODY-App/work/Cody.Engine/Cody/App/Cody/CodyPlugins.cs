@@ -13,7 +13,7 @@ internal static class CodyPlugins
     internal static async Task<object> List(AppHost host){
         string message=null;bool signedIn=host.Services.Auth.IsSignedIn;
         if(signedIn){try{using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(30));catalog=await host.Real.Agents.ListIntegrationsAsync(timeout.Token);ConnectedApps.SetCatalog(catalog);if(!catalog.ComposioConfigured)message="Cloud plugins are not configured on the HeyClicky server.";}catch{message="Could not refresh cloud plugins. Check your connection and try Refresh.";}}
-        else{catalog=null;message="Sign in to HeyClicky to browse and connect cloud plugins.";}
+        else{catalog=null;message="Sign in to Claude Code to browse and connect cloud plugins.";}
         var cloud=(catalog?.Integrations??Array.Empty<AgentIntegration>()).Where(x=>!x.IsLocalIntegration).Append(ObsidianVault.Row()).Select(x=>new{
             id=x.Id,name=x.DisplayName,description=x.Description,status=x.Status,connected=x.IsActiveConnection,kind=x.IsLocalIntegration?"local":"cloud",logo=x.LogoUrl,
             canAddAccount=!x.IsLocalIntegration&&!x.HasReachedActiveAccountLimit,accounts=x.ActiveAccounts.Select(a=>new{id=a.ConnectedAccountId,name=a.Label??a.AccountName??"Connected account"}).ToArray()
@@ -34,7 +34,7 @@ internal static class CodyPlugins
             bool changed;if(action=="connect")changed=ObsidianVault.Configure(HeyClicky.App.Interop.Native.GetForegroundWindow());else{ObsidianVault.Unset();changed=true;}
             host.Real.Agents.InvalidateConnectedApps();return new{awaiting=false,changed};
         }
-        if(!host.Services.Auth.IsSignedIn)throw new InvalidOperationException("Sign in to HeyClicky first.");
+        if(!host.Services.Auth.IsSignedIn)throw new InvalidOperationException("Sign in to Claude Code first.");
         if(catalog==null)await List(host);
         var plugin=catalog.Integrations.FirstOrDefault(x=>x.Id==id)??throw new ArgumentException("This plugin is not in the HeyClicky catalog.");
         if(action=="connect"){

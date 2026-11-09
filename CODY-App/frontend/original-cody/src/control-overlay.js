@@ -3,7 +3,7 @@ const path=require('node:path');
 const {EventEmitter}=require('node:events');
 const {FloatingCursor}=require('./floating-cursor');
 const {CursorFlight}=require('./cursor-flight');
-const FALLBACK='#9D9DFF';
+const FALLBACK=require('./island/renderer/mascot-looks').blue.color;
 class ControlOverlay extends EventEmitter{
   constructor({BrowserWindow,screen,engine,getAccent=()=>FALLBACK,getCursorColor=getAccent,getCursorOptions=()=>({}),getDockPoint,getIslandWindow=()=>null}){
     super();Object.assign(this,{BrowserWindow,screen,engine,getAccent,getCursorColor,getCursorOptions,getDockPoint,getIslandWindow});this.windows=new Map();this.state={active:false};this.cursorState={visible:false};this.floating=new FloatingCursor();this.flight=null;this.flightPose=null;
@@ -103,7 +103,7 @@ class ControlOverlay extends EventEmitter{
       this.flight?.begin();
       const b=display.bounds,target=this.targetForDisplay(display),inside=!(this.state.active&&this.state.systemInput)&&(!this.getCursorOptions().hideFloatingCursor||this.state.active)&&point&&point.x>=b.x&&point.y>=b.y&&point.x<b.x+b.width&&point.y<b.y+b.height;
       const geometry=[b.x,b.y,b.width,b.height].join(':');if(win.controlGeometry!==geometry){win.setBounds(b,false);win.controlGeometry=geometry;}
-      win.webContents.send('control-visual-state',{target,agentFlights:this.agentFlights.map(f=>({...f,from:{x:f.from.x-b.x,y:f.from.y-b.y},to:{x:f.to.x-b.x,y:f.to.y-b.y}})),accent:this.accent(),cursorColor:this.cursorColor(),scale:display.scaleFactor,width:b.width,height:b.height,glow:this.state.active,boost:!this.state.active&&!this.flight?this.floating.boost:0,cursorOpacity:this.flightPose?.opacity??1,cursorScale:this.flightPose?.scale??1,pointerOnly:this.state.active,phase:this.state.active||this.flight?'Idle':this.cursorState.phase||'Idle',message:this.state.active?'':this.cursorState.message||'',level:this.cursorState.level||0,cursor:inside?{x:point.x-b.x,y:point.y-b.y}:null});
+      win.webContents.send('control-visual-state',{target,agentFlights:this.agentFlights.map(f=>({...f,from:{x:f.from.x-b.x,y:f.from.y-b.y},to:{x:f.to.x-b.x,y:f.to.y-b.y}})),accent:this.accent(),cursorColor:this.cursorColor(),cursorSize:this.getCursorOptions().cursorSize,scale:display.scaleFactor,width:b.width,height:b.height,glow:this.state.active,boost:!this.state.active&&!this.flight?this.floating.boost:0,cursorOpacity:this.flightPose?.opacity??1,cursorScale:this.flightPose?.scale??1,pointerOnly:this.state.active,phase:this.state.active||this.flight?'Idle':this.cursorState.phase||'Idle',message:this.state.active?'':this.cursorState.message||'',level:this.cursorState.level||0,cursor:inside?{x:point.x-b.x,y:point.y-b.y}:null});
       if(!win.isVisible())win.showInactive();
     }
     this.syncNativeOrder();

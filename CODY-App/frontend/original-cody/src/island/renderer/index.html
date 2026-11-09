@@ -102,8 +102,8 @@
     <button id="island-timer" class="island-timer" type="button" hidden aria-label="Timer"><span id="island-timer-icon" aria-hidden="true"></span><span id="island-timer-value" role="timer">00:00</span></button>
     <div id="island-info" class="island-info" hidden>
       <span id="island-recording-dot" class="island-recording-dot" aria-hidden="true" hidden></span><span id="island-info-icon" aria-hidden="true"></span><img id="island-media-art" alt="" hidden><div class="island-info-copy"><span id="island-info-text"></span><span id="island-info-detail"></span><progress id="island-update-progress" max="100" value="0" aria-label="Update download progress" hidden></progress></div>
-      <div id="island-recording-controls" class="island-recording-controls" role="group" aria-label="Screen recording controls" hidden><button id="island-recording-pause" type="button" aria-label="Pause screen recording" title="Pause recording"></button><button id="island-recording-stop" type="button" aria-label="Stop and save screen recording" title="Stop and save"></button></div>
-      <div id="island-rps-controls" class="island-rps-controls" role="group" aria-label="Choose rock, paper or scissors" hidden><button type="button" data-rps-move="rock" aria-label="Rock" title="Rock">🪨</button><button type="button" data-rps-move="paper" aria-label="Paper" title="Paper">📃</button><button type="button" data-rps-move="scissors" aria-label="Scissors" title="Scissors">✂️</button></div>
+      <div id="island-recording-controls" class="island-recording-controls" role="group" aria-label="Screen recording controls" hidden><button id="island-recording-pause" type="button" aria-label="Pause screen recording"></button><button id="island-recording-stop" type="button" aria-label="Stop and save screen recording"></button></div>
+      <div id="island-rps-controls" class="island-rps-controls" role="group" aria-label="Choose rock, paper or scissors" hidden><button type="button" data-rps-move="rock" aria-label="Rock">🪨</button><button type="button" data-rps-move="paper" aria-label="Paper">📃</button><button type="button" data-rps-move="scissors" aria-label="Scissors">✂️</button></div>
       <div id="island-media-controls" class="island-media-controls" hidden><button id="island-media-previous" type="button" aria-label="Previous media item"></button><button id="island-media-toggle" type="button" aria-label="Play or pause media"></button><button id="island-media-next" type="button" aria-label="Next media item"></button></div>
     </div>
     <div id="file-drop-hint" hidden>Drop files here<small>Then ask C.O.D.Y. about them</small></div>
@@ -185,6 +185,13 @@
                 <label class="setting-row"><span><strong>Launch at login</strong><small>Start C.O.D.Y. when you sign into Windows. Requires a packaged app.</small></span><input type="checkbox" data-pref="launchAtLogin" aria-label="Launch at login"></label>
                 <label class="setting-row"><span><strong>Island visibility</strong><small>Choose when the island appears on your screen.</small></span><select data-pref="visibility" aria-label="Island visibility"><option value="always">Always visible</option><option value="activity">Activity only</option><option value="hover">On hover</option></select></label>
               </div>
+              <h3 class="group-title">SETTINGS BACKUP</h3>
+              <div class="settings-group">
+                <div class="setting-row"><span><strong>Export settings</strong><small>Save appearance, cursor, shortcut and voice preferences to a JSON file.</small></span><button id="settings-export" class="light-action" type="button">Export settings</button></div>
+                <div class="setting-row"><span><strong>Import settings</strong><small>Replace the preferences included in a C.O.D.Y. backup.</small></span><button id="settings-import" class="light-action" type="button">Import settings</button></div>
+              </div>
+              <p class="setting-help">Keep this file to restore your preferences on another PC. Chats, account connections, permissions and device selections stay local.</p>
+              <p class="setting-help" id="settings-backup-status" role="status" hidden></p>
               <h3 class="group-title">CONVERSATIONS</h3><div class="settings-group"><div class="setting-row"><span><strong>Conversation history</strong><small>Browse previous chats and continue a conversation.</small></span><button id="core-history" class="light-action" type="button">Open history</button></div></div><h3 class="group-title">ABOUT</h3>
               <div class="settings-group"><div class="setting-row"><span><strong>C.O.D.Y. Dynamic Island</strong><small>Dynamic Island 1.8.0 · Integrated Windows assistant</small></span><span class="subtle-value">Up to date locally</span></div></div>
               <p class="setting-help">Your preferences are saved automatically.</p>
@@ -217,7 +224,12 @@
               <h3 class="group-title">ACCESS</h3><div class="settings-group"><div class="setting-row"><span><strong>Microphone access</strong><small>Check that C.O.D.Y. can use your microphone.</small></span><button id="permission-check-mic" class="light-action" type="button">Check access</button></div></div>
               <h3 class="group-title">RECOGNITION</h3><div class="settings-group"><label class="setting-row"><span><strong>Language</strong><small>Recognition language for your speech.</small></span><select id="voice-language"><option value="en-GB">English (UK)</option><option value="en-US">English (US)</option></select></label></div><h3 class="group-title">INPUT DEVICE</h3>
               <div class="settings-group"><label class="setting-row"><span><strong>Microphone</strong><small>Select an available recording device.</small></span><select data-pref="micDeviceId" id="mic-choices"><option value="">System default</option></select></label>
-                <div class="setting-row"><span><strong>Refresh devices</strong><small>Ask Windows to list connected microphones.</small></span><button type="button" class="light-action" id="refresh-microphones">Refresh</button></div></div>
+                <div class="setting-row"><span><strong>Refresh devices</strong><small>Update the list of microphones and audio outputs.</small></span><button type="button" class="light-action" id="refresh-microphones">Refresh</button></div></div>
+              <h3 class="group-title">OUTPUT DEVICE</h3>
+              <div class="settings-group">
+                <label class="setting-row"><span><strong>Audio output</strong><small>Choose where C.O.D.Y.’s voice and voice cues play.</small></span><select id="output-choices" aria-label="Audio output" aria-describedby="output-device-status" disabled><option value="">System default</option></select></label>
+              </div>
+              <p id="output-device-status" class="setting-help" role="status" hidden></p>
               <h3 class="group-title">TEST MICROPHONE</h3>
               <div class="settings-group mic-test-group"><div class="setting-row"><span><strong>Input levels</strong><small id="mic-permission-status">Microphone not tested</small></span><button type="button" class="light-action" id="request-mic-permission">Test microphone</button></div>
                 <div class="mic-meter" id="mic-meter" role="img" aria-label="Microphone input level"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
@@ -262,6 +274,15 @@
               <h2>Cursor</h2>
               <div class="cursor-options" role="group" aria-label="Cursor colours">
                 <button class="cursor-option" type="button" data-cursor-color="accent" aria-pressed="true"><span class="cursor-option-preview" aria-hidden="true"></span><span>Match appearance</span></button>
+              </div>
+              <div class="settings-group">
+                <div class="setting-row">
+                  <span><strong><label for="cursor-size">Cursor size</label></strong><small id="cursor-size-help">Adjust the size of C.O.D.Y.’s pointer.</small></span>
+                  <span class="range-control">
+                    <input id="cursor-size" data-pref="cursorSize" type="range" min="50" max="200" step="25" value="100" aria-describedby="cursor-size-help" aria-valuetext="100%">
+                    <output for="cursor-size" data-for="cursorSize" aria-hidden="true">100%</output>
+                  </span>
+                </div>
               </div>
               <h3 class="group-title">COMPUTER CONTROL</h3><div class="settings-group">
                 <label class="setting-row"><span><strong>Input mode</strong><small>Choose which mouse C.O.D.Y. uses during a task.</small></span><select data-pref="controlInputMode"><option value="system">My mouse and keyboard</option><option value="independent">Independent C.O.D.Y. cursor</option></select></label>

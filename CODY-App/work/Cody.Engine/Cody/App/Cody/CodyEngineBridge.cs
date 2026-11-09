@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using HeyClicky.Core.Voice;
+using HeyClicky.Platform.Audio;
 using Microsoft.UI.Dispatching;
 
 namespace HeyClicky.App.Cody;
@@ -318,13 +319,33 @@ public static class CodyEngineBridge
                     case "audio-mute":
                         NativeAudioControl.SetMute(request.GetProperty("muted").GetBoolean());
                         return JsonSerializer.Deserialize<JsonElement>(NativeAudioControl.State());
+                    case "audio-output-devices":
+                    case "audio-output-select":
+                    {
+                        var devices = await Task.Run(() => AudioDevices.List(capture: false));
+                        var settings = host.Real.Core.Settings;
+                        if (command == "audio-output-select")
+                        {
+                            string deviceId = request.GetProperty("deviceId").GetString() ?? throw new ArgumentException("Invalid output device.");
+                            var device = devices.FirstOrDefault(item => string.Equals(item.Id, deviceId, StringComparison.OrdinalIgnoreCase));
+                            if (deviceId.Length > 0 && device == null)
+                                throw new InvalidOperationException("That output device is no longer available. Refresh devices and try again.");
+                            settings.Update(s => s.OutputDeviceId = device?.Id);
+                        }
+                        return new
+                        {
+                            selectedId = settings.Read(s => s.OutputDeviceId),
+                            devices = devices.Select(device => new { id = device.Id, name = device.Name }).ToArray()
+                        };
+                    }
                     case "configure":
                         if(request.TryGetProperty("systemInput",out var systemInputSetting))CodyIndependentInput.SystemInputEnabled=systemInputSetting.GetBoolean();
                         if(request.TryGetProperty("screenHighlight",out var highlightSetting))host.Services.Settings.ScreenHighlightEnabled=highlightSetting.GetBoolean();
-                        if(request.TryGetProperty("cursorColor",out var cursorColorSetting)){
-                            string color=cursorColorSetting.GetString()??"";
-                            if(System.Text.RegularExpressions.Regex.IsMatch(color,"^#[0-9a-fA-F]{6}$")){CodySystemCursor.Color(color);host.Real.Core.Settings.Update(s=>s.CursorColorHex=color);}
-                        }
+                        string? cursorColor=request.TryGetProperty("cursorColor",out var cursorColorSetting)?cursorColorSetting.GetString():null;
+                        if(cursorColor!=null&&!System.Text.RegularExpressions.Regex.IsMatch(cursorColor,"^#[0-9a-fA-F]{6}$"))cursorColor=null;
+                        int? cursorSize=request.TryGetProperty("cursorSize",out var cursorSizeSetting)&&cursorSizeSetting.ValueKind==JsonValueKind.Number&&cursorSizeSetting.TryGetInt32(out int size)?size:null;
+                        CodySystemCursor.Configure(cursorColor,cursorSize);
+                        if(cursorColor!=null)host.Real.Core.Settings.Update(s=>s.CursorColorHex=cursorColor);
                         if(request.TryGetProperty("recognitionLanguage",out var recognition))ConfigureRecognition(recognition.GetString(),true);
                         host.Real.Core.Settings.Update(s =>
                         {
@@ -339,7 +360,7 @@ public static class CodyEngineBridge
                         return new { configured = true };
                     case "wake-cue":host.Services.Audio.PlayEarcon("textOpen");return new{played=true};
                     case "dictation-shortcuts":return new{installed=dictationShortcuts?.Installed==true,hold="Ctrl + Win",handsFree="Ctrl + Win, pressed twice",cancel="Esc",recording=host.Real.Dictation.IsCapturingAudio};
-                    case "cursor-preferences":return new{controlInputMode=CodyIndependentInput.SystemInputEnabled?"system":"independent",screenHighlight=host.Services.Settings.ScreenHighlightEnabled,cursorColor=host.Real.Core.Settings.Read(s=>s.CursorColorHex),highlightActive=host.Real.Highlight.IsEnabled};
+                    case "cursor-preferences":return new{controlInputMode=CodyIndependentInput.SystemInputEnabled?"system":"independent",screenHighlight=host.Services.Settings.ScreenHighlightEnabled,cursorColor=host.Real.Core.Settings.Read(s=>s.CursorColorHex),cursorSize=CodySystemCursor.SizePercent,highlightActive=host.Real.Highlight.IsEnabled};
                     case "signOut": await host.Real.Agents.SignOutAsync(); await host.Services.Auth.SignOutAsync(); return new { signedIn = false };
                     case "signIn": host.SignIn(); return new { started = true };
                     case "quit": CodyOverlayOrder.Stop();CodyIndependentInput.End();CodyTaskLibrary.Flush();host.Quit(); return new { stopping = true };

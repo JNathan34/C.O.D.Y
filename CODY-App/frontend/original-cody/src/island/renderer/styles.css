@@ -3,7 +3,7 @@
   --island-width:216px;--island-height:32px;--mascot-size:27px;
   --notch-width-time:330ms;--notch-height-time:290ms;--notch-width-delay:45ms;--notch-height-delay:0ms;
   --notch-ease:cubic-bezier(.22,1,.36,1);
-  --motion-factor:1;--accent:#38d7f9;--ui-accent:#9D9DFF;
+  --motion-factor:1;--accent:#38d7f9;--ui-accent:#47A8FF;
 }
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}

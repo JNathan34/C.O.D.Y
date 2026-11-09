@@ -29,6 +29,7 @@ let heyclicky,codexAgent,memory,memoryError='';
 const {CodexVisualPlanner,visualOnly}=require('./visuals/codex-planner');
 let visualPlanner;
 const {StateStore}=require('./store');
+const {registerSettingsBackupIpc}=require('./settings-backup');
 const {ChatGPTBrowser}=require('./chatgpt-browser');
 const {formatWebPrompt}=require('./cody-persona');
 const {inspectQuota,quotaMessage}=require('./quota');
@@ -180,6 +181,10 @@ function finishTurn(error=''){
   if(spoken)void nativeEngine.request('speak',{text:spoken}).catch(error=>sendUI('diagnostic',error.message));
 }
 function registerIpc(){
+  registerSettingsBackupIpc({ipcMain,dialog,getWindow:()=>win,island,store,engine:nativeEngine,onAppSettingsChanged:()=>{
+    updateTrayMenu();
+    sendUI('settings-changed',store.data.settings);
+  }});
   ipcMain.handle('backend-status',e=>{fromAnnotationUI(e);return {heyclicky:heyclicky.status(),capabilities:backendCapabilities.snapshot(),defaultProvider:store.data.settings.assistantProvider||'heyclicky',autoAvailable:false,voiceProvider:'C.O.D.Y. native Windows / Edge; HeyClicky speech unavailable',toolsProvider:'C.O.D.Y. permission-controlled Windows and visual tools'};});
   ipcMain.handle('backend-refresh',e=>{fromAnnotationUI(e);return heyclicky.refresh();});
   const fromCody=e=>{if(!win||e.sender!==win.webContents)throw Error('Computer controls are only accessible from the C.O.D.Y interface')};
@@ -593,7 +598,7 @@ else app.whenReady().then(()=>{
   createWindow();createTray();
   controlOverlay=new ControlOverlay({BrowserWindow,screen,engine:nativeEngine,getAccent:()=>island.preferences().accentColor,getCursorColor:()=>island.preferences().cursorColor,getCursorOptions:()=>island.preferences(),getIslandWindow:()=>island.window(),getDockPoint:()=>{const bounds=island.window()?.getBounds();return bounds?{x:bounds.x+bounds.width/2,y:bounds.y+16}:null;}});
   controlOverlay.on('diagnostic',message=>sendUI('diagnostic',message));
-  const syncCursorPreferences=()=>{controlOverlay.preferencesChanged();const prefs=island.preferences();void nativeEngine.request('configure',{screenHighlight:prefs.screenHighlight,cursorColor:controlOverlay.cursorColor(),systemInput:prefs.controlInputMode==='system'}).catch(error=>sendUI('diagnostic',error.message));};
+  const syncCursorPreferences=()=>{controlOverlay.preferencesChanged();const prefs=island.preferences();void nativeEngine.request('configure',{screenHighlight:prefs.screenHighlight,cursorColor:controlOverlay.cursorColor(),cursorSize:prefs.cursorSize,systemInput:prefs.controlInputMode==='system'}).catch(error=>sendUI('diagnostic',error.message));};
   let dictationActive=false,sessionLocked=false;
   nativeEngine.on('meter',value=>{dictationActive=value.dictationActive===true;});
   wakeListener=new KeywordWakeListener({launch:phrases=>{const layout=require('./native-layout').nativeLayout({packaged:app.isPackaged,resourcesPath:process.resourcesPath,userData:app.getPath('userData')});return {command:layout.executable,args:['--cody-wake','--phrases',phrases.join('|')],options:{cwd:layout.directory,env:layout.environment}};},canCapture:()=>sessionLocked?'Paused while this PC is locked.':!nativeEngine.connected?'Waiting for C.O.D.Y. to connect.':dictationActive?'Paused during dictation.':nativeBindings.gameVoice?.running?'Paused during voice games.':null,canListen:()=>sessionLocked?'Paused while this PC is locked.':!nativeEngine.connected?'Waiting for C.O.D.Y. to connect.':dictationActive?'Paused during dictation.':nativeBindings.gameVoice?.running?'Paused during voice games.':['Listening','Processing','Responding'].includes(nativeEngine.status.state)||nativeBindings.isBusy()?'Paused while C.O.D.Y. is busy.':null,
