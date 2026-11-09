@@ -13,12 +13,12 @@
 
 C.O.D.Y. brings chat, voice controls and background tasks into an animated desktop island. It combines an Electron interface with a bundled Windows engine for computer controls, screen capture, browser connections and visual tools.
 
-**Current release: 0.15.16 · Windows x64 and ARM64 · Early development**
+**Current release: 0.15.17 · Windows x64 and ARM64 · Early development**
 
 ## Install
 
 1. Open the [latest release](https://github.com/JNathan34/C.O.D.Y/releases/latest).
-2. Choose **C.O.D.Y-Setup-0.15.16-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.16-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
+2. Choose **C.O.D.Y-Setup-0.15.17-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.17-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
 3. Open C.O.D.Y., connect your preferred AI service and review the app permissions.
 
 The installer is currently unsigned. Windows may show its publisher as unknown. AI providers require their own accounts; provider subscriptions and paid usage are not included.
@@ -74,6 +74,12 @@ The new Windows settings permission covers Bluetooth and Wi-Fi on/off, power mod
 The handbook covers capabilities, voice commands, settings and setup, with screenshots and examples. The repository copy covers 0.15.13, including Discord commands, desktop FPS, the agent usage switch, local memory and recent settings changes. Older screenshots are labelled with their version where relevant.
 
 The repository guide now includes refreshed Shortcuts and Permissions pictures plus current expanded-chat, clock, weather and microphone-status pictures. Weather is labelled as an example reading. Screenshot assets are in `docs/screenshots`; `CODY-App/tools/capture-guide-screenshots.cjs` captures the current renderer, and `CODY-App/tools/update-guide-pictures.py` embeds them using the document Python runtime.
+
+## What changed in 0.15.17
+
+- FPS uses the same widget as weather, clock and RAM in the compact island and expanded chat.
+
+See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.17.md).
 
 ## What changed in 0.15.16
 

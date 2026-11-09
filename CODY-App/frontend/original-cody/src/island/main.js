@@ -21,7 +21,6 @@ const SIZES = Object.freeze({
 });
 const PANEL_WIDTH = 940;
 const PANEL_HEIGHT = 750;
-const FPS_SLOT_WIDTH = 62; // Matches --fps-slot in the island stylesheet.
 const CHAT_WIDTH = 520;
 const CHAT_HEIGHT = 352;
 const TASKS_WIDTH = CHAT_WIDTH;
@@ -69,7 +68,6 @@ let suspended = false;
 let hiddenByShortcut = false;
 let expanded = false;
 let currentPanelView = 'chat';
-let fpsVisible = false;
 let timerVisible=false;
 let gameActive=false;
 let recordingActive=false,wakeListeningActive=false;
@@ -323,9 +321,8 @@ function pollCursor(clickedPoint=null) {
   const point = clickedPoint||screen.getCursorScreenPoint();
   const bounds = islandWindow.getBounds();
   const size=SIZES[settings.islandSize];
-  const compactWidth = size.width + (!expanded && fpsVisible ? FPS_SLOT_WIDTH : 0);
-  const left = (bounds.width-compactWidth)/2;
-  const nearIsland = point.x >= bounds.x + left && point.x < bounds.x + left+compactWidth && point.y >= bounds.y && point.y < bounds.y + size.height;
+  const left = (bounds.width-size.width)/2;
+  const nearIsland = point.x >= bounds.x + left && point.x < bounds.x + left+size.width && point.y >= bounds.y && point.y < bounds.y + size.height;
   // All visible expanded content remains interactive; outside is click-through.
   const wide=['settings','history'].includes(currentPanelView)||currentPanelView==='tasks'&&taskDetailExpanded||currentPanelView==='chat'&&chatExpanded;
   const width = Math.min(wide?SETTINGS_WIDTH:currentPanelView==='tasks'?TASKS_WIDTH:CHAT_WIDTH,bounds.width);
@@ -338,7 +335,7 @@ function pollCursor(clickedPoint=null) {
   const dist = Math.hypot(point.x-centerX, point.y-(bounds.y+size.height/2));
   // Match the top-attached notch silhouette instead of blocking mouse input through its transparent shoulders.
   const inset = y < 8 ? Math.max(0,y)*1.8 : y < 24 ? 14.4+(y-8)*.8 : 27.2+(y-24)*1.7;
-  const silhouetteHit = nearIsland && Math.abs(point.x-centerX) < (compactWidth/2-inset);
+  const silhouetteHit = nearIsland && Math.abs(point.x-centerX) < (size.width/2-inset);
   const interactive = islandWindow.isVisible() && shouldShow();
   if(clickedPoint&&shouldRecoverPointer({visible:interactive,expanded,hit:silhouetteHit,button:clickedPoint.button||'left'})){
     mascotSleeping=false;wakeClickUntil=0;setExpanded(true);emit('island:command','pointer-open');
@@ -365,7 +362,7 @@ function pollCursor(clickedPoint=null) {
   }
   if (settings.visibility === 'hover' && !isActive() && !expanded && !forcedVisible) {
     const display = screen.getPrimaryDisplay().bounds;
-    const edgeHotspot = point.y >= display.y && point.y <= display.y+22 && Math.abs(point.x-(display.x+display.width/2)) < compactWidth/2+18;
+    const edgeHotspot = point.y >= display.y && point.y <= display.y+22 && Math.abs(point.x-(display.x+display.width/2)) < size.width/2+18;
     const hoverHotspot = edgeHotspot || (hoverVisible && silhouetteHit);
     if (hoverHotspot) { lastHover = Date.now(); if (!hoverVisible) {hoverVisible=true; updateVisibility();} }
     else if (hoverVisible && Date.now()-lastHover>850) {hoverVisible=false; updateVisibility();}
@@ -412,7 +409,6 @@ function createIsland() {
   });
   islandWindow.on('closed',()=>{
     islandWindow=null;
-    fpsVisible=false;
     if(cursorTimer){clearInterval(cursorTimer);cursorTimer=null;}
     if(concealFallback){clearTimeout(concealFallback);concealFallback=null;}
   });
@@ -473,7 +469,6 @@ function setupIpc() {
   on('island:sleeping',(_event,value)=>{if(mascotSleeping&&value!==true)wakeClickUntil=Date.now()+1500;mascotSleeping=value===true;});
   on('island:expand',(_event,open)=>setExpanded(open));
   on('island:chat-expanded',(_event,value)=>{chatExpanded=value===true;});
-  on('island:fps-visible',(_event,value)=>{fpsVisible=value===true;});
   on('island:task-detail',(_event,open)=>{taskDetailExpanded=open===true;});
   on('island:view',(_event,view)=>{if(['chat','settings','tasks','history'].includes(view))currentPanelView=view;});
   on('island:show',()=>{forcedVisible=true;updateVisibility();if(!isActive())scheduleHide();});

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.17 — 9 November 2026
+
+- Show FPS in the shared status widget used by weather, clock and RAM. FPS uses the normal island width and rotates through the same slot when several monitors are pinned.
+
 ## 0.15.16 — 9 November 2026
 
 - Export local memories as readable JSON and restore them from **Settings → Memory → Memory Backup**. Import skips duplicates and credential-like notes and restores eligible notes to private local storage.

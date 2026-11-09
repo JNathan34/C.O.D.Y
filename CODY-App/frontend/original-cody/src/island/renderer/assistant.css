@@ -86,26 +86,6 @@ body.panel-open .island-timer{left:88px;top:34px;color:#bdeff8}
 body.timer-finished .island-timer{color:#ffca85;animation:timer-alert 1200ms ease-in-out infinite}
 @keyframes timer-alert{50%{opacity:.55}}
 @media(prefers-reduced-motion:reduce){body.timer-finished .island-timer{animation:none}body:not(.panel-open) .mascot{transition:none}}
-/* Keep the pinned FPS in its own slot when another status occupies the island. */
-.island-summary{position:absolute;inset:0}
-body:is([data-style="liquid"],[data-style="simple"]) .island-summary{
-  transition:left calc(var(--notch-width-time) * var(--motion-factor)) var(--notch-size-ease) calc(var(--notch-width-delay) * var(--motion-factor));
-}
-body[data-reveal="hidden"] .island-summary{transition:none}
-@media(prefers-reduced-motion:reduce){body .island-summary{transition:none!important}}
-body.fps-visible:not(.panel-open) .island{width:calc(var(--island-width) + var(--fps-slot))}
-body.fps-visible:is(.island-content-active,.file-dragging):not(.panel-open) .island-summary{left:var(--fps-slot)}
-body.fps-visible:not(.panel-open,.island-content-active,.file-dragging) .mascot{left:calc(50% + 25px)}
-.island-fps{
-  position:absolute;z-index:6;left:calc(50% - 51px);top:calc(var(--island-height) / 2);
-  transform:translateY(-50%);width:49px;color:#c5eff7;text-align:center;
-  font:11px/1.1 'Segoe UI',sans-serif;font-variant-numeric:tabular-nums;pointer-events:none;
-}
-body:is(.island-content-active,.file-dragging):not(.panel-open) .island-fps{left:38px}
-.island-fps[hidden]{display:none}
-.island-fps strong,.island-fps span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.island-fps span{font-size:8px;color:#a0b7bd}
-body.panel-open .island-fps{left:calc(50% + 28px);top:34px}
 .island-info{position:absolute;z-index:5;display:flex;align-items:center;gap:5px;left:calc(50% - 53px);top:calc(var(--island-height) / 2);transform:translateY(-50%);width:76px;color:#c5eff7;font:600 11.5px/1.2 'Segoe UI',sans-serif}
 .island-info[hidden],.island-media-controls[hidden]{display:none}
 .island-info[data-update="true"]{cursor:pointer;min-height:28px}

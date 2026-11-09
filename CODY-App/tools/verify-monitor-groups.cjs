@@ -19,9 +19,12 @@ module.exports=async({win,island,store,monitors})=>{
     await prompt('hide RAM');await prompt('show Wi-Fi details');await until(()=>Boolean(monitors.data.wifi?.connected)&&!monitors.pending);const wifi=await card('wifiDetails');check('Wi-Fi details show signal and paired link rates',/^Wi-Fi/.test(wifi.top)&&/^RX .+ · TX .+$/.test(wifi.bottom)&&wifi.topFits&&wifi.bottomFits,{...wifi,connected:monitors.data.wifi.connected});await screenshot('wifi-details-reviewed');
     await prompt('hide Wi-Fi details');await prompt('show Wi-Fi speed');await until(()=>Number.isFinite(monitors.rx)&&!monitors.pending);const traffic=await card('wifiSpeed');check('Wi-Fi traffic shows measured download above upload',/^↓[\d.]+ Mbps$/.test(traffic.top)&&/^↑[\d.]+ Mbps$/.test(traffic.bottom)&&traffic.topFits&&traffic.bottomFits,traffic);await screenshot('wifi-speed-reviewed');
     await prompt('hide Wi-Fi speed');await prompt('show FPS 24/7');
-    await until(()=>evaluate(`!document.getElementById('island-fps').hidden&&/^FPS [0-9]+$/.test(document.getElementById('island-fps-value').textContent)`));
+    await until(()=>evaluate(`document.getElementById('island-info').dataset.monitor==='fps'&&/^FPS [0-9]+$/.test(document.getElementById('island-info-text').textContent)`));
+    const fps=await card('fps');
+    check('Desktop FPS uses the regular monitor card',fps.bottom==='Desktop'&&fps.topFits&&fps.bottomFits,fps);
     await prompt('show RAM');await card('ram');
-    check('Measured desktop FPS stays visible alongside rotating monitors',await evaluate(`!document.getElementById('island-fps').hidden&&document.getElementById('island-fps-source').textContent==='Desktop'`));
+    const rotatedFps=await card('fps');
+    check('FPS and RAM rotate through the same card',rotatedFps.bottom==='Desktop');
     await prompt('clear the island');await wait(1200);check('cleared monitors stay hidden during sampling',!monitors.snapshot().active&&!JSON.parse(fs.readFileSync(monitors.settingsFile,'utf8')).metrics.length);
   }catch(error){results.push({name:'verification error',passed:false,error:error.stack});console.error(error);}
   finally{

@@ -1,7 +1,6 @@
 :root{
   font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;color-scheme:dark;
   --island-width:216px;--island-height:32px;--mascot-size:27px;
-  --fps-slot:62px;
   --notch-width-time:305ms;--notch-height-time:325ms;--notch-width-delay:65ms;--notch-height-delay:45ms;
   --notch-ease:cubic-bezier(.22,1,.36,1);
   --fold-ease:cubic-bezier(.32,0,.28,1);

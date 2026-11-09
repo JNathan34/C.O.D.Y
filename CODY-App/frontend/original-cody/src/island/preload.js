@@ -84,7 +84,6 @@ contextBridge.exposeInMainWorld('cody',Object.freeze({
   updateSettings:patch=>ipcRenderer.invoke('island:update-settings',patch),
   setState:state=>ipcRenderer.send('island:set-state',state),
   setSleeping:value=>ipcRenderer.send('island:sleeping',value===true),
-  setFpsVisible:value=>ipcRenderer.send('island:fps-visible',value===true),
   setAudioLevel:level=>ipcRenderer.send('island:audio-level',level),
   openSettings:()=>ipcRenderer.send('island:open-settings'),
   openPreview:()=>ipcRenderer.send('island:open-preview'),
