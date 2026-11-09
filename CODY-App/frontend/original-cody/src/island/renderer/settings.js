@@ -100,7 +100,9 @@
     }
     if(which==='reveal'){
       c.setState('idle');c.showIsland(false);
-      showLabel('Liquid reveal','The island retracts into the screen edge, then flows back down.');
+      showLabel('Island reveal',current.revealStyle==='liquid'?
+        'Watch the slit widen, dip, and rebound before the mascot fades in.':
+        'The island hides and reappears using your selected reveal style.');
       later(()=>c.showIsland(true),600);return;
     }
     if(which==='wifi-restored'){

@@ -158,15 +158,66 @@ body.panel-open{--notch-width-time:440ms;--notch-height-time:460ms;--notch-width
 /* Reveal remains attached to the screen edge. */
 body[data-reveal="visible"] .island,body[data-reveal="entering"] .island{transform:scaleY(1);opacity:1}
 body[data-reveal="hidden"] .island,body[data-reveal="leaving"] .island{transform:scaleY(.002);opacity:0}
-body[data-style="liquid"] .island{transition:width calc(var(--notch-width-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-width-delay) * var(--motion-factor)),height calc(var(--notch-height-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-height-delay) * var(--motion-factor)),transform calc(310ms * var(--motion-factor)) cubic-bezier(.2,.86,.27,1),opacity calc(160ms * var(--motion-factor)) ease}
+body[data-style="liquid"] .island{
+  transform:none;
+  transition:
+    width calc(var(--notch-width-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-width-delay) * var(--motion-factor)),
+    height calc(var(--notch-height-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-height-delay) * var(--motion-factor));
+}
 body[data-style="simple"] .island{transition:width calc(var(--notch-width-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-width-delay) * var(--motion-factor)),height calc(var(--notch-height-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-height-delay) * var(--motion-factor)),transform calc(220ms * var(--motion-factor)) cubic-bezier(.22,1,.36,1),opacity calc(180ms * var(--motion-factor)) ease}
 body[data-style="none"] .island,body[data-motion="off"] .island{transition:none}
-body[data-style="liquid"][data-reveal="entering"] .island{animation:liquid-arrive calc(420ms * var(--motion-factor)) cubic-bezier(.16,1,.3,1) both}
-@keyframes liquid-arrive{0%{transform:scaleY(.002);opacity:0}70%{transform:scaleY(1.018);opacity:1}100%{transform:scaleY(1);opacity:1}}
-body[data-style="liquid"][data-reveal="leaving"] .island{animation:liquid-leave calc(270ms * var(--motion-factor)) cubic-bezier(.55,0,.8,.35) both}
-@keyframes liquid-leave{0%{transform:scaleY(1);opacity:1}45%{transform:scaleY(.86);opacity:1}100%{transform:scaleY(.002);opacity:0}}
 body[data-reveal="entering"] .mascot,body[data-reveal="visible"] .mascot{opacity:1;transition:opacity calc(150ms * var(--motion-factor)) ease calc(85ms * var(--motion-factor))}
 body[data-reveal="hidden"] .mascot,body[data-reveal="leaving"] .mascot{opacity:0;transition:opacity 95ms ease}
+
+@property --unfold-width{
+  syntax:"<number>";
+  inherits:false;
+  initial-value:1;
+}
+@property --unfold-depth{
+  syntax:"<number>";
+  inherits:false;
+  initial-value:1;
+}
+.island-content{position:absolute;inset:0}
+
+/* Each axis has its own timing. The slit widens first, then the shoulders
+   dip and briefly overshoot in width. Transitions can reverse from any frame. */
+body[data-style="liquid"][data-reveal="leaving"] .island{opacity:1}
+body[data-style="liquid"] .island-shape{
+  --slit-width:.13;
+  --slit-depth:.14;
+  transform-origin:50% 0;
+  transform:scale(var(--unfold-width),var(--unfold-depth));
+  transition:
+    --unfold-width calc(420ms * var(--motion-factor))
+      linear(0,.10 5%,.38 13%,.49 23%,.73 37%,.90 51%,1.025 64%,1.06 71%,1.02 77%,.997 82%,1 88%,1),
+    --unfold-depth calc(420ms * var(--motion-factor))
+      linear(0,.015 13%,.10 23%,.34 34%,.63 47%,.88 57%,.985 65%,1 71%,1);
+}
+body[data-style="liquid"].panel-open .island-shape{--slit-width:.055;--slit-depth:.012}
+body[data-style="liquid"]:is([data-reveal="hidden"],[data-reveal="leaving"]) .island-shape{
+  --unfold-width:var(--slit-width);
+  --unfold-depth:var(--slit-depth);
+  opacity:0;
+  transition:
+    --unfold-width calc(270ms * var(--motion-factor)) cubic-bezier(.55,0,.8,.35),
+    --unfold-depth calc(235ms * var(--motion-factor)) cubic-bezier(.45,0,.85,.5),
+    opacity calc(65ms * var(--motion-factor)) ease calc(205ms * var(--motion-factor));
+}
+body[data-style="liquid"] .island-content{
+  transition:opacity calc(90ms * var(--motion-factor)) ease-out calc(330ms * var(--motion-factor));
+}
+body[data-style="liquid"]:is([data-reveal="hidden"],[data-reveal="leaving"]) .island-content{
+  opacity:0;
+  transition:opacity calc(85ms * var(--motion-factor)) ease-in;
+}
+body[data-style="liquid"] .mascot{opacity:1}
+@starting-style{
+  body[data-style="liquid"] .island-shape{--unfold-width:var(--slit-width);--unfold-depth:var(--slit-depth)}
+  body[data-style="liquid"] .island-content{opacity:0}
+}
+
 /* Same black island expands into the entire UI; no extra window/card. */
 body.panel-open .mascot{top:32px;width:38px;height:38px;transition:top calc(430ms * var(--motion-factor)) var(--notch-ease),width calc(430ms * var(--motion-factor)) var(--notch-ease),height calc(430ms * var(--motion-factor)) var(--notch-ease)}
 body:not(.panel-open) .mascot{transition:top calc(290ms * var(--motion-factor)) var(--notch-ease),width calc(290ms * var(--motion-factor)) var(--notch-ease),height calc(290ms * var(--motion-factor)) var(--notch-ease)}
@@ -249,9 +300,9 @@ button{font:inherit;cursor:pointer}
 .status-dot{width:7px;height:7px;border-radius:50%;background:#707070;flex-shrink:0}.unavailable{color:#777;font-size:10px}
 @media(max-width:500px){.quick-panel{left:30px;right:30px}.settings-view{grid-template-columns:112px minmax(0,1fr);gap:10px}}
 .sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-body[data-motion="off"] .quick-panel,body[data-motion="off"] .island,body[data-motion="off"] .mascot{transition:none!important}
+body[data-motion="off"] :is(.quick-panel,.island,.mascot,.island-shape,.island-content){transition:none!important}
 @media(max-width:440px){.quick-panel{left:34px;right:34px}.empty-state{margin-top:24px}.empty-state h2{font-size:18px}.suggestion{padding:9px}.panel-header{padding-bottom:6px}}
-@media(prefers-reduced-motion:reduce){.island,.mascot,.ring,.symbol-layer,.morph-dot,.waveform,.thinking-dots i,.quick-panel,.original-eye,.wifi-arc,.emoji-sticker,.sleep-z,.tear{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){.island,.island-shape,.island-content,.mascot,.ring,.symbol-layer,.morph-dot,.waveform,.thinking-dots i,.quick-panel,.original-eye,.wifi-arc,.emoji-sticker,.sleep-z,.tear{animation:none!important;transition:none!important}}
 
 /* v1.8 — one seamless island with two purpose-sized states */
 body.panel-open:not(.settings-open) .island{width:min(520px,100%);height:min(352px,100%)}

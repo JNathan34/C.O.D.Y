@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.14 — 9 November 2026
+
+- Unfold the compact island from a centered slit at the top edge. The shoulders dip and rebound before the mascot and any active media or status details fade in.
+- Replay the reveal and hide sequence from **Test all animations → Unfold / hide**. The reveal follows the selected animation speed and reduced-motion settings.
+
 ## 0.15.13 — 9 November 2026
 
 - Add **Allow agent usage** under **Settings → Agents**. Turning it off stops active agent work and blocks new tasks, routines and screen takeovers.
