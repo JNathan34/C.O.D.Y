@@ -21,6 +21,7 @@
       <path id="island-path" d="M0 0 H216 C205 0 201 7 199 13 C195 26 189 32 175 32 H41 C27 32 21 26 17 13 C15 7 11 0 0 0 Z" fill="#000"/>
     </svg>
     <div class="island-content">
+    <div class="island-summary">
     <div class="mascot" aria-hidden="true">
       <div class="media-music-notes" aria-hidden="true">
         <span class="music-note music-note-left"></span>
@@ -107,8 +108,9 @@
       <div id="island-rps-controls" class="island-rps-controls" role="group" aria-label="Choose rock, paper or scissors" hidden><button type="button" data-rps-move="rock" aria-label="Rock">🪨</button><button type="button" data-rps-move="paper" aria-label="Paper">📃</button><button type="button" data-rps-move="scissors" aria-label="Scissors">✂️</button></div>
       <div id="island-media-controls" class="island-media-controls" hidden><button id="island-media-previous" type="button" aria-label="Previous media item"></button><button id="island-media-toggle" type="button" aria-label="Play or pause media"></button><button id="island-media-next" type="button" aria-label="Next media item"></button></div>
     </div>
-    <div id="island-fps" class="island-fps" role="img" hidden><strong id="island-fps-value"></strong><span id="island-fps-source"></span></div>
     <div id="file-drop-hint" hidden>Drop files here<small>Then ask C.O.D.Y. about them</small></div>
+    </div>
+    <div id="island-fps" class="island-fps" role="img" hidden><strong id="island-fps-value"></strong><span id="island-fps-source"></span></div>
     <section class="quick-panel" id="quick-panel" aria-label="C.O.D.Y. assistant" aria-hidden="true" inert>
       <header class="panel-header">
         <div class="panel-header-actions">
@@ -186,7 +188,6 @@
               <h3 class="group-title">BEHAVIOUR</h3>
               <div class="settings-group">
                 <label class="setting-row"><span><strong>Launch at login</strong><small>Start C.O.D.Y. when you sign into Windows. Requires a packaged app.</small></span><input type="checkbox" data-pref="launchAtLogin" aria-label="Launch at login"></label>
-                <label class="setting-row"><span><strong>Island visibility</strong><small>Choose when the island appears on your screen.</small></span><select data-pref="visibility" aria-label="Island visibility"><option value="always">Always visible</option><option value="activity">Activity only</option><option value="hover">On hover</option></select></label>
               </div>
               <h3 class="group-title">SETTINGS BACKUP</h3>
               <div class="settings-group">
@@ -267,6 +268,7 @@
               <h3 class="group-title">ACCENT COLOUR</h3><div class="settings-group"><div class="setting-row color-row"><span><strong>Interface accent</strong><small>Used for selected controls and highlights.</small></span><div class="swatches" role="group" aria-label="Accent colour">
                 </div></div></div>
               <h3 class="group-title">ISLAND</h3><div class="settings-group">
+                <label class="setting-row"><span><strong>Island visibility</strong><small>Choose when the island appears on your screen.</small></span><select data-pref="visibility" aria-label="Island visibility"><option value="always">Always visible</option><option value="activity">Activity only</option><option value="hover">On hover</option></select></label>
                 <label class="setting-row"><span><strong>Size</strong><small>Adjust the compact island's size.</small></span><select data-pref="islandSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label>
                 <label class="setting-row"><span><strong>Reveal style</strong><small>How the island appears from the top edge.</small></span><select data-pref="revealStyle"><option value="liquid">Liquid unfold</option><option value="simple">Smooth</option><option value="none">Instant</option></select></label>
                 <label class="setting-row"><span><strong>Animation speed</strong><small>Slow down or reduce mascot animations.</small></span><select data-pref="animationSpeed"><option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option><option value="off">Reduced motion</option></select></label>

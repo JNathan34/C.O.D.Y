@@ -5,6 +5,7 @@
   const api = demoMode ? null : (window.cody || null);
   const body = document.body;
   const island = document.getElementById('island');
+  const islandContent = island.querySelector('.island-content');
   const panel = document.getElementById('quick-panel');
   const faceGaze = document.getElementById('face-gaze');
   const morphDot = document.getElementById('morph-dot');
@@ -51,7 +52,8 @@
   let state = 'idle';
   let displayedState = 'idle';
   let panelOpen = false;
-  let revealTimer = null, expressionTimer = null, transitionTimers = [];
+  let revealTransition = 0, concealRequest;
+  let expressionTimer = null, transitionTimers = [];
   let nextBlink = performance.now()+4700;
   let nextGag = performance.now()+11000;
   let nextGlance = performance.now()+5400;
@@ -100,8 +102,7 @@
 
   // Keep the notch attached to the top of the screen at EVERY intermediate
   // animation size, with inverse shoulders and softly rounded lower corners.
-  function updateIslandPath(){
-    const w=island.clientWidth,h=island.clientHeight;
+  function updateIslandPath(w,h){
     if(!w || !h)return;
     const t=clamp((h-32)/388,0,1);
     const shoulder=41-14*t, neck=Math.min(h,32+12*t);
@@ -127,8 +128,8 @@
     // Horizontal tangents at the screen edge, vertical tangents into the sides.
     shapePath.setAttribute('d',`M0 0 H${w} C${f(w-shoulder*.65)} 0 ${f(w-shoulder)} ${f(neck*.35)} ${f(w-shoulder)} ${f(neck)} L${f(w-shoulder)} ${f(h-r)} C${f(w-shoulder)} ${f(h-r+k*r)} ${f(w-endX+k*r)} ${h} ${f(w-endX)} ${h} H${f(endX)} C${f(endX-k*r)} ${h} ${f(shoulder)} ${f(h-r+k*r)} ${f(shoulder)} ${f(h-r)} L${f(shoulder)} ${f(neck)} C${f(shoulder)} ${f(neck*.35)} ${f(shoulder*.65)} 0 0 0 Z`);
   }
-  new ResizeObserver(updateIslandPath).observe(island);
-  updateIslandPath();
+  new ResizeObserver(([{contentRect}])=>updateIslandPath(contentRect.width,contentRect.height)).observe(island);
+  updateIslandPath(island.clientWidth,island.clientHeight);
   function appendMessage(role,text){
     const node=document.createElement('div');
     node.className='message '+(role==='user'?'user':'assistant');
@@ -267,27 +268,32 @@
       setExpression('normal');
     }
   }
-  function showIsland(show){
-    // Repeated state updates must not cancel an unfinished reveal/conceal.
-    if(show?(body.dataset.reveal==='visible'||body.dataset.reveal==='entering'):(body.dataset.reveal==='hidden'||body.dataset.reveal==='leaving'))return;
-    if(revealTimer){clearTimeout(revealTimer);revealTimer=null;}
-    if(show){
-      if(body.dataset.reveal==='visible'||body.dataset.reveal==='entering')return;
-      body.dataset.reveal='entering';
-      const duration = !normalMotion()||settings.revealStyle==='none'?0:420*motionFactor()+20;
-      revealTimer=setTimeout(()=>{if(body.dataset.reveal==='entering')body.dataset.reveal='visible';revealTimer=null;},duration);
-    }else{
-      if(body.dataset.reveal==='hidden'||body.dataset.reveal==='leaving')return;
-      body.dataset.reveal='leaving';
-      const duration=!normalMotion()||settings.revealStyle==='none'?0:270*motionFactor()+30;
-      revealTimer=setTimeout(()=>{
-        if(body.dataset.reveal==='leaving'){
-          body.dataset.reveal='hidden';
-          api?.concealComplete?.();
-        }
-        revealTimer=null;
-      },duration);
+  function showIsland(show,request){
+    const phase=body.dataset.reveal;
+    if(!show && request!==undefined)concealRequest=request;
+    if(!show && phase==='hidden'){
+      if(request!==undefined)api?.concealComplete?.(request);
+      return;
     }
+    if(show ? phase==='visible'||phase==='entering' : phase==='leaving')return;
+    if(show)concealRequest=undefined;
+    const transition=++revealTransition;
+    body.dataset.reveal=show?'entering':'leaving';
+
+    function settle(){
+      if(transition!==revealTransition)return;
+      // Recheck after cancellation in case a motion preference changed mid-fold.
+      const pending=[island,shape,islandContent].flatMap(node=>node.getAnimations())
+        .filter(animation=>['opacity','transform','--unfold-width','--unfold-depth'].includes(animation.transitionProperty)
+          && animation.playState!=='finished');
+      if(pending.length){
+        void Promise.allSettled(pending.map(animation=>animation.finished)).then(settle);
+        return;
+      }
+      body.dataset.reveal=show?'visible':'hidden';
+      if(!show)api?.concealComplete?.(concealRequest);
+    }
+    settle();
   }
   function stopMicrophone(goIdle=true){
     if(goIdle&&typeof window.CODYIsland?.onStopListening==='function')return window.CODYIsland.onStopListening();

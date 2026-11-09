@@ -28,7 +28,7 @@ test('outside taps collapse compact and expanded chat; inside taps and open pick
  const poll=source.slice(source.indexOf('function pollCursor('),source.indexOf('function onModifierEvent('));
  function tap({chatExpanded=false,x=950,y=500,pickerOpen=false,capture=false}={}){
   let collapsed=false;
-  const context={chatExpanded,pickerOpen,islandWindow:{isDestroyed:()=>false,isVisible:()=>true,getBounds:()=>({x:0,y:0,width:940,height:750}),setIgnoreMouseEvents(){}},settings:{islandSize:'medium',visibility:'always'},SIZES:{medium:{width:216,height:32}},SETTINGS_WIDTH:900,SETTINGS_HEIGHT:716,TASKS_WIDTH:520,TASKS_HEIGHT:420,CHAT_WIDTH:520,CHAT_HEIGHT:352,currentPanelView:'chat',taskDetailExpanded:false,expanded:true,mouseIgnored:null,mascotSleeping:false,wakeClickUntil:0,shouldRecoverPointer:()=>false,captureUIBusy:()=>capture,setExpanded:()=>collapsed=true,emit(){},performance:{now:()=>100},lastPointerTime:0,lastPointer:null,hoverVisible:false};
+  const context={chatExpanded,pickerOpen,islandWindow:{isDestroyed:()=>false,isVisible:()=>true,getBounds:()=>({x:0,y:0,width:940,height:750}),setIgnoreMouseEvents(){}},settings:{islandSize:'medium',visibility:'always'},SIZES:{medium:{width:216,height:32}},SETTINGS_WIDTH:900,SETTINGS_HEIGHT:716,TASKS_WIDTH:520,TASKS_HEIGHT:420,CHAT_WIDTH:520,CHAT_HEIGHT:352,currentPanelView:'chat',taskDetailExpanded:false,expanded:true,mouseIgnored:null,mascotSleeping:false,wakeClickUntil:0,shouldRecoverPointer:()=>false,shouldShow:()=>true,captureUIBusy:()=>capture,setExpanded:()=>collapsed=true,emit(){},performance:{now:()=>100},lastPointerTime:0,lastPointer:null,hoverVisible:false};
   vm.runInNewContext(poll,context);context.pollCursor({x,y,button:'left'});return collapsed;
  }
  assert.equal(tap(),true);assert.equal(tap({chatExpanded:true}),true);
@@ -38,11 +38,16 @@ test('outside taps collapse compact and expanded chat; inside taps and open pick
 
 test('first native tap opens an awake click-through island without a renderer click',()=>{
  const source=read('island/main.js');const commands=[];
- const context={chatExpanded:false,pickerOpen:false,islandWindow:{isDestroyed:()=>false,isVisible:()=>true,getBounds:()=>({x:0,y:0,width:940,height:750}),setIgnoreMouseEvents(){}},settings:{islandSize:'medium',visibility:'always'},SIZES:{medium:{width:216,height:32}},SETTINGS_WIDTH:900,SETTINGS_HEIGHT:716,TASKS_WIDTH:520,TASKS_HEIGHT:420,CHAT_WIDTH:520,CHAT_HEIGHT:352,currentPanelView:'chat',taskDetailExpanded:false,expanded:false,mouseIgnored:true,mascotSleeping:false,wakeClickUntil:0,shouldRecoverPointer:require('../src/island/pointer-open').shouldRecoverPointer,captureUIBusy:()=>false,setExpanded:value=>{context.expanded=value;},emit:(...args)=>commands.push(args),performance:{now:()=>100},lastPointerTime:0,lastPointer:null,hoverVisible:false};
+ const context={chatExpanded:false,pickerOpen:false,islandWindow:{isDestroyed:()=>false,isVisible:()=>true,getBounds:()=>({x:0,y:0,width:940,height:750}),setIgnoreMouseEvents(){}},settings:{islandSize:'medium',visibility:'always'},SIZES:{medium:{width:216,height:32}},SETTINGS_WIDTH:900,SETTINGS_HEIGHT:716,TASKS_WIDTH:520,TASKS_HEIGHT:420,CHAT_WIDTH:520,CHAT_HEIGHT:352,currentPanelView:'chat',taskDetailExpanded:false,expanded:false,fpsVisible:false,mouseIgnored:true,mascotSleeping:false,wakeClickUntil:0,shouldRecoverPointer:require('../src/island/pointer-open').shouldRecoverPointer,shouldShow:()=>true,captureUIBusy:()=>false,setExpanded:value=>{context.expanded=value;},emit:(...args)=>commands.push(args),performance:{now:()=>100},lastPointerTime:0,lastPointer:null,hoverVisible:false};
  vm.runInNewContext(source.slice(source.indexOf('function pollCursor('),source.indexOf('function onModifierEvent(')),context);
  context.pollCursor({x:470,y:16,button:'left'});
  assert.equal(context.expanded,true);assert.equal(context.mouseIgnored,false);
  assert.deepEqual(commands.find(([name])=>name==='island:command'),['island:command','pointer-open']);
+ context.expanded=false;
+ context.fpsVisible=true;
+ context.FPS_SLOT_WIDTH=62;
+ context.pollCursor({x:356,y:16,button:'left'});
+ assert.equal(context.expanded,true);
 });
 
 test('the click following native tap opening does not collapse the panel again',()=>{

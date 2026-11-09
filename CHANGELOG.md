@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.15 — 9 November 2026
+
+- Smooth island concealment through Ctrl+Alt+H, On hover and Activity only. Let the fold finish before hiding the Windows overlay and reverse from the current shape when reopened.
+- Fade panel controls before returning to the compact island.
+- Move Island visibility to **Settings → Appearance → Island**.
+- Keep pinned FPS inside the island, alongside other status cards.
+
 ## 0.15.14 — 9 November 2026
 
 - Unfold the compact island from a centered slit at the top edge. The shoulders dip and rebound before the mascot and any active media or status details fade in.

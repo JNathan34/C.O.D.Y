@@ -52,8 +52,10 @@
 [data-accent="#F5F5F5"]{--swatch:#F5F5F5}
 
 /* Surface follows the original SVG silhouette; the collapsed island stays unframed. */
-#island-path{stroke:none;transition:fill 180ms ease,stroke 180ms ease}
-body.panel-open #island-path{fill:#101114;stroke:#44464f;stroke-width:1.25;vector-effect:non-scaling-stroke}
+#island-path{stroke:transparent;stroke-width:1.25;vector-effect:non-scaling-stroke;transition:fill 180ms ease,stroke 180ms ease}
+body.panel-open #island-path{fill:#101114;stroke:#44464f}
+body[data-reveal="leaving"] #island-path{stroke:transparent}
+body[data-motion="off"] #island-path{transition:none}
 .quick-panel{padding:15px 44px 17px}
 .panel-header{left:40px;right:40px;top:14px}
 .panel-header-actions{gap:4px;margin-left:auto}
@@ -84,7 +86,22 @@ body.panel-open .island-timer{left:88px;top:34px;color:#bdeff8}
 body.timer-finished .island-timer{color:#ffca85;animation:timer-alert 1200ms ease-in-out infinite}
 @keyframes timer-alert{50%{opacity:.55}}
 @media(prefers-reduced-motion:reduce){body.timer-finished .island-timer{animation:none}body:not(.panel-open) .mascot{transition:none}}
-.island-fps{position:absolute;z-index:6;left:calc(100% + 6px);top:calc(var(--island-height) / 2);transform:translateY(-50%);width:63px;padding:3px 4px;border:1px solid #303842;border-radius:8px;background:#101114;color:#c5eff7;text-align:center;font:11px/1.1 'Segoe UI',sans-serif;font-variant-numeric:tabular-nums;pointer-events:none}
+/* Keep the pinned FPS in its own slot when another status occupies the island. */
+.island-summary{position:absolute;inset:0}
+body:is([data-style="liquid"],[data-style="simple"]) .island-summary{
+  transition:left calc(var(--notch-width-time) * var(--motion-factor)) var(--notch-size-ease) calc(var(--notch-width-delay) * var(--motion-factor));
+}
+body[data-reveal="hidden"] .island-summary{transition:none}
+@media(prefers-reduced-motion:reduce){body .island-summary{transition:none!important}}
+body.fps-visible:not(.panel-open) .island{width:calc(var(--island-width) + var(--fps-slot))}
+body.fps-visible:is(.island-content-active,.file-dragging):not(.panel-open) .island-summary{left:var(--fps-slot)}
+body.fps-visible:not(.panel-open,.island-content-active,.file-dragging) .mascot{left:calc(50% + 25px)}
+.island-fps{
+  position:absolute;z-index:6;left:calc(50% - 51px);top:calc(var(--island-height) / 2);
+  transform:translateY(-50%);width:49px;color:#c5eff7;text-align:center;
+  font:11px/1.1 'Segoe UI',sans-serif;font-variant-numeric:tabular-nums;pointer-events:none;
+}
+body:is(.island-content-active,.file-dragging):not(.panel-open) .island-fps{left:38px}
 .island-fps[hidden]{display:none}
 .island-fps strong,.island-fps span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .island-fps span{font-size:8px;color:#a0b7bd}

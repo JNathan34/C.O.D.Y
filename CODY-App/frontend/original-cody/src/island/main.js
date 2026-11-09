@@ -21,6 +21,7 @@ const SIZES = Object.freeze({
 });
 const PANEL_WIDTH = 940;
 const PANEL_HEIGHT = 750;
+const FPS_SLOT_WIDTH = 62; // Matches --fps-slot in the island stylesheet.
 const CHAT_WIDTH = 520;
 const CHAT_HEIGHT = 352;
 const TASKS_WIDTH = CHAT_WIDTH;
@@ -68,6 +69,7 @@ let suspended = false;
 let hiddenByShortcut = false;
 let expanded = false;
 let currentPanelView = 'chat';
+let fpsVisible = false;
 let timerVisible=false;
 let gameActive=false;
 let recordingActive=false,wakeListeningActive=false;
@@ -82,6 +84,7 @@ let cursorTimer = null;
 let visibilityTimer = null;
 let hideTimer = null;
 let concealFallback = null;
+let concealRequest = 0;
 let hotkeyHeld = false;
 let lastHover = 0;
 let lastPointer = null;
@@ -170,8 +173,8 @@ function updatePreferences(patch) {
   if (process.platform==='win32' && app.isPackaged) app.setLoginItemSettings({openAtLogin:settings.launchAtLogin});
   return settings;
 }
-function emit(channel, value) {
-  if (islandWindow && !islandWindow.isDestroyed()) islandWindow.webContents.send(channel, value);
+function emit(channel, ...args) {
+  if (islandWindow && !islandWindow.isDestroyed()) islandWindow.webContents.send(channel, ...args);
 }
 function windowBounds() {
   // Consistent primary-display attachment; cursor movement must not teleport the island.
@@ -183,18 +186,23 @@ function windowBounds() {
   return { x: Math.round(bounds.x + (bounds.width - width) / 2), y: bounds.y, width, height };
 }
 function positionWindow() {
-  if (islandWindow && !islandWindow.isDestroyed()) islandWindow.setBounds(windowBounds());
+  if (!islandWindow || islandWindow.isDestroyed()) return;
+  const expected=windowBounds(),actual=islandWindow.getBounds();
+  if(Object.keys(expected).some(key=>expected[key]!==actual[key]))islandWindow.setBounds(expected);
 }
 function isActive() { return state !== 'idle'; }
 function shouldShow() {
   return !hiddenByShortcut && !suspended && (settings.microphoneMuted || fileDragActive || wakeListeningActive || recordingActive || gameActive || timerVisible || settings.visibility === 'always' || isActive() || expanded || forcedVisible || hoverVisible);
 }
-function hideWindowNow() {
-  if (!islandWindow || islandWindow.isDestroyed() || shouldShow()) return;
+function hideWindowNow(request) {
+  if (request !== concealRequest || !concealFallback) return;
+  clearTimeout(concealFallback);
+  concealFallback = null;
+  if (!islandWindow || islandWindow.isDestroyed() || shouldShow() || captureUIBusy()) return;
   islandWindow.hide();
   islandWindow.setIgnoreMouseEvents(true,{forward:true});
   mouseIgnored = true;
-  if (concealFallback) { clearTimeout(concealFallback); concealFallback = null; }
+  setExpanded(false);
 }
 function updateVisibility() {
   if(captureUIBusy())return;
@@ -203,24 +211,25 @@ function updateVisibility() {
     if (concealFallback) { clearTimeout(concealFallback); concealFallback = null; }
     if (islandWindow.isMinimized() || !islandWindow.isVisible()) { positionWindow(); islandWindow.showInactive(); }
     emit('island:visibility', true);
-  } else if (islandWindow.isVisible()) {
-    emit('island:visibility', false);
-    if (!concealFallback) concealFallback = setTimeout(() => {
-      concealFallback = null;
-      hideWindowNow();
-    }, settings.revealStyle === 'none' ? 50 : 700);
+  } else if (islandWindow.isVisible() && !concealFallback) {
+    const request = ++concealRequest;
+    islandWindow.setIgnoreMouseEvents(true,{forward:true});
+    mouseIgnored = true;
+    // Safety net for an unresponsive renderer. Normally CSS completion hides the host.
+    concealFallback = setTimeout(() => hideWindowNow(request), 900);
+    emit('island:visibility', false, request);
   }
 }
 function recoverVisibility() {
-  if(isQuitting||!islandWindow||islandWindow.isDestroyed()||!shouldShow())return;
+  if(isQuitting||!islandWindow||islandWindow.isDestroyed())return;
   // Windows owns the screen while selecting a snip. Do not fight its overlay.
   if(captureUIBusy())return;
+  if(!shouldShow()){updateVisibility();return;}
   // Another topmost app can cover us even while isAlwaysOnTop() stays true.
   // Reassert stacking without activating the Island or taking keyboard focus.
   if(!islandWindow.isAlwaysOnTop())islandWindow.setAlwaysOnTop(true,'screen-saver');
   islandWindow.moveTop();
-  const expected=windowBounds(),actual=islandWindow.getBounds();
-  if(Object.keys(expected).some(key=>expected[key]!==actual[key]))positionWindow();
+  positionWindow();
   // Never focus the overlay while the user is typing in another application.
   updateVisibility();
 }
@@ -309,8 +318,9 @@ function pollCursor(clickedPoint=null) {
   const point = clickedPoint||screen.getCursorScreenPoint();
   const bounds = islandWindow.getBounds();
   const size=SIZES[settings.islandSize];
-  const left = (bounds.width-size.width)/2;
-  const nearIsland = point.x >= bounds.x + left && point.x < bounds.x + left+size.width && point.y >= bounds.y && point.y < bounds.y + size.height;
+  const compactWidth = size.width + (!expanded && fpsVisible ? FPS_SLOT_WIDTH : 0);
+  const left = (bounds.width-compactWidth)/2;
+  const nearIsland = point.x >= bounds.x + left && point.x < bounds.x + left+compactWidth && point.y >= bounds.y && point.y < bounds.y + size.height;
   // All visible expanded content remains interactive; outside is click-through.
   const wide=['settings','history'].includes(currentPanelView)||currentPanelView==='tasks'&&taskDetailExpanded||currentPanelView==='chat'&&chatExpanded;
   const width = Math.min(wide?SETTINGS_WIDTH:currentPanelView==='tasks'?TASKS_WIDTH:CHAT_WIDTH,bounds.width);
@@ -319,16 +329,17 @@ function pollCursor(clickedPoint=null) {
   // Leave transparent shoulders click-through; avoid swallowing clicks on other applications.
   const onPanel = expanded && point.x>=panelX+28 && point.x<panelX+width-28 && point.y>=bounds.y+18 && point.y<bounds.y+height-10;
   const y = point.y-bounds.y;
-  const centerX = bounds.x + left + size.width/2;
+  const centerX = bounds.x + bounds.width/2;
   const dist = Math.hypot(point.x-centerX, point.y-(bounds.y+size.height/2));
   // Match the top-attached notch silhouette instead of blocking mouse input through its transparent shoulders.
   const inset = y < 8 ? Math.max(0,y)*1.8 : y < 24 ? 14.4+(y-8)*.8 : 27.2+(y-24)*1.7;
-  const silhouetteHit = nearIsland && Math.abs(point.x-centerX) < (size.width/2-inset);
-  if(clickedPoint&&shouldRecoverPointer({visible:islandWindow.isVisible(),expanded,hit:silhouetteHit,button:clickedPoint.button||'left'})){
+  const silhouetteHit = nearIsland && Math.abs(point.x-centerX) < (compactWidth/2-inset);
+  const interactive = islandWindow.isVisible() && shouldShow();
+  if(clickedPoint&&shouldRecoverPointer({visible:interactive,expanded,hit:silhouetteHit,button:clickedPoint.button||'left'})){
     mascotSleeping=false;wakeClickUntil=0;setExpanded(true);emit('island:command','pointer-open');
   }
-  if(clickedPoint&&expanded&&!captureUIBusy()&&!pickerOpen&&!onPanel&&!silhouetteHit)setExpanded(false);
-  const ignoreMouse = !(islandWindow.isVisible() && (pickerOpen || silhouetteHit || onPanel));
+  if(clickedPoint&&interactive&&expanded&&!captureUIBusy()&&!pickerOpen&&!onPanel&&!silhouetteHit)setExpanded(false);
+  const ignoreMouse = !(interactive && (pickerOpen || silhouetteHit || onPanel));
   if (ignoreMouse !== mouseIgnored) {
     islandWindow.setIgnoreMouseEvents(ignoreMouse,{forward:true});
     mouseIgnored = ignoreMouse;
@@ -349,7 +360,8 @@ function pollCursor(clickedPoint=null) {
   }
   if (settings.visibility === 'hover' && !isActive() && !expanded && !forcedVisible) {
     const display = screen.getPrimaryDisplay().bounds;
-    const hoverHotspot = point.y >= display.y && point.y <= display.y+22 && Math.abs(point.x-(display.x+display.width/2)) < size.width/2+18;
+    const edgeHotspot = point.y >= display.y && point.y <= display.y+22 && Math.abs(point.x-(display.x+display.width/2)) < compactWidth/2+18;
+    const hoverHotspot = edgeHotspot || (hoverVisible && silhouetteHit);
     if (hoverHotspot) { lastHover = Date.now(); if (!hoverVisible) {hoverVisible=true; updateVisibility();} }
     else if (hoverVisible && Date.now()-lastHover>850) {hoverVisible=false; updateVisibility();}
   } else if (hoverVisible && settings.visibility !== 'hover') { hoverVisible=false; updateVisibility(); }
@@ -393,10 +405,15 @@ function createIsland() {
     updateVisibility();
     console.log('[C.O.D.Y.] v1.8.0 adaptive chat and settings loaded.');
   });
-  islandWindow.on('closed',()=>{islandWindow=null;if(cursorTimer){clearInterval(cursorTimer);cursorTimer=null;}});
+  islandWindow.on('closed',()=>{
+    islandWindow=null;
+    fpsVisible=false;
+    if(cursorTimer){clearInterval(cursorTimer);cursorTimer=null;}
+    if(concealFallback){clearTimeout(concealFallback);concealFallback=null;}
+  });
   islandWindow.on('blur',()=>{
-    if (!expanded || gameActive || fileDragActive || captureUIBusy()) return;
-    setTimeout(()=>{ if(!captureUIBusy()&&!gameActive&&!fileDragActive&&islandWindow&&!islandWindow.isDestroyed()&&!islandWindow.isFocused()) setExpanded(false); },220);
+    if (!expanded || !shouldShow() || gameActive || fileDragActive || captureUIBusy()) return;
+    setTimeout(()=>{ if(shouldShow()&&!captureUIBusy()&&!gameActive&&!fileDragActive&&islandWindow&&!islandWindow.isDestroyed()&&!islandWindow.isFocused()) setExpanded(false); },220);
   });
   // Screen snipping and desktop transitions can hide a native overlay without
   // changing our visibility preference. Restore it without taking keyboard focus.
@@ -451,10 +468,11 @@ function setupIpc() {
   on('island:sleeping',(_event,value)=>{if(mascotSleeping&&value!==true)wakeClickUntil=Date.now()+1500;mascotSleeping=value===true;});
   on('island:expand',(_event,open)=>setExpanded(open));
   on('island:chat-expanded',(_event,value)=>{chatExpanded=value===true;});
+  on('island:fps-visible',(_event,value)=>{fpsVisible=value===true;});
   on('island:task-detail',(_event,open)=>{taskDetailExpanded=open===true;});
   on('island:view',(_event,view)=>{if(['chat','settings','tasks','history'].includes(view))currentPanelView=view;});
   on('island:show',()=>{forcedVisible=true;updateVisibility();if(!isActive())scheduleHide();});
-  on('island:conceal-complete',()=>hideWindowNow());
+  on('island:conceal-complete',(_event,request)=>hideWindowNow(request));
 }
 // Wi-Fi status is read from Windows' own WLAN interface data. The Electron
 // net.isOnline flag alone cannot tell whether Wi-Fi disconnected while Ethernet
@@ -532,14 +550,13 @@ function handleHotkey(action){
     handleHotkey('cancel');
     hiddenByShortcut=wasVisible;
     if(hiddenByShortcut){
-      setExpanded(false);
-      emit('island:visibility',false);
-      hideWindowNow();
+      updateVisibility();
     }else{
       suspended=false;
       forcedVisible=true;
-      clearTimeout(hideTimer);
       mount();
+      setExpanded(false);
+      clearTimeout(hideTimer);
       updateVisibility();
     }
     return;
@@ -556,9 +573,10 @@ function handleHotkey(action){
     pollCursor({...action,...point});return;
   }
   if(action==='chat'){
+    const wasExpanded=expanded&&shouldShow();
     hotkeyHeld=false;emit('island:hotkey','cancel');
     hiddenByShortcut=false;
-    if(expanded){setExpanded(false);return;}
+    if(wasExpanded){setExpanded(false);return;}
     suspended=false;mount();setExpanded(true);updateVisibility();
     islandWindow.show();islandWindow.focus();emit('island:command','chat');return;
   }
@@ -566,4 +584,4 @@ function handleHotkey(action){
   if(action==='down')suspended=false;
   onModifierEvent(action==='down'?'DOWN':'UP');
 }
-module.exports={setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact(){suspended=false;mount();setExpanded(false);updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value){timerVisible=Boolean(value);updateVisibility();},hide(){suspended=true;setExpanded(false);updateVisibility();},show(){hiddenByShortcut=false;suspended=false;mount();setExpanded(true);islandWindow.show();islandWindow.focus();},window:()=>islandWindow};
+module.exports={setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact(){suspended=false;mount();setExpanded(false);updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value){timerVisible=Boolean(value);updateVisibility();},hide(){suspended=true;updateVisibility();},show(){hiddenByShortcut=false;suspended=false;mount();if(expanded)updateVisibility();else setExpanded(true);islandWindow.show();islandWindow.focus();},window:()=>islandWindow};

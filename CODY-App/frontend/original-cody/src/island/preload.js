@@ -73,7 +73,7 @@ contextBridge.exposeInMainWorld('assistant',{
 'use strict';
 const {contextBridge,ipcRenderer}=require('electron');
 function listen(channel,callback){
-  const fn=(_event,value)=>callback(value);
+  const fn=(_event,...args)=>callback(...args);
   ipcRenderer.on(channel,fn);
   return()=>ipcRenderer.removeListener(channel,fn);
 }
@@ -84,6 +84,7 @@ contextBridge.exposeInMainWorld('cody',Object.freeze({
   updateSettings:patch=>ipcRenderer.invoke('island:update-settings',patch),
   setState:state=>ipcRenderer.send('island:set-state',state),
   setSleeping:value=>ipcRenderer.send('island:sleeping',value===true),
+  setFpsVisible:value=>ipcRenderer.send('island:fps-visible',value===true),
   setAudioLevel:level=>ipcRenderer.send('island:audio-level',level),
   openSettings:()=>ipcRenderer.send('island:open-settings'),
   openPreview:()=>ipcRenderer.send('island:open-preview'),
@@ -92,7 +93,7 @@ contextBridge.exposeInMainWorld('cody',Object.freeze({
   setView:view=>ipcRenderer.send('island:view',view),
   setPickerOpen:open=>ipcRenderer.send('island:picker-open',Boolean(open)),
   show:()=>ipcRenderer.send('island:show'),
-  concealComplete:()=>ipcRenderer.send('island:conceal-complete'),
+  concealComplete:request=>ipcRenderer.send('island:conceal-complete',request),
   onSettings:cb=>listen('island:settings',cb),
   onGameCommand:cb=>listen('island:game-command',cb),
   onState:cb=>listen('island:state',cb),

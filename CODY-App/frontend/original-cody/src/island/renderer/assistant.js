@@ -11,6 +11,7 @@
   let game=app.data.rps||{active:false};
   let capture=app.data.capture||{status:'idle'},capturePending=false;
   let monitors=app.data.monitors||{active:false,items:[]};
+  let fpsVisible;
   let tasks=app.data.tasks||{connected:false,tasks:[],activeCount:0};
   let quickCard=app.data.quickCard||null,media=app.data.spotify||{available:false};
   let artKey='',artCandidates=[],artIndex=0;
@@ -21,7 +22,13 @@
   function renderFps(){
     const item=monitors.items.find(item=>item.id==='fps');
     const badge=$('island-fps');
-    badge.hidden=!item;
+    const visible=Boolean(item);
+    badge.hidden=!visible;
+    if(fpsVisible!==visible){
+      fpsVisible=visible;
+      document.body.classList.toggle('fps-visible',fpsVisible);
+      visual.setFpsVisible(fpsVisible);
+    }
     if(!item)return;
     const value=$('island-fps-value'),source=$('island-fps-source');
     if(value.textContent!==item.text)value.textContent=item.text;

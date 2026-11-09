@@ -1,8 +1,11 @@
 :root{
   font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;color-scheme:dark;
   --island-width:216px;--island-height:32px;--mascot-size:27px;
-  --notch-width-time:330ms;--notch-height-time:290ms;--notch-width-delay:45ms;--notch-height-delay:0ms;
+  --fps-slot:62px;
+  --notch-width-time:305ms;--notch-height-time:325ms;--notch-width-delay:65ms;--notch-height-delay:45ms;
   --notch-ease:cubic-bezier(.22,1,.36,1);
+  --fold-ease:cubic-bezier(.32,0,.28,1);
+  --notch-size-ease:var(--fold-ease);
   --motion-factor:1;--accent:#38d7f9;--ui-accent:#47A8FF;
 }
 *{box-sizing:border-box}
@@ -154,18 +157,29 @@ body[data-motion="off"] .thinking-dots i,body[data-motion="off"] .sleep-z,body[d
 body[data-motion="off"][data-state="offline"] .wifi-arc,body[data-motion="off"][data-state="restored"] .wifi-arc{opacity:1}
 /* Widen before unfolding; fold the content away before the shoulders contract.
    Native window geometry stays fixed, and CSS reverses smoothly mid-transition. */
-body.panel-open{--notch-width-time:440ms;--notch-height-time:460ms;--notch-width-delay:0ms;--notch-height-delay:35ms}
+body.panel-open{--notch-width-time:440ms;--notch-height-time:460ms;--notch-width-delay:0ms;--notch-height-delay:35ms;--notch-size-ease:var(--notch-ease)}
 /* Reveal remains attached to the screen edge. */
 body[data-reveal="visible"] .island,body[data-reveal="entering"] .island{transform:scaleY(1);opacity:1}
 body[data-reveal="hidden"] .island,body[data-reveal="leaving"] .island{transform:scaleY(.002);opacity:0}
 body[data-style="liquid"] .island{
   transform:none;
   transition:
-    width calc(var(--notch-width-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-width-delay) * var(--motion-factor)),
-    height calc(var(--notch-height-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-height-delay) * var(--motion-factor));
+    width calc(var(--notch-width-time) * var(--motion-factor)) var(--notch-size-ease) calc(var(--notch-width-delay) * var(--motion-factor)),
+    height calc(var(--notch-height-time) * var(--motion-factor)) var(--notch-size-ease) calc(var(--notch-height-delay) * var(--motion-factor));
 }
-body[data-style="simple"] .island{transition:width calc(var(--notch-width-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-width-delay) * var(--motion-factor)),height calc(var(--notch-height-time) * var(--motion-factor)) var(--notch-ease) calc(var(--notch-height-delay) * var(--motion-factor)),transform calc(220ms * var(--motion-factor)) cubic-bezier(.22,1,.36,1),opacity calc(180ms * var(--motion-factor)) ease}
-body[data-style="none"] .island,body[data-motion="off"] .island{transition:none}
+body[data-style="simple"] .island{
+  transition:
+    width calc(var(--notch-width-time) * var(--motion-factor)) var(--notch-size-ease) calc(var(--notch-width-delay) * var(--motion-factor)),
+    height calc(var(--notch-height-time) * var(--motion-factor)) var(--notch-size-ease) calc(var(--notch-height-delay) * var(--motion-factor)),
+    transform calc(var(--smooth-scale-time,220ms) * var(--motion-factor)) var(--smooth-scale-ease,var(--notch-ease)),
+    opacity calc(180ms * var(--motion-factor)) ease calc(var(--smooth-fade-delay,0ms) * var(--motion-factor));
+}
+body[data-style="simple"][data-reveal="leaving"] .island{
+  --smooth-scale-time:285ms;
+  --smooth-scale-ease:var(--fold-ease);
+  --smooth-fade-delay:105ms;
+}
+body[data-style="none"] .island,body[data-reveal="hidden"] .island{transition:none}
 body[data-reveal="entering"] .mascot,body[data-reveal="visible"] .mascot{opacity:1;transition:opacity calc(150ms * var(--motion-factor)) ease calc(85ms * var(--motion-factor))}
 body[data-reveal="hidden"] .mascot,body[data-reveal="leaving"] .mascot{opacity:0;transition:opacity 95ms ease}
 
@@ -193,24 +207,29 @@ body[data-style="liquid"] .island-shape{
     --unfold-width calc(420ms * var(--motion-factor))
       linear(0,.10 5%,.38 13%,.49 23%,.73 37%,.90 51%,1.025 64%,1.06 71%,1.02 77%,.997 82%,1 88%,1),
     --unfold-depth calc(420ms * var(--motion-factor))
-      linear(0,.015 13%,.10 23%,.34 34%,.63 47%,.88 57%,.985 65%,1 71%,1);
+      linear(0,.015 13%,.10 23%,.34 34%,.63 47%,.88 57%,.985 65%,1 71%,1),
+    opacity calc(100ms * var(--motion-factor)) ease-out;
 }
 body[data-style="liquid"].panel-open .island-shape{--slit-width:.055;--slit-depth:.012}
 body[data-style="liquid"]:is([data-reveal="hidden"],[data-reveal="leaving"]) .island-shape{
   --unfold-width:var(--slit-width);
   --unfold-depth:var(--slit-depth);
+}
+/* Fade the contents first, fold upwards, then narrow and dissolve the slit. */
+body[data-style="liquid"][data-reveal="leaving"] .island-shape{
   opacity:0;
   transition:
-    --unfold-width calc(270ms * var(--motion-factor)) cubic-bezier(.55,0,.8,.35),
-    --unfold-depth calc(235ms * var(--motion-factor)) cubic-bezier(.45,0,.85,.5),
-    opacity calc(65ms * var(--motion-factor)) ease calc(205ms * var(--motion-factor));
+    --unfold-width calc(330ms * var(--motion-factor)) var(--fold-ease) calc(65ms * var(--motion-factor)),
+    --unfold-depth calc(300ms * var(--motion-factor)) cubic-bezier(.38,0,.44,1) calc(40ms * var(--motion-factor)),
+    opacity calc(130ms * var(--motion-factor)) ease-in-out calc(245ms * var(--motion-factor));
 }
+body[data-style="liquid"][data-reveal="hidden"] .island-shape{transition:none}
 body[data-style="liquid"] .island-content{
   transition:opacity calc(90ms * var(--motion-factor)) ease-out calc(330ms * var(--motion-factor));
 }
 body[data-style="liquid"]:is([data-reveal="hidden"],[data-reveal="leaving"]) .island-content{
   opacity:0;
-  transition:opacity calc(85ms * var(--motion-factor)) ease-in;
+  transition:opacity calc(100ms * var(--motion-factor)) ease-out;
 }
 body[data-style="liquid"] .mascot{opacity:1}
 @starting-style{
@@ -222,7 +241,7 @@ body[data-style="liquid"] .mascot{opacity:1}
 body.panel-open .mascot{top:32px;width:38px;height:38px;transition:top calc(430ms * var(--motion-factor)) var(--notch-ease),width calc(430ms * var(--motion-factor)) var(--notch-ease),height calc(430ms * var(--motion-factor)) var(--notch-ease)}
 body:not(.panel-open) .mascot{transition:top calc(290ms * var(--motion-factor)) var(--notch-ease),width calc(290ms * var(--motion-factor)) var(--notch-ease),height calc(290ms * var(--motion-factor)) var(--notch-ease)}
 .quick-panel{position:absolute;z-index:2;top:66px;bottom:14px;left:40px;right:40px;color:#f7f7f8;
- opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-9px);transition:opacity calc(85ms * var(--motion-factor)) ease,transform calc(150ms * var(--motion-factor)) ease,visibility calc(150ms * var(--motion-factor));
+ opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-6px);transition:opacity calc(85ms * var(--motion-factor)) ease-out,transform calc(120ms * var(--motion-factor)) ease,visibility calc(120ms * var(--motion-factor));
  font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column}
 body.panel-open .quick-panel{opacity:1;visibility:visible;pointer-events:auto;transform:translateY(0);transition:opacity calc(200ms * var(--motion-factor)) ease calc(135ms * var(--motion-factor)),transform calc(340ms * var(--motion-factor)) var(--notch-ease) calc(100ms * var(--motion-factor)),visibility 0s}
 .panel-header{display:flex;align-items:center;justify-content:space-between;min-height:34px;flex-shrink:0;margin-bottom:5px}
