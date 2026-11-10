@@ -20,9 +20,13 @@
   window.CODYIcons.set($('island-media-previous'),'skip-back');window.CODYIcons.set($('island-media-next'),'skip-forward');
   function renderTimer(){
     const infoUpdate=$('island-info');
+    const activeCard=quickCard&&quickCard.expiresAt>Date.now()?quickCard:null;
+    const discord=activeCard?.source==='discord'?activeCard:null;
+    const recording=['starting','recording','paused','stopping'].includes(capture.status);
+    infoUpdate.dataset.discord=String(Boolean(discord&&!recording&&!game.active));
     infoUpdate.dataset.update='false';infoUpdate.removeAttribute('role');infoUpdate.removeAttribute('tabindex');infoUpdate.removeAttribute('aria-label');
     $('island-update-progress').hidden=true;
-    if(wakeListening()&&!['starting','recording','paused','stopping'].includes(capture.status)){
+    if(wakeListening()&&!discord&&!recording){
       for(const name of ['task-layout','recording-layout','media-layout','weather-layout','timer-active','timer-finished'])document.body.classList.remove(name);
       document.body.classList.add('utility-layout','island-content-active');
       for(const id of ['island-timer','island-recording-dot','island-recording-controls','island-media-controls','island-rps-controls'])$(id).hidden=true;
@@ -34,8 +38,7 @@
     const activeTasks=tasks.connected?tasks.tasks.filter(task=>['Starting','Running','WaitingForUser'].includes(task.status)):[];
     if(activeTasks.length)island.wakeUp();
     island.setMediaPlaying(Boolean(media.available&&media.playing));
-    const recording=['starting','recording','paused','stopping'].includes(capture.status);
-    const quick=Boolean(!recording&&!game.active&&quickCard&&quickCard.expiresAt>Date.now()&&timer?.status!=='finished');
+    const quick=Boolean(!recording&&!game.active&&activeCard&&(discord||timer?.status!=='finished'));
     const updateCard=window.CODYUpdateStatus?.card();
     const showUpdate=Boolean(updateCard&&!recording&&!game.active&&!quick&&timer?.status!=='finished');
     const showMonitors=monitors.items.length>0&&!recording&&!game.active&&!quick&&!showUpdate&&timer?.status!=='finished';
@@ -74,6 +77,7 @@
       $('island-info-detail').textContent=status==='countdown'?'Get ready':status==='reveal'?'C.O.D.Y.: '+hands[game.cody]:status==='listening'?'Say your move':game.phase==='result'?hands[game.you]+' vs '+hands[game.cody]+' · '+game.score.you+'–'+game.score.cody:'You '+game.score.you+' · C.O.D.Y. '+game.score.cody;
       $('island-info-icon').hidden=false;art.hidden=true;$('island-media-controls').hidden=true;window.CODYIcons.set($('island-info-icon'),'hand');
     }
+    if(discord&&(recording||showGame))$('island-info-detail').textContent='Discord · '+discord.text;
     if(quick||showMedia){
       $('island-info-text').textContent=quick?quickCard.text:media.title;
       $('island-info-detail').textContent=quick?(quickCard.detail||''):`${media.playing?'':'Paused · '}${media.artist||media.app||'Media'}`;
@@ -99,7 +103,7 @@
       art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
       const progress=$('island-update-progress');progress.hidden=updateCard.progress===undefined;progress.value=updateCard.progress??0;
     }
-    document.body.classList.toggle('timer-finished',timer?.status==='finished');
+    document.body.classList.toggle('timer-finished',showTimer&&timer?.status==='finished');
     if(!timer)return;
     const remaining=Math.max(0,Math.ceil((timer.deadline-Date.now())/1000));
     const hours=Math.floor(remaining/3600),minutes=Math.floor(remaining/60)%60,seconds=remaining%60;

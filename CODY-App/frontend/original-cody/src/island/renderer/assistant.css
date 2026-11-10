@@ -114,6 +114,7 @@ body.weather-layout #island-info-icon .lucide-control{width:19px;height:19px}
 body.weather-layout #island-info-text{font-size:12px;color:#e2f3ff}
 body.utility-layout:not(.panel-open) .mascot{left:calc(100% - 52px)}
 body.utility-layout:not(.panel-open) .island-info{left:34px;right:80px;width:auto;gap:6px}
+body.utility-layout:not(.panel-open) .island-info[data-discord="true"]{left:28px;right:60px}
 body.utility-layout:not(.panel-open) .island-info:has(#island-info-icon[data-icon="clock"]){left:38px}
 body.utility-layout #island-info-icon .lucide-control{width:16px;height:16px}
 #island-media-art{display:block;width:24px;height:24px;flex-shrink:0;object-fit:cover;border-radius:5px;background:#1b2026}

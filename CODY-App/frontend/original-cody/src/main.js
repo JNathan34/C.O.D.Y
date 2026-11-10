@@ -71,9 +71,9 @@ const {SpotifyMedia}=require('./spotify');
 const {Weather}=require('./weather');
 const weather=new Weather({fetcher:(url,options)=>require('electron').net.fetch(url,options)});
 const timerAlarm=new TimerAlarm();let spotify,quickCard=null,quickCardExpiry=null;
-function refreshIslandCards(){const media=spotify?.snapshot();island.setGameActive(Boolean(rps?.snapshot().active));island.setRecordingActive(Boolean(screenCapture?.active));island.setTimerVisible(Boolean(nativeTasks.activeCount)||Boolean(monitors?.snapshot().active)||Boolean(desktopTimer?.snapshot())||Boolean(media?.available&&media.title)||Boolean(quickCard&&quickCard.expiresAt>Date.now()));}
+function refreshIslandCards(reveal=false){const media=spotify?.snapshot();island.setGameActive(Boolean(rps?.snapshot().active));island.setRecordingActive(Boolean(screenCapture?.active));island.setTimerVisible(Boolean(nativeTasks.activeCount)||Boolean(monitors?.snapshot().active)||Boolean(desktopTimer?.snapshot())||Boolean(media?.available&&media.title)||Boolean(quickCard&&quickCard.expiresAt>Date.now()),reveal);}
 function clearQuickCard(){clearTimeout(quickCardExpiry);quickCard=null;sendUI("island-card",null);refreshIslandCards();}
-function showQuickCard(card){quickCard={...card,expiresAt:Date.now()+10000};sendUI('island-card',quickCard);refreshIslandCards();clearTimeout(quickCardExpiry);quickCardExpiry=setTimeout(()=>{quickCard=null;sendUI('island-card',null);refreshIslandCards();},10000);quickCardExpiry.unref();}
+function showQuickCard(card,duration=10000){quickCard={...card,expiresAt:Date.now()+duration};sendUI('island-card',quickCard);refreshIslandCards(card.source==='discord');clearTimeout(quickCardExpiry);quickCardExpiry=setTimeout(clearQuickCard,duration);quickCardExpiry.unref();}
 let nativeTasks={connected:false,tasks:[],activeCount:0};
 let desktopTimer,rps,screenCapture,monitors,captureQuitPending=false,captureQuitReady=false;
 let annotations,scene,captures,visualLedger;

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.18 — 10 November 2026
+
+- Show progress and results in the Island for typed and spoken Discord mute, deafen and screen-sharing commands.
+- Run Discord controls in the background without taking focus. If Discord starts minimized, briefly restore it behind the active window and minimize it again.
+- Open Discord’s source picker with **“Discord screenshare”**. Name a screen or app to request that specific source.
+
 ## 0.15.17 — 9 November 2026
 
 - Show FPS in the shared status widget used by weather, clock and RAM. FPS uses the normal island width and rotates through the same slot when several monitors are pinned.

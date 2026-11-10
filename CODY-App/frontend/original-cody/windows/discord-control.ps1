@@ -2,7 +2,7 @@ param([Parameter(Mandatory=$true)][string]$Request)
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 Add-Type -AssemblyName Accessibility
-Add-Type -ReferencedAssemblies Accessibility -TypeDefinition @'
+Add-Type -ReferencedAssemblies Accessibility,System.Windows.Forms -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,6 +10,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Windows.Forms;
 using Accessibility;
 
 public sealed class CodyDiscordControl
@@ -30,10 +31,17 @@ public sealed class CodyDiscordControl
         { "excel", "excel" }, { "microsoft excel", "excel" }, { "powerpoint", "powerpnt" },
         { "microsoft powerpoint", "powerpnt" }, { "file explorer", "explorer" }, { "paint", "mspaint" }
     };
-    private const int InvisibleOrOffscreen = 0x18000;
+    private const int Invisible = 0x8000;
+    private const int InvisibleOrOffscreen = Invisible | 0x10000;
     private const int Unavailable = 0x1;
+    private const int Checked = 0x10;
     private const int SelectedOrPressed = 0x1A;
     private const uint ChromiumAccessibilityProbe = 1;
+    private const uint KeepBoundsAndDoNotActivate = 0x213; // SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+    private const int ExtendedWindowStyle = -20;
+    private const int Topmost = 0x8;
+    private const int ShowWithoutActivation = 4;
+    private const int MinimizeWithoutActivation = 7;
 
     private delegate bool WindowCallback(IntPtr hwnd, IntPtr data);
     [DllImport("user32.dll")] private static extern bool EnumWindows(WindowCallback callback, IntPtr data);
@@ -41,9 +49,10 @@ public sealed class CodyDiscordControl
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
-    [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr hwnd, int command);
-    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", EntryPoint="GetWindowLongW")] private static extern int GetWindowLong(IntPtr hwnd, int index);
+    [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr hwnd, int command);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetClassName(IntPtr hwnd, StringBuilder value, int size);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder value, int size);
     [DllImport("oleacc.dll")] private static extern int AccessibleObjectFromWindow(IntPtr hwnd, uint objectId, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IAccessible node);
@@ -61,17 +70,18 @@ public sealed class CodyDiscordControl
         internal bool Enabled { get { return (State & Unavailable) == 0; } }
         internal bool Selected { get { return (State & SelectedOrPressed) != 0; } }
 
-        internal void CheckCurrent(bool requireEnabled)
+        internal void CheckCurrent(bool requireEnabled, bool requireSameSelection = false)
         {
             int state = Convert.ToInt32(Accessible.get_accState(Child));
             if ((state & InvisibleOrOffscreen) != 0 || requireEnabled && (state & Unavailable) != 0 ||
+                requireSameSelection && ((state ^ State) & SelectedOrPressed) != 0 ||
                 !String.Equals((Accessible.get_accName(Child) ?? "").Trim(), Name, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("That Discord control is no longer available.");
         }
 
-        internal void Invoke()
+        internal void Invoke(bool requireSameSelection = false)
         {
-            CheckCurrent(true);
+            CheckCurrent(true, requireSameSelection);
             Accessible.accDoDefaultAction(Child);
         }
     }
@@ -112,12 +122,40 @@ public sealed class CodyDiscordControl
             throw new InvalidOperationException("More than one Discord client is open. Open just the one you want to control.");
         window = windows[0];
         GetWindowThreadProcessId(window, out processId);
-        if (IsIconic(window)) ShowWindowAsync(window, 9);
     }
 
     private static bool IsNamed(Node node, IEnumerable<string> names)
     {
         return names.Contains(node.Name, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private T WithBackgroundWindow<T>(Func<T> action)
+    {
+        if (!IsIconic(window)) return action();
+
+        // Chromium may defer accessibility actions while minimized. Restore behind the active window.
+        IntPtr foreground = GetForegroundWindow();
+        IntPtr behind = foreground != IntPtr.Zero && foreground != window && (GetWindowLong(foreground, ExtendedWindowStyle) & Topmost) == 0
+            ? foreground : new IntPtr(1); // HWND_BOTTOM
+        if (!SetWindowPos(window, behind, 0, 0, 0, 0, KeepBoundsAndDoNotActivate) ||
+            !ShowWindowAsync(window, ShowWithoutActivation))
+            throw new InvalidOperationException("Windows could not make the minimized Discord controls available.");
+        try
+        {
+            if (!SpinWait.SpinUntil(() => !IsIconic(window), 2500))
+                throw new InvalidOperationException("Windows could not make the minimized Discord controls available.");
+            // The restored window can report its previous accessibility tree until Chromium catches up.
+            Thread.Sleep(250);
+            return action();
+        }
+        finally
+        {
+            // Leave the window alone if the user opened Discord during the command.
+            uint owner;
+            GetWindowThreadProcessId(window, out owner);
+            if (owner == processId && GetForegroundWindow() != window)
+                ShowWindowAsync(window, MinimizeWithoutActivation);
+        }
     }
 
     private List<Node> Read()
@@ -167,6 +205,7 @@ public sealed class CodyDiscordControl
         catch (COMException) { return; }
         catch (ArgumentException) { return; }
         catch (FormatException) { return; }
+        if ((node.State & Invisible) != 0) return;
         if ((node.State & InvisibleOrOffscreen) == 0 && (node.Name.Length != 0 || node.Role == 18))
             nodes.Add(node);
         if (child != 0) return;
@@ -190,6 +229,8 @@ public sealed class CodyDiscordControl
         var timer = Stopwatch.StartNew();
         do
         {
+            // Windows PowerShell runs this accessibility client on an STA thread.
+            Application.DoEvents();
             T result = read();
             if (result != null) return result;
             Thread.Sleep(150);
@@ -221,55 +262,83 @@ public sealed class CodyDiscordControl
         return SingleAction(nodes, names, enabledOnly);
     }
 
-    private VoiceState ReadVoice(string[] onNames, string[] offNames)
+    private static readonly string[] Mute = { "Mute", "Mute Microphone" };
+    private static readonly string[] Unmute = { "Unmute", "Unmute Microphone" };
+    private static readonly string[] Deafen = { "Deafen", "Deafen Audio" };
+    private static readonly string[] Undeafen = { "Undeafen", "Undeafen Audio" };
+
+    private VoiceState ReadVoice(string feature)
     {
-        Node control = CallControl(Read(), onNames.Concat(offNames).ToArray(), false);
+        List<Node> nodes = Read();
+        string[] names = feature == "mute" ? Mute.Concat(Unmute).ToArray() : Deafen.Concat(Undeafen).ToArray();
+        string[] companionNames = feature == "mute" ? Deafen.Concat(Undeafen).ToArray() : Mute.Concat(Unmute).ToArray();
+        var userAreas = nodes.Where(node => node.Name.Equals("User area", StringComparison.OrdinalIgnoreCase)).Take(2).ToArray();
+        Node control = null;
+        if (userAreas.Length == 1)
+            control = SingleAction(nodes.Where(node => Within(node, userAreas[0])), names, false);
+        if (control == null)
+        {
+            // Discord can expose the self controls in an unnamed pane. Require both controls in that pane.
+            var companions = nodes.Where(node => node.IsAction && IsNamed(node, companionNames)).ToArray();
+            var paired = nodes.Where(node => node.IsAction && IsNamed(node, names) && companions.Any(other =>
+                node.Parent != null && other.Parent != null && (node.Parent == other.Parent ||
+                node.Parent.Parent != null && node.Parent.Parent == other.Parent.Parent))).Take(2).ToArray();
+            if (paired.Length == 1) control = paired[0];
+        }
         if (control == null) return null;
-        return new VoiceState {
-            Control = control,
-            Enabled = IsNamed(control, offNames) || control.Selected
-        };
+        return new VoiceState { Control = control, Enabled = IsNamed(control, feature == "mute" ? Unmute : Undeafen) || VoiceSelected(control.Role, control.State) };
+    }
+
+    private static bool VoiceSelected(int role, int state)
+    {
+        return (state & (role == 44 ? Checked : SelectedOrPressed)) != 0;
+    }
+
+    private static bool? ReadVoiceState(Node control, string feature)
+    {
+        try
+        {
+            int state = Convert.ToInt32(control.Accessible.get_accState(control.Child));
+            if ((state & InvisibleOrOffscreen) != 0) return null;
+            string name = (control.Accessible.get_accName(control.Child) ?? "").Trim();
+            string[] offNames = feature == "mute" ? Unmute : Undeafen;
+            if (offNames.Contains(name, StringComparer.OrdinalIgnoreCase)) return true;
+            string[] onNames = feature == "mute" ? Mute : Deafen;
+            if (onNames.Contains(name, StringComparer.OrdinalIgnoreCase)) return VoiceSelected(control.Role, state);
+        }
+        catch (COMException) {}
+        catch (ArgumentException) {}
+        return null;
     }
 
     public bool Voice(string feature, string state)
     {
         if ((feature != "mute" && feature != "deafen") || (state != "on" && state != "off" && state != "toggle"))
             throw new ArgumentException("Invalid Discord voice command.");
-        string[] on = feature == "mute" ? new[] { "Mute", "Mute Microphone" } : new[] { "Deafen", "Deafen Audio" };
-        string[] off = feature == "mute" ? new[] { "Unmute", "Unmute Microphone" } : new[] { "Undeafen", "Undeafen Audio" };
-        VoiceState current = ReadVoice(on, off);
-        IntPtr previousWindow = GetForegroundWindow();
-        if (current != null || previousWindow == window) return ApplyVoice(current, on, off, state);
-
-        // An inactive renderer may defer publishing its accessibility tree until it receives focus.
-        SetForegroundWindow(window);
-        try
-        {
-            if (WaitFor(() => ReadVoice(on, off), 3500) == null)
-                throw new InvalidOperationException("Open your signed-in Discord window so C.O.D.Y. can find your voice controls.");
-            // Let Chromium finish switching the renderer before invoking its first control.
-            Thread.Sleep(300);
-            return ApplyVoice(ReadVoice(on, off), on, off, state);
-        }
-        finally
-        {
-            if (previousWindow != IntPtr.Zero && GetForegroundWindow() == window)
-                SetForegroundWindow(previousWindow);
-        }
+        return WithBackgroundWindow(() => SetVoice(feature, state));
     }
 
-    private bool ApplyVoice(VoiceState current, string[] on, string[] off, string state)
+    private bool SetVoice(string feature, string state)
     {
-        if (current == null) current = WaitFor(() => ReadVoice(on, off), 3500);
+        VoiceState current = WaitFor(() => ReadVoice(feature), 5000);
         if (current == null)
             throw new InvalidOperationException("Open your signed-in Discord window so C.O.D.Y. can find your voice controls.");
         bool desired = state == "toggle" ? !current.Enabled : state == "on";
-        if (current.Enabled == desired) return desired;
-        current.Control.Invoke();
+        if (current.Enabled == desired)
+        {
+            current.Control.CheckCurrent(false, true);
+            return desired;
+        }
+        if (!current.Control.Enabled)
+            throw new InvalidOperationException("Discord's " + feature + " control is disabled. Check your voice state in Discord.");
+        current.Control.Invoke(true);
+        // Re-read the invoked control first. Scanning the full Chromium tree can take several seconds.
+        if (WaitFor(() => ReadVoiceState(current.Control, feature) == desired ? current : null, 1500) != null)
+            return desired;
         VoiceState confirmed = WaitFor(() => {
-            VoiceState reading = ReadVoice(on, off);
+            VoiceState reading = ReadVoice(feature);
             return reading != null && reading.Enabled == desired ? reading : null;
-        }, 3500);
+        }, 5000);
         if (confirmed == null)
             throw new InvalidOperationException("Discord did not confirm the requested voice state.");
         return confirmed.Enabled;
@@ -279,8 +348,10 @@ public sealed class CodyDiscordControl
     {
         var dialogs = nodes.Where(node => node.Role == 18 && (IsNamed(node, PickerNames) ||
             nodes.Any(label => label.Role != 18 && !label.IsAction && Within(label, node) && IsNamed(label, PickerNames))))
-            .Take(2).ToArray();
-        return dialogs.Length == 1 ? dialogs[0] : null;
+            .ToArray();
+        // A parent dialog can contain the same heading as its nested source picker.
+        var innermost = dialogs.Where(dialog => !dialogs.Any(other => other != dialog && Within(other, dialog))).Take(2).ToArray();
+        return innermost.Length == 1 ? innermost[0] : null;
     }
 
     private static Source[] Sources(List<Node> nodes, Node picker, HashSet<string> names)
@@ -335,16 +406,20 @@ public sealed class CodyDiscordControl
         return new HashSet<string>(matches, StringComparer.OrdinalIgnoreCase);
     }
 
-    public string Share(int screen, string app)
+    public string Share(int screen, string app, bool pickerOnly)
     {
+        if (pickerOnly) return WithBackgroundWindow(() => ShareSource(0, null));
         if (screen < 0 || screen > 32 || (screen == 0) == String.IsNullOrWhiteSpace(app))
             throw new ArgumentException("Choose a Discord screen number or an open app.");
         var names = screen != 0
             ? new HashSet<string>(new[] { "Screen " + screen, "Display " + screen, "Entire Screen " + screen }, StringComparer.OrdinalIgnoreCase)
             : WindowNames(app.Trim());
         if (names.Count == 0) throw new InvalidOperationException("Open " + app + " before sharing it on Discord.");
+        return WithBackgroundWindow(() => ShareSource(screen, names));
+    }
 
-        SetForegroundWindow(window);
+    private string ShareSource(int screen, HashSet<string> names)
+    {
         List<Node> nodes = Read();
         if (nodes.Any(node => node.IsAction && IsNamed(node, StopButtons)))
             throw new InvalidOperationException("Discord is already sharing a source. Stop that share before starting another.");
@@ -355,15 +430,15 @@ public sealed class CodyDiscordControl
             if (open == null)
                 throw new InvalidOperationException("Join a Discord voice channel or call and open its screen-share controls.");
             open.Invoke();
+            picker = WaitFor(() => { nodes = Read(); return Picker(nodes); }, 3500);
         }
-        picker = WaitFor(() => { nodes = Read(); return Picker(nodes); }, 3500);
         if (picker == null)
             throw new InvalidOperationException("C.O.D.Y. could not identify Discord's share picker. Choose the source in Discord.");
+        if (names == null) return "picker";
 
         string[] category = screen != 0 ? ScreenTabs : AppTabs;
         Node tab = SingleAction(nodes.Where(node => Within(node, picker)), category);
-        if (tab == null)
-            throw new InvalidOperationException("C.O.D.Y. could not identify the screen or window tab. Choose the source in Discord.");
+        if (tab == null) return "review";
         if (!tab.Selected) tab.Invoke();
         Source[] sources = WaitFor(() => {
             nodes = Read();
@@ -374,8 +449,7 @@ public sealed class CodyDiscordControl
             Source[] matches = Sources(nodes, current, names);
             return matches.Length == 0 ? null : matches;
         }, 2500);
-        if (sources == null || sources.Length != 1)
-            throw new InvalidOperationException("C.O.D.Y. could not identify one matching share source. Choose the exact screen or window in Discord.");
+        if (sources == null || sources.Length != 1) return "review";
 
         string chosen = sources[0].Label.Name;
         sources[0].Label.CheckCurrent(false);
@@ -409,5 +483,5 @@ $discord=New-Object CodyDiscordControl
 if($null -ne $command.feature){
   @{enabled=$discord.Voice([string]$command.feature,[string]$command.state)} | ConvertTo-Json -Compress
 }else{
-  @{status=$discord.Share([int]$command.screen,[string]$command.app)} | ConvertTo-Json -Compress
+  @{status=$discord.Share([int]$command.screen,[string]$command.app,[bool]$command.picker)} | ConvertTo-Json -Compress
 }

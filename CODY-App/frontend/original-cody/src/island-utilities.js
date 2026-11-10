@@ -10,6 +10,11 @@ const {parseDiscordCommand}=require('./control/discord');
 
 const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy'};
 const APP_ALIASES={'google chrome':'chrome','microsoft edge':'edge','mozilla firefox':'firefox','windows explorer':'file explorer'};
+const DISCORD_PROGRESS={
+  mute:{on:'Muting…',off:'Unmuting…',toggle:'Toggle mute…'},
+  deafen:{on:'Deafening…',off:'Undeafening…',toggle:'Toggle deafen…'}
+};
+const discordCard=(text,icon,tooltip)=>({kind:'utility',source:'discord',text,detail:'Discord',icon,tooltip});
 function requestedApp(input){
   const query=commandText(input,{preserveShow:true});
   const match=/^(?:open|launch|start)\s+(?:(?:the|my)\s+)?(.+?)(?:\s+(?:app|application))?(?:\s+for me)?$/i.exec(query);
@@ -57,13 +62,21 @@ class IslandUtilities {
     if(relative)return {kind:'direct',action:'audio.adjust',delta:(/up|louder/.test(relative[1]||relative[2])?1:-1)*Number(relative[3]||10),text};
     return null;
   }
-  cancel(){this.generation=(this.generation||0)+1;this.discordAbort?.abort();}
+  cancel(){
+    const operation=this.discordOperation;
+    const current=operation&&operation.generation===this.generation;
+    this.generation=(this.generation||0)+1;
+    operation?.abort.abort();
+    if(current)this.showCard(discordCard('Cancelled','circle-help'));
+  }
   volumeCard(state,generation=this.generation){if(generation!==this.generation)return "";const card={kind:'utility',text:state.muted?'Muted':state.level+'%',detail:'Volume',icon:state.muted?'volume-x':'volume-2'};this.showCard(card);return state.muted?'Sound is muted.':`Volume is ${state.level}%.`;}
   mediaCard(fallback){const media=this.spotify.snapshot();this.clearCard();this.refreshMedia();if(!media.available||!media.title)this.showCard({kind:'utility',text:fallback||'No track playing',detail:'Music',icon:'music'});return media;}
   async run(input,chatId,context={}){
     const route=this.match(input);if(!route)return {handled:false};
+    const discord=route.action.startsWith('discord.');
+    if(discord&&this.discordOperation)return {handled:true,error:true,reply:'A Discord command is already running. Try again when it finishes.'};
     const generation=this.generation=(this.generation||0)+1;
-    const show=card=>{if(generation===this.generation)this.showCard(card);};
+    const show=(card,duration)=>{if(generation===this.generation)this.showCard(card,duration);};
     try{
       let reply,confirmation;
       switch(route.action){
@@ -82,15 +95,24 @@ class IslandUtilities {
         case 'spotify-status':{const media=this.mediaCard();reply=media.available?`${media.playing?'Playing':'Paused'}: ${media.title||'Music'}${media.artist?' — '+media.artist:''}.`:'Open a music player and start a track to show it in the Island.';break;}
         case 'volume-status':reply=this.volumeCard(await this.audioState(),generation);break;
         case 'discord.voice':case 'discord.share':{
-          if(this.discordAbort)throw Error('A Discord command is already running. Try again when it finishes.');
-          const operation=this.discordAbort=new AbortController();
+          const sharing=route.action==='discord.share';
+          const {feature,state,picker}=route.args;
+          const icon=sharing?'external-link':feature==='deafen'?'audio-lines':'mic';
+          const progress=sharing?(picker?'Opening…':'Starting share…'):DISCORD_PROGRESS[feature][state];
+          const abort=new AbortController();
+          const operation=this.discordOperation={abort,generation};
+          const cancelled={handled:true,cancelled:true,reply:'Action cancelled.'};
           try{
-            const result=await this.controller.execute(route.action,route.args,{origin:'chat',signal:operation.signal});
-            if(operation.signal.aborted||result.cancelled)return {handled:true,cancelled:true,reply:'Action cancelled.'};
+            show(discordCard(progress,icon),35000);
+            const result=await this.controller.execute(route.action,route.args,{origin:'chat',signal:abort.signal});
+            if(abort.signal.aborted||result.cancelled){show(discordCard('Cancelled','circle-help'));return cancelled;}
             if(!result.ok)throw Error(result.error||'Discord did not confirm the action.');
             reply=result.result.reply;
-            show({kind:'utility',text:result.result.card,detail:'Discord',icon:route.action==='discord.share'?'monitor':'mic'});
-          }finally{if(this.discordAbort===operation)this.discordAbort=null;}
+            show(discordCard(result.result.card,icon,reply));
+          }catch(error){
+            if(abort.signal.aborted)return cancelled;
+            throw error;
+          }finally{if(this.discordOperation===operation)this.discordOperation=null;}
           break;
         }
         default:{
@@ -113,7 +135,7 @@ class IslandUtilities {
         }
       }
       return {handled:true,reply,confirmation};
-    }catch(error){const reply=error.message||'That utility is unavailable.';show({kind:route.action==='weather'?'weather':'utility',text:'Unavailable',detail:route.action==='weather'?'Weather':'C.O.D.Y.',icon:route.action==='weather'?'cloud-off':'circle-alert',tooltip:reply});return {handled:true,reply,error:true};}
+    }catch(error){const reply=error.message||'That utility is unavailable.';show(discord?discordCard('Failed','shield-alert',reply):{kind:route.action==='weather'?'weather':'utility',text:'Unavailable',detail:route.action==='weather'?'Weather':'C.O.D.Y.',icon:route.action==='weather'?'cloud-off':'circle-alert',tooltip:reply});return {handled:true,reply,error:true};}
   }
   // Spoken requests are performed by HeyClicky. Mirror the outcome without
   // replaying actions (especially Next track, volume changes or app launches).
