@@ -38,7 +38,7 @@ function ensureArgs(action,args){
     case 'text.proofread':if(args.target!==undefined&&(typeof args.target!=='string'||!/^[a-f0-9-]{36}$/i.test(args.target)))throw Error('Invalid text target');return args.target?{target:args.target}:{};
     case 'window.pin':{const app=normalizeApp(args.app);if(!app||typeof args.pinned!=='boolean')throw Error('Choose a supported app and pin state.');return {app,pinned:args.pinned};}
     case 'audio.set':return {level:integer(args.level,0,100,'volume')};
-    case 'discord.voice':case 'discord.share':case 'discord.leave':return validateDiscordArgs(action,args);
+    case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':return validateDiscordArgs(action,args);
     case 'spotify.control':if(!['play','pause','toggle','next','previous'].includes(args.command))throw Error('Invalid Spotify command');return {command:args.command};
     case 'media.control':{
       if(!['play','pause','toggle','next','previous','seek'].includes(args.command))throw Error('Invalid media command');
@@ -169,7 +169,7 @@ class ComputerController {
       case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);break;
       case 'window.pin':result=await appPin(clean.app,clean.pinned,{runner:this.runner});break;
       case 'audio.set':result=this.nativeAudio?await this.nativeAudio.set(clean.level):await this.runner(windows.audioSet(clean.level));break;
-      case 'discord.voice':case 'discord.share':case 'discord.leave':result=await runDiscordCommand(action,clean,{runner:this.runner,signal:context.signal});break;
+      case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':result=await runDiscordCommand(action,clean,{runner:this.runner,signal:context.signal});break;
       case 'spotify.control':if(!this.spotify)throw Error('Spotify media control is unavailable.');result=await this.spotify.command(clean.command);break;
       case 'media.control':if(!this.spotify)throw Error('Windows media control is unavailable.');result=await this.spotify.command(clean.command,{target:clean.target||'active',source:clean.source,seconds:clean.seconds});break;
       case 'plezy.play':if(!this.plezy)throw Error('Plezy control is unavailable.');result=await this.plezy.play(clean.title);break;

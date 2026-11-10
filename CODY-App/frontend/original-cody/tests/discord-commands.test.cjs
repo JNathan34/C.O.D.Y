@@ -32,9 +32,14 @@ test('Discord commands recognize typed and spoken mute, deafen, share and discon
     'leave my Discord voice channel','leave the call on Discord','hang up on Discord',
     'end the Discord call','Discord, disconnect','Discord leave voice channel'
   ])assert.deepEqual(parseDiscordCommand(input),{action:'discord.leave',args:{}},input);
+  for(const input of [
+    'stop screen share','stop sharing my screen','Discord stop screenshare',
+    'stop streaming on Discord','stop Discord stream','CODY, please stop sharing in Discord'
+  ])assert.deepEqual(parseDiscordCommand(input),{action:'discord.stop-share',args:{}},input);
   for(const input of ['mute','mute Spotify','how do I mute Discord','do not unmute Discord','mute Discord and play music','Discord, do not deafen','toggle unmute on Discord','share screen 0 on Discord','share screen 33 on Discord','share screen 100 on Discord','share Firefox or Chrome on Discord',
     'share Firefox','share screen 0','share screen 33','share screen window','share screen on Zoom','share screen and open Chrome','do not share screen','how do I share screen','tell me share screen','do you know share screen',
-    'leave Discord server','disconnect from Wi-Fi','close Discord','leave the call','don’t leave Discord','tell me how to leave Discord','do you know leave Discord','leave Discord and close the app'])
+    'leave Discord server','disconnect from Wi-Fi','close Discord','leave the call','don’t leave Discord','tell me how to leave Discord','do you know leave Discord','leave Discord and close the app',
+    'stop screen recording','stop streaming','stop screen share on Zoom','don’t stop screen share','tell me how to stop screen share','stop screen share and leave Discord'])
     assert.equal(parseDiscordCommand(input),null,input);
 });
 
@@ -70,6 +75,25 @@ test('Discord disconnect reports whether it left an active call',async()=>{
   assert.deepEqual(await run('left'),{reply:'Disconnected.',card:'Disconnected'});
   assert.deepEqual(await run('not-connected'),{reply:'No active call.',card:'No active call'});
   await assert.rejects(run('unknown'),/did not confirm/);
+});
+
+test('stopping a Discord share uses UI control and requires Discord to confirm the result',async()=>{
+  let status='stopped';
+  const permissions={enabled:true,level:'custom',uiAutomation:true,screenshots:false};
+  const controller=new ComputerController({readPermissions:()=>permissions,runner:async script=>{
+    assert.match(script,/-Request '\{"stopShare":true\}'/);
+    return JSON.stringify({status});
+  }});
+  const stop=()=>controller.execute('discord.stop-share',{}, {origin:'chat'});
+  await assert.rejects(controller.execute('discord.stop-share',{}, {origin:'ai-chat',verifiedUserIntent:true}),/direct C\.O\.D\.Y\. command/);
+  assert.throws(()=>ensureArgs('discord.stop-share',{channel:'another call'}));
+  assert.deepEqual((await stop()).result,{reply:'Screen share stopped.',card:'Share stopped'});
+  status='not-sharing';
+  assert.equal((await stop()).result.card,'No active share');
+  status='unknown';
+  await assert.rejects(stop(),/did not confirm/);
+  permissions.uiAutomation=false;
+  await assert.rejects(stop(),/uiAutomation.*disabled/);
 });
 
 test('Discord replies distinguish selected, requested and confirmed stream states',async()=>{
@@ -161,6 +185,7 @@ test('typed and spoken Discord commands show progress and results in the Island 
     {input:'share screen',voice:true,action:'discord.share',args:{screen:1},reply:'Sharing screen 1.',card:'Sharing',progress:'Starting share…',output:{status:'started'}},
     {input:'disconnect from Discord',voice:true,action:'discord.leave',args:{},reply:'Disconnected.',card:'Disconnected',progress:'Disconnecting…',output:{status:'left'}},
     {input:'leave Discord',voice:false,action:'discord.leave',args:{},reply:'No active call.',card:'No active call',progress:'Disconnecting…',output:{status:'not-connected'}},
+    {input:'stop screen share',voice:true,action:'discord.stop-share',args:{},reply:'Screen share stopped.',card:'Share stopped',progress:'Stopping share…',output:{status:'stopped'}},
     ...[false,true].map(voice=>({input:'share screen two',voice,action:'discord.share',args:{screen:2},reply:'Sharing screen 2.',card:'Sharing',progress:'Starting share…',output:{status:'started'}}))
   ]){
     const engine=new EventEmitter(),handlers=new Map(),calls=[],actions=[],messages=[],cards=[];

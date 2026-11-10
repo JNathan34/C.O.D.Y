@@ -368,6 +368,13 @@ function pollCursor(clickedPoint=null) {
     else if (hoverVisible && Date.now()-lastHover>850) {hoverVisible=false; updateVisibility();}
   } else if (hoverVisible && settings.visibility !== 'hover') { hoverVisible=false; updateVisibility(); }
 }
+function onIslandMouseEvent(event,mouse) {
+  if(!expanded||mouse.type!=='mouseDown')return;
+  // A press can reach the transparent host before the cursor poll makes it click-through.
+  const origin=islandWindow.getContentBounds();
+  pollCursor({x:origin.x+mouse.x,y:origin.y+mouse.y,button:mouse.button});
+  if(!expanded)event.preventDefault();
+}
 function onModifierEvent(event) {
   // Even if the shortcut was disabled while held, release must always stop capture.
   if (event === 'DOWN') {
@@ -427,6 +434,7 @@ function createIsland() {
     },300);
   });
   islandWindow.on('minimize',()=>{setExpanded(false);setTimeout(recoverVisibility,100);});
+  islandWindow.webContents.on('before-mouse-event',onIslandMouseEvent);
   islandWindow.webContents.on('before-input-event',(event,input)=>{
     if(input.code==='KeyH'){
       if(input.type==='keyUp')handleHotkey('visibility-up');

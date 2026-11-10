@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.20 — 10 November 2026
+
+- Say **“Stop screen share”** or **“Discord stop streaming”** to end your Discord stream and stay in the call.
+- Open the call you’re connected to before starting or stopping a Discord share, even if Discord is displaying a different channel.
+- Collapse the expanded Island when a click lands in the transparent area around it.
+
 ## 0.15.19 — 10 November 2026
 
 - Shorten Discord voice replies and animate the Island microphone turning red and drawing a slash when mute is confirmed. Unmuting reverses the animation.

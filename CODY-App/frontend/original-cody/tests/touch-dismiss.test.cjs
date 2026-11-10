@@ -23,17 +23,27 @@ test('native touch coordinates are converted before checking inside/outside the 
  assert.equal(point.x,300);assert.equal(point.y,200);
 });
 
-test('outside taps collapse compact and expanded chat; inside taps and open pickers stay open',()=>{
+test('outside presses from Windows or the transparent host collapse expanded panels',()=>{
  const source=read('island/main.js');
  const poll=source.slice(source.indexOf('function pollCursor('),source.indexOf('function onModifierEvent('));
- function tap({chatExpanded=false,x=950,y=500,pickerOpen=false,fileDialogs=0,capture=false}={}){
+ function tap({chatExpanded=false,x=936,y=745,pickerOpen=false,fileDialogs=0,capture=false,host=false,type='mouseDown'}={}){
   let collapsed=false;
-  const context={chatExpanded,pickerOpen,fileDialogs,islandWindow:{isDestroyed:()=>false,isVisible:()=>true,getBounds:()=>({x:0,y:0,width:940,height:750}),setIgnoreMouseEvents(){}},settings:{islandSize:'medium',visibility:'always'},SIZES:{medium:{width:216,height:32}},SETTINGS_WIDTH:900,SETTINGS_HEIGHT:716,TASKS_WIDTH:520,TASKS_HEIGHT:420,CHAT_WIDTH:520,CHAT_HEIGHT:352,currentPanelView:'chat',taskDetailExpanded:false,expanded:true,mouseIgnored:null,mascotSleeping:false,wakeClickUntil:0,shouldRecoverPointer:()=>false,shouldShow:()=>true,captureUIBusy:()=>capture,setExpanded:()=>collapsed=true,emit(){},performance:{now:()=>100},lastPointerTime:0,lastPointer:null,hoverVisible:false};
-  vm.runInNewContext(poll,context);context.pollCursor({x,y,button:'left'});return collapsed;
+  const bounds={x:-1200,y:44,width:940,height:750};
+  const context={chatExpanded,pickerOpen,fileDialogs,islandWindow:{isDestroyed:()=>false,isVisible:()=>true,getBounds:()=>bounds,getContentBounds:()=>bounds,setIgnoreMouseEvents(){}},settings:{islandSize:'medium',visibility:'always'},SIZES:{medium:{width:216,height:32}},SETTINGS_WIDTH:900,SETTINGS_HEIGHT:716,TASKS_WIDTH:520,TASKS_HEIGHT:420,CHAT_WIDTH:520,CHAT_HEIGHT:352,currentPanelView:'chat',taskDetailExpanded:false,expanded:true,mouseIgnored:null,mascotSleeping:false,wakeClickUntil:0,shouldRecoverPointer:()=>false,shouldShow:()=>true,captureUIBusy:()=>capture,setExpanded:value=>{context.expanded=value;collapsed=!value;},emit(){},performance:{now:()=>100},lastPointerTime:0,lastPointer:null,hoverVisible:false};
+  vm.runInNewContext(poll,context);
+  if(host){
+   let prevented=false;
+   context.onIslandMouseEvent({preventDefault(){prevented=true;}},{type,x,y,button:'left'});
+   assert.equal(prevented,collapsed);
+  }else context.pollCursor({x:bounds.x+x,y:bounds.y+y,button:'left'});
+  return collapsed;
  }
- assert.equal(tap(),true);assert.equal(tap({chatExpanded:true}),true);
- assert.equal(tap({x:470,y:200}),false);assert.equal(tap({chatExpanded:true,x:470,y:600}),false);
- assert.equal(tap({pickerOpen:true}),false);assert.equal(tap({capture:true}),false);assert.equal(tap({fileDialogs:1}),false);
+ for(const host of [false,true]){
+  assert.equal(tap({host}),true);assert.equal(tap({host,chatExpanded:true}),true);
+  assert.equal(tap({host,x:470,y:200}),false);assert.equal(tap({host,chatExpanded:true,x:470,y:600}),false);
+  assert.equal(tap({host,pickerOpen:true}),false);assert.equal(tap({host,capture:true}),false);assert.equal(tap({host,fileDialogs:1}),false);
+ }
+ assert.equal(tap({host:true,type:'mouseMove'}),false);
 });
 
 test('first native tap opens an awake click-through island without a renderer click',()=>{

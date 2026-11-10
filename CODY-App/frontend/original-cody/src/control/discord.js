@@ -21,6 +21,11 @@ function parseDiscordCommand(input){
     /^(?:leave|disconnect(?: me)?(?: from)?|hang up|end) (?:(?:my|the|current) )?(?:discord (?:voice )?call|(?:call|voice call|voice channel) (?:on|in) discord)$/i.test(request)||
     /^discord[:,]? (?:(?:leave|disconnect|hang up)(?: me)?|(?:leave|hang up|end) (?:the |my )?(?:call|voice call|voice channel))$/i.test(request))
     return {action:'discord.leave',args:{}};
+  const discordStop=/^discord[:,]? (.+)$/i.exec(request)?.[1]??/^(.+?) (?:on|in) discord$/i.exec(request)?.[1];
+  if(/^(?:stop|end) (?:(?:my|the) )?(?:screen[ -]?shar(?:e|ing)|sharing (?:(?:my|the) )?screen)$/i.test(discordStop??request)||
+    discordStop&&/^(?:stop|end) (?:(?:my|the) )?(?:stream(?:ing)?|share|sharing)$/i.test(discordStop)||
+    /^(?:stop|end) (?:(?:my|the) )?discord (?:screen[ -]?shar(?:e|ing)|stream)$/i.test(request))
+    return {action:'discord.stop-share',args:{}};
   const explicitShare=prefix??/^(.+?)\s+(?:on|in|to)\s+discord$/i.exec(text)?.[1];
   const shareText=explicitShare??'';
   const screenShare=/^(?:start )?screen[ -]?shar(?:e|ing)(?:\s+(.+))?$/i.exec(shareText);
@@ -44,9 +49,9 @@ function discordVoice(feature,state){
 }
 
 function validateDiscordArgs(action,args){
-  if(action==='discord.leave'){
+  if(action==='discord.leave'||action==='discord.stop-share'){
     if(Object.keys(args).length===0)return {};
-    throw Error('Leaving Discord does not take any arguments.');
+    throw Error(action==='discord.leave'?'Leaving Discord does not take any arguments.':'Stopping a Discord share does not take any arguments.');
   }
   if(action==='discord.voice'){
     if(Object.keys(args).length===2&&['mute','deafen'].includes(args.feature)&&['on','off','toggle'].includes(args.state))return {feature:args.feature,state:args.state};
@@ -61,13 +66,18 @@ function validateDiscordArgs(action,args){
 async function runDiscordCommand(action,args,{runner=runPowerShell,signal}={}){
   const script=path.join(__dirname,'../../windows/discord-control.ps1').replace('app.asar'+path.sep,'app.asar.unpacked'+path.sep);
   const clean=validateDiscordArgs(action,args);
-  const json=JSON.stringify(action==='discord.leave'?{leave:true}:clean);
+  const json=JSON.stringify(action==='discord.leave'?{leave:true}:action==='discord.stop-share'?{stopShare:true}:clean);
   const output=await runner(`try { & ${psQuote(script)} -Request ${psQuote(json)} } catch { [Console]::Error.WriteLine($_.Exception.GetBaseException().Message); exit 1 }`,{timeout:30000,signal});
   const result=JSON.parse(output);
   if(action==='discord.leave'){
     if(result.status==='left')return {reply:'Disconnected.',card:'Disconnected'};
     if(result.status==='not-connected')return {reply:'No active call.',card:'No active call'};
     throw Error('Discord did not confirm that you left the call.');
+  }
+  if(action==='discord.stop-share'){
+    if(result.status==='stopped')return {reply:'Screen share stopped.',card:'Share stopped'};
+    if(result.status==='not-sharing')return {reply:'You’re not sharing on Discord.',card:'No active share'};
+    throw Error('Discord did not confirm that the screen share stopped.');
   }
   if(action==='discord.voice'){
     if(typeof result.enabled!=='boolean'||args.state!=='toggle'&&result.enabled!==(args.state==='on'))throw Error('Discord did not confirm the requested voice state.');

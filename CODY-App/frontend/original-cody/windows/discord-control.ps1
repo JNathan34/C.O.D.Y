@@ -23,6 +23,7 @@ public sealed class CodyDiscordControl
     private static readonly string[] VoiceStatus = { "Voice Connected", "Video Connected", "RTC Connecting", "Awaiting Endpoint" };
     private static readonly string[] PickerNames = { "Share Your Screen", "Share Screen", "Screen Share", "Go Live", "Screen Share Settings" };
     private static readonly string[] StopButtons = { "Stop Streaming", "Stop Stream", "Stop Sharing", "Stop Screen Sharing", "Stop Sharing Your Screen", "Stop Sharing Screen", "Stop Screenshare" };
+    private static readonly string[] StreamOptions = { "Stream Options", "More Stream Options", "Stream Settings" };
     private static readonly string[] ScreenTabs = { "Screens", "Entire Screen", "Displays" };
     private static readonly string[] AppTabs = { "Applications", "Window", "Windows" };
     private static readonly string[] GoLiveButtons = { "Go Live", "Start Streaming", "Start Sharing" };
@@ -40,7 +41,10 @@ public sealed class CodyDiscordControl
     private const int Unavailable = 0x1;
     private const int Checked = 0x10;
     private const int SelectedOrPressed = 0x1A;
+    private const int MenuItemRole = 12;
+    private const int DocumentRole = 15;
     private const int DialogRole = 18;
+    private const int LinkRole = 30;
     private const int PageTabRole = 37;
     private const int PageTabListRole = 60;
     private const uint ChromiumAccessibilityProbe = 1;
@@ -73,7 +77,7 @@ public sealed class CodyDiscordControl
         internal int Role;
         internal int State;
         internal Node Parent;
-        internal bool IsAction { get { return Role == 43 || Role == 44 || Role == 45 || Role == 37 || Role == 62; } }
+        internal bool IsAction { get { return Role == 43 || Role == 44 || Role == 45 || Role == 37 || Role == 56 || Role == 57 || Role == 62 || Role == MenuItemRole; } }
         internal bool Enabled { get { return (State & Unavailable) == 0; } }
         internal bool Selected { get { return (State & SelectedOrPressed) != 0; } }
 
@@ -103,6 +107,15 @@ public sealed class CodyDiscordControl
     {
         internal Node Control;
         internal bool Enabled;
+    }
+
+    private sealed class CallView
+    {
+        internal List<Node> Nodes;
+        internal Node Panel;
+        internal Node Link;
+        internal string Channel;
+        internal Node Document;
     }
 
     private readonly IntPtr window;
@@ -258,15 +271,78 @@ public sealed class CodyDiscordControl
         return matches.Length == 1 ? matches[0] : null;
     }
 
-    private static Node CallControl(List<Node> nodes, string[] names, bool enabledOnly = true)
+    private static string ChannelOf(Node node)
     {
-        var userArea = nodes.Where(node => node.Name.Equals("User area", StringComparison.OrdinalIgnoreCase)).Take(2).ToArray();
-        if (userArea.Length == 1)
+        Uri address;
+        string value;
+        try { value = node.Accessible.get_accValue(node.Child); }
+        catch (COMException) { return null; }
+        if (!Uri.TryCreate(value, UriKind.Absolute, out address) || address.Scheme != Uri.UriSchemeHttps ||
+            (address.Host != "discord.com" && address.Host != "ptb.discord.com" && address.Host != "canary.discord.com"))
+            return null;
+        string[] parts = address.AbsolutePath.TrimEnd('/').Split('/');
+        if (parts.Length != 4 || parts[1] != "channels" || parts[2].Length == 0 || parts[3].Length == 0 ||
+            (parts[2] != "@me" && !parts[2].All(Char.IsDigit)) || !parts[3].All(Char.IsDigit))
+            return null;
+        return parts[2] + "/" + parts[3];
+    }
+
+    private static CallView ReadCallView(List<Node> nodes)
+    {
+        var panels = nodes.Where(node => IsNamed(node, OwnVoicePanels)).Take(2).ToArray();
+        if (panels.Length != 1) return null;
+        Node panel = panels[0];
+        var links = nodes.Where(node => node.Role == LinkRole && Within(node, panel) &&
+            VoiceStatus.Any(status => node.Name.Equals(status, StringComparison.OrdinalIgnoreCase) ||
+                node.Name.StartsWith(status + " ", StringComparison.OrdinalIgnoreCase))).Take(2).ToArray();
+        Node link = links.Length == 1 ? links[0] : null;
+        string channel = link == null ? null : ChannelOf(link);
+        Node document = panel.Parent;
+        while (document != null && document.Role != DocumentRole) document = document.Parent;
+        return new CallView { Nodes = nodes, Panel = panel, Link = link, Channel = channel,
+            Document = document != null && channel != null && ChannelOf(document) == channel ? document : null };
+    }
+
+    private CallView OpenConnectedCall()
+    {
+        CallView call = WaitFor(() => ReadCallView(Read()), 3500);
+        if (call == null)
+            throw new InvalidOperationException("Open your signed-in Discord window so C.O.D.Y. can find your call controls.");
+        if (call.Channel == null)
         {
-            var control = SingleAction(nodes.Where(node => Within(node, userArea[0])), names, enabledOnly);
-            if (control != null) return control;
+            if (DisconnectControls(call.Nodes).Length == 0) return null;
+            throw new InvalidOperationException("C.O.D.Y. could not identify your connected Discord call.");
         }
-        return SingleAction(nodes, names, enabledOnly);
+        if (call.Document != null) return call;
+        if (Picker(call.Nodes) != null)
+            throw new InvalidOperationException("Close the open Discord share picker and try again.");
+
+        // This link belongs to the persistent voice panel, even when the main view is a different channel.
+        if (ChannelOf(call.Link) != call.Channel)
+            throw new InvalidOperationException("Your connected Discord call changed. Try again.");
+        call.Link.Invoke();
+        CallView connected = WaitFor(() => ConnectedView(call.Channel), 4500);
+        if (connected == null)
+            throw new InvalidOperationException("Discord did not open your connected call.");
+        return connected;
+    }
+
+    private CallView ConnectedView(string channel)
+    {
+        CallView view = ReadCallView(Read());
+        return view != null && view.Channel == channel && view.Document != null ? view : null;
+    }
+
+    private static Node CallControl(CallView call, string[] names)
+    {
+        return SingleAction(call.Nodes.Where(node => Within(node, call.Document) && !Within(node, call.Panel)), names) ??
+            SingleAction(call.Nodes.Where(node => Within(node, call.Panel)), names);
+    }
+
+    private static bool ShowsStream(CallView call)
+    {
+        return call.Nodes.Any(node => node.IsAction && Within(node, call.Document) &&
+            (IsNamed(node, StopButtons) || IsNamed(node, StreamOptions)));
     }
 
     private static readonly string[] Mute = { "Mute", "Mute Microphone" };
@@ -504,19 +580,66 @@ public sealed class CodyDiscordControl
         return WithBackgroundWindow(() => ShareSource(screen, names));
     }
 
+    public string StopShare()
+    {
+        return WithBackgroundWindow(() => {
+            CallView call = OpenConnectedCall();
+            if (call == null) return "not-sharing";
+            Node stop = CallControl(call, StopButtons);
+            if (stop == null)
+            {
+                Node options = CallControl(call, StreamOptions);
+                if (options != null)
+                {
+                    options.Invoke();
+                    stop = WaitFor(() => {
+                        CallView view = ConnectedView(call.Channel);
+                        if (view == null) return null;
+                        return SingleAction(view.Nodes.Where(node => node.Role == MenuItemRole && Within(node, view.Document)), StopButtons) ??
+                            CallControl(view, StopButtons);
+                    }, 3500);
+                }
+                else if (!ShowsStream(call) && CallControl(call, ShareButtons) != null)
+                    return "not-sharing";
+            }
+            if (stop == null)
+                throw new InvalidOperationException("C.O.D.Y. could not identify your Discord stop-sharing control.");
+
+            stop.Invoke();
+            CallView ended = WaitFor(() => {
+                CallView view = ConnectedView(call.Channel);
+                return view != null && !ShowsStream(view) && CallControl(view, ShareButtons) != null ? view : null;
+            }, 4500);
+            if (ended == null)
+                throw new InvalidOperationException("Discord did not confirm that the screen share stopped.");
+            return "stopped";
+        });
+    }
+
     private string ShareSource(int screen, HashSet<string> names)
     {
-        List<Node> nodes = Read();
-        if (nodes.Any(node => node.IsAction && IsNamed(node, StopButtons)))
+        CallView call = OpenConnectedCall();
+        if (call == null)
+            throw new InvalidOperationException("Join a Discord voice channel or call before sharing.");
+        List<Node> nodes = call.Nodes;
+        if (ShowsStream(call))
             throw new InvalidOperationException("Discord is already sharing a source. Stop that share before starting another.");
         Node picker = Picker(nodes);
         if (picker == null)
         {
-            Node open = WaitFor(() => CallControl(Read(), ShareButtons), 3500);
+            Node open = CallControl(call, ShareButtons) ?? WaitFor(() => {
+                CallView view = ConnectedView(call.Channel);
+                return view == null ? null : CallControl(view, ShareButtons);
+            }, 3500);
             if (open == null)
-                throw new InvalidOperationException("Join a Discord voice channel or call and open its screen-share controls.");
+                throw new InvalidOperationException("C.O.D.Y. could not find the screen-share control in your connected Discord call.");
             open.Invoke();
-            picker = WaitFor(() => { nodes = Read(); return Picker(nodes); }, 3500);
+            picker = WaitFor(() => {
+                CallView view = ConnectedView(call.Channel);
+                if (view == null) return null;
+                nodes = view.Nodes;
+                return Picker(nodes);
+            }, 3500);
         }
         if (picker == null)
             throw new InvalidOperationException("C.O.D.Y. could not identify Discord's share picker. Choose the source in Discord.");
@@ -527,8 +650,10 @@ public sealed class CodyDiscordControl
         if (tab == null) return "review";
         if (!tab.Selected) SelectShareTab(tab);
         Source[] sources = WaitFor(() => {
-            nodes = Read();
-            Node current = Picker(nodes);
+            CallView view = ConnectedView(call.Channel);
+            if (view == null) return null;
+            nodes = view.Nodes;
+            Node current = Picker(view.Nodes);
             if (current == null) return null;
             Node activeTab = SingleAction(nodes.Where(node => Within(node, current)), category);
             if (activeTab == null || !activeTab.Selected) return null;
@@ -544,12 +669,14 @@ public sealed class CodyDiscordControl
         bool selectionConfirmed = false;
         bool startedOnSelection = false;
         Node goLive = WaitFor(() => {
-            nodes = Read();
-            Node current = Picker(nodes);
+            CallView view = ConnectedView(call.Channel);
+            if (view == null) return null;
+            nodes = view.Nodes;
+            Node current = Picker(view.Nodes);
             if (current == null)
             {
                 // Some picker layouts start streaming directly from the source tile.
-                Node stop = nodes.FirstOrDefault(node => node.IsAction && IsNamed(node, StopButtons));
+                Node stop = CallControl(view, StopButtons) ?? CallControl(view, StreamOptions);
                 startedOnSelection = stop != null;
                 return stop;
             }
@@ -565,8 +692,8 @@ public sealed class CodyDiscordControl
         if (goLive == null) return selectionConfirmed ? "selected" : "review";
         goLive.Invoke();
         return WaitFor(() => {
-            nodes = Read();
-            return Picker(nodes) == null ? nodes.FirstOrDefault(node => node.IsAction && IsNamed(node, StopButtons)) : null;
+            CallView view = ConnectedView(call.Channel);
+            return view != null && Picker(view.Nodes) == null && ShowsStream(view) ? view : null;
         }, 3800) != null ? "started" : "requested";
     }
 }
@@ -576,6 +703,8 @@ $command=ConvertFrom-Json -InputObject $Request
 $discord=New-Object CodyDiscordControl
 if($command.leave -eq $true){
   @{status=$discord.Leave()} | ConvertTo-Json -Compress
+}elseif($command.stopShare -eq $true){
+  @{status=$discord.StopShare()} | ConvertTo-Json -Compress
 }elseif($null -ne $command.feature){
   $result=$discord.Voice([string]$command.feature,[string]$command.state)
   @{enabled=$result.Enabled;changed=$result.Changed} | ConvertTo-Json -Compress

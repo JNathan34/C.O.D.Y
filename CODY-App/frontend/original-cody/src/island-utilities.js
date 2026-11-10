@@ -94,12 +94,13 @@ class IslandUtilities {
         case 'timer':reply=this.timer.execute(route.timer,chatId);if(['start','cancel'].includes(route.timer.action))this.clearCard();this.refreshMedia();confirmation=route.timer.action==='start'?'Timer set.':route.timer.action==='cancel'?'Timer stopped.':undefined;break;
         case 'spotify-status':{const media=this.mediaCard();reply=media.available?`${media.playing?'Playing':'Paused'}: ${media.title||'Music'}${media.artist?' — '+media.artist:''}.`:'Open a music player and start a track to show it in the Island.';break;}
         case 'volume-status':reply=this.volumeCard(await this.audioState(),generation);break;
-        case 'discord.voice':case 'discord.share':case 'discord.leave':{
+        case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':{
           const sharing=route.action==='discord.share';
+          const stopping=route.action==='discord.stop-share';
           const leaving=route.action==='discord.leave';
           const {feature,state,picker}=route.args;
-          const icon=sharing||leaving?'external-link':feature==='deafen'?'audio-lines':'mic';
-          const progress=leaving?'Disconnecting…':sharing?(picker?'Opening…':'Starting share…'):DISCORD_PROGRESS[feature][state];
+          const icon=sharing||stopping||leaving?'external-link':feature==='deafen'?'audio-lines':'mic';
+          const progress=stopping?'Stopping share…':leaving?'Disconnecting…':sharing?(picker?'Opening…':'Starting share…'):DISCORD_PROGRESS[feature][state];
           const abort=new AbortController();
           const operation=this.discordOperation={abort,generation};
           const cancelled={handled:true,cancelled:true,reply:'Action cancelled.'};
