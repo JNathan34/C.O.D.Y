@@ -16,18 +16,26 @@ function parseDiscordCommand(input){
   if(voice&&!(voice[1]&&voice[2]))return discordVoice(voice[3],voice[1]?'toggle':voice[2]?'off':'on');
   const switchVoice=/^(?:turn|switch)\s+(?:(on|off)\s+(mute|deafen|defen|deaf)|(mute|deafen|defen|deaf)\s+(on|off))$/i.exec(voiceText);
   if(switchVoice)return discordVoice(switchVoice[2]||switchVoice[3],(switchVoice[1]||switchVoice[4]).toLowerCase());
-  const shareText=prefix??/^(.+?)\s+(?:on|in|to)\s+discord$/i.exec(text)?.[1]??'';
+  const request=commandText(input,{imperativeOnly:true});
+  if(/^(?:leave|disconnect(?: me)?(?: from)?|hang up(?: on| in)?) (?:(?:my|the|current) )?discord(?: (?:voice )?(?:call|channel))?$/i.test(request)||
+    /^(?:leave|disconnect(?: me)?(?: from)?|hang up|end) (?:(?:my|the|current) )?(?:discord (?:voice )?call|(?:call|voice call|voice channel) (?:on|in) discord)$/i.test(request)||
+    /^discord[:,]? (?:(?:leave|disconnect|hang up)(?: me)?|(?:leave|hang up|end) (?:the |my )?(?:call|voice call|voice channel))$/i.test(request))
+    return {action:'discord.leave',args:{}};
+  const explicitShare=prefix??/^(.+?)\s+(?:on|in|to)\s+discord$/i.exec(text)?.[1];
+  const shareText=explicitShare??'';
   const screenShare=/^(?:start )?screen[ -]?shar(?:e|ing)(?:\s+(.+))?$/i.exec(shareText);
   if(screenShare&&!screenShare[1])return {action:'discord.share',args:{picker:true}};
-  const share=screenShare?.[1]??/^(?:share|stream|start sharing|start streaming)\s+(.+)$/i.exec(shareText)?.[1];
+  const share=explicitShare
+    ?screenShare?.[1]??/^(?:share|stream|start sharing|start streaming)\s+(.+)$/i.exec(shareText)?.[1]
+    :/^(?:share|start sharing)\s+((?:(?:my|the)\s+)?(?:entire\s+)?screen(?:\s+.+)?)$/i.exec(request)?.[1];
   if(!share)return null;
-  const target=share.replace(/^(?:my|the)\s+/i,'').replace(/\s+(?:app|application|window)$/i,'');
+  const target=(explicitShare?share.replace(/\s+(?:app|application|window)$/i,''):share).replace(/^(?:my|the)\s+/i,'');
   const display=/^(?:entire\s+)?(?:screen|monitor|display)(?:\s+(?:number\s+)?#?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten))?$/i.exec(target);
   if(display){
     const screen=display[1]?(screenNumbers[display[1].toLowerCase()]??Number(display[1])):1;
     if(screen>=1&&screen<=32)return {action:'discord.share',args:{screen}};
   }
-  if(!display&&validApp(target))return {action:'discord.share',args:{app:target}};
+  if(explicitShare&&!display&&validApp(target))return {action:'discord.share',args:{app:target}};
   return null;
 }
 
@@ -36,6 +44,10 @@ function discordVoice(feature,state){
 }
 
 function validateDiscordArgs(action,args){
+  if(action==='discord.leave'){
+    if(Object.keys(args).length===0)return {};
+    throw Error('Leaving Discord does not take any arguments.');
+  }
   if(action==='discord.voice'){
     if(Object.keys(args).length===2&&['mute','deafen'].includes(args.feature)&&['on','off','toggle'].includes(args.state))return {feature:args.feature,state:args.state};
     throw Error('Choose a Discord mute or deafen action.');
@@ -48,23 +60,29 @@ function validateDiscordArgs(action,args){
 
 async function runDiscordCommand(action,args,{runner=runPowerShell,signal}={}){
   const script=path.join(__dirname,'../../windows/discord-control.ps1').replace('app.asar'+path.sep,'app.asar.unpacked'+path.sep);
-  const json=JSON.stringify(validateDiscordArgs(action,args));
+  const clean=validateDiscordArgs(action,args);
+  const json=JSON.stringify(action==='discord.leave'?{leave:true}:clean);
   const output=await runner(`try { & ${psQuote(script)} -Request ${psQuote(json)} } catch { [Console]::Error.WriteLine($_.Exception.GetBaseException().Message); exit 1 }`,{timeout:30000,signal});
   const result=JSON.parse(output);
+  if(action==='discord.leave'){
+    if(result.status==='left')return {reply:'Disconnected.',card:'Disconnected'};
+    if(result.status==='not-connected')return {reply:'No active call.',card:'No active call'};
+    throw Error('Discord did not confirm that you left the call.');
+  }
   if(action==='discord.voice'){
     if(typeof result.enabled!=='boolean'||args.state!=='toggle'&&result.enabled!==(args.state==='on'))throw Error('Discord did not confirm the requested voice state.');
-    const label=args.feature==='mute'?(result.enabled?'muted':'unmuted'):(result.enabled?'deafened':'undeafened');
-    return {reply:args.feature==='mute'?'Your Discord microphone is '+label+'.':'You are '+label+' on Discord.',card:label[0].toUpperCase()+label.slice(1)};
+    const card=args.feature==='mute'?(result.enabled?'Muted':'Unmuted'):(result.enabled?'Deafened':'Undeafened');
+    return {reply:card+'.',card,...(args.feature==='mute'?{micMuted:result.enabled,micChanged:result.changed===true}:{})};
   }
   if(args.picker===true){
-    if(result.status==='picker')return {reply:'Choose a screen or app in the Discord share picker.',card:'Pick source'};
+    if(result.status==='picker')return {reply:'Pick a source in Discord.',card:'Pick source'};
     throw Error('Discord did not confirm that the share picker opened.');
   }
   const target=args.screen?'screen '+args.screen:args.app;
-  if(result.status==='started')return {reply:`Discord is sharing ${target}.`,card:'Sharing'};
-  if(result.status==='selected')return {reply:`I selected ${target} in Discord. Check the preview and choose Go Live to start sharing.`,card:'Check Discord'};
-  if(result.status==='review')return {reply:`Select ${target} in Discord and verify the preview before choosing Go Live.`,card:'Check Discord'};
-  if(result.status==='requested')return {reply:`I sent Go Live for ${target}. Check Discord to confirm the stream started.`,card:'Check Discord'};
+  if(result.status==='started')return {reply:`Sharing ${target}.`,card:'Sharing'};
+  if(result.status==='selected')return {reply:'Check the preview, then choose Go Live.',card:'Check Discord'};
+  if(result.status==='review')return {reply:`Select ${target} in Discord.`,card:'Check Discord'};
+  if(result.status==='requested')return {reply:'Check if the stream started.',card:'Check Discord'};
   throw Error('Discord did not confirm a screen share action.');
 }
 

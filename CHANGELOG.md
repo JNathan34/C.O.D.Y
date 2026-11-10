@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.19 — 10 November 2026
+
+- Shorten Discord voice replies and animate the Island microphone turning red and drawing a slash when mute is confirmed. Unmuting reverses the animation.
+- Say **“Share screen”** to use Screen 1 or name a different screen number. Recognize Discord’s current picker and select the **Entire Screen** tab before looking up the requested display.
+- Say **“Leave Discord,” “Disconnect from Discord,”** or **“Hang up on Discord”** to leave the current call or voice channel.
+
 ## 0.15.18 — 10 November 2026
 
 - Show progress and results in the Island for typed and spoken Discord mute, deafen and screen-sharing commands.

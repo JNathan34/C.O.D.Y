@@ -94,11 +94,12 @@ class IslandUtilities {
         case 'timer':reply=this.timer.execute(route.timer,chatId);if(['start','cancel'].includes(route.timer.action))this.clearCard();this.refreshMedia();confirmation=route.timer.action==='start'?'Timer set.':route.timer.action==='cancel'?'Timer stopped.':undefined;break;
         case 'spotify-status':{const media=this.mediaCard();reply=media.available?`${media.playing?'Playing':'Paused'}: ${media.title||'Music'}${media.artist?' — '+media.artist:''}.`:'Open a music player and start a track to show it in the Island.';break;}
         case 'volume-status':reply=this.volumeCard(await this.audioState(),generation);break;
-        case 'discord.voice':case 'discord.share':{
+        case 'discord.voice':case 'discord.share':case 'discord.leave':{
           const sharing=route.action==='discord.share';
+          const leaving=route.action==='discord.leave';
           const {feature,state,picker}=route.args;
-          const icon=sharing?'external-link':feature==='deafen'?'audio-lines':'mic';
-          const progress=sharing?(picker?'Opening…':'Starting share…'):DISCORD_PROGRESS[feature][state];
+          const icon=sharing||leaving?'external-link':feature==='deafen'?'audio-lines':'mic';
+          const progress=leaving?'Disconnecting…':sharing?(picker?'Opening…':'Starting share…'):DISCORD_PROGRESS[feature][state];
           const abort=new AbortController();
           const operation=this.discordOperation={abort,generation};
           const cancelled={handled:true,cancelled:true,reply:'Action cancelled.'};
@@ -108,7 +109,8 @@ class IslandUtilities {
             if(abort.signal.aborted||result.cancelled){show(discordCard('Cancelled','circle-help'));return cancelled;}
             if(!result.ok)throw Error(result.error||'Discord did not confirm the action.');
             reply=result.result.reply;
-            show(discordCard(result.result.card,icon,reply));
+            const {card,micMuted,micChanged}=result.result;
+            show({...discordCard(card,icon,reply),micMuted,micChanged});
           }catch(error){
             if(abort.signal.aborted)return cancelled;
             throw error;

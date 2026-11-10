@@ -8,7 +8,7 @@ const {ComputerController,ensureArgs}=require('../src/control/controller');
 const {IslandUtilities}=require('../src/island-utilities');
 const {installNativeIpc}=require('../src/native-ipc');
 
-test('Discord commands recognize typed and spoken mute, deafen and share requests',()=>{
+test('Discord commands recognize typed and spoken mute, deafen, share and disconnect requests',()=>{
   for(const [input,feature,state] of [
     ['mute Discord','mute','on'],['unmute Discord','mute','off'],['toggle mute on Discord','mute','toggle'],
     ['defen on Discord','deafen','on'],['un defen on Discord','deafen','off'],['toggle defen on Discord','deafen','toggle'],
@@ -18,6 +18,8 @@ test('Discord commands recognize typed and spoken mute, deafen and share request
     ['CODY, please undeafen me on Discord','deafen','off']
   ])assert.deepEqual(parseDiscordCommand(input),{action:'discord.voice',args:{feature,state}},input);
   for(const [input,args] of [
+    ['share screen',{screen:1}],['share screen 2',{screen:2}],['share screen two',{screen:2}],
+    ['CODY, please share my screen.',{screen:1}],['start sharing screen number three',{screen:3}],
     ['share my screen on Discord',{screen:1}],['share screen 1 on Discord',{screen:1}],
     ['share screen 2 on Discord',{screen:2}],['share screen two on Discord',{screen:2}],
     ['Discord screenshare',{picker:true}],['screen share on Discord',{picker:true}],
@@ -25,7 +27,14 @@ test('Discord commands recognize typed and spoken mute, deafen and share request
     ['start sharing monitor #2 in Discord',{screen:2}],
     ['share Firefox on Discord',{app:'Firefox'}],['share the Google Chrome window on Discord',{app:'Google Chrome'}]
   ])assert.deepEqual(parseDiscordCommand(input),{action:'discord.share',args},input);
-  for(const input of ['mute','mute Spotify','how do I mute Discord','do not unmute Discord','mute Discord and play music','Discord, do not deafen','toggle unmute on Discord','share screen 0 on Discord','share screen 33 on Discord','share screen 100 on Discord','share Firefox or Chrome on Discord'])
+  for(const input of [
+    'leave Discord','disconnect from Discord','CODY, please disconnect me from Discord',
+    'leave my Discord voice channel','leave the call on Discord','hang up on Discord',
+    'end the Discord call','Discord, disconnect','Discord leave voice channel'
+  ])assert.deepEqual(parseDiscordCommand(input),{action:'discord.leave',args:{}},input);
+  for(const input of ['mute','mute Spotify','how do I mute Discord','do not unmute Discord','mute Discord and play music','Discord, do not deafen','toggle unmute on Discord','share screen 0 on Discord','share screen 33 on Discord','share screen 100 on Discord','share Firefox or Chrome on Discord',
+    'share Firefox','share screen 0','share screen 33','share screen window','share screen on Zoom','share screen and open Chrome','do not share screen','how do I share screen','tell me share screen','do you know share screen',
+    'leave Discord server','disconnect from Wi-Fi','close Discord','leave the call','don’t leave Discord','tell me how to leave Discord','do you know leave Discord','leave Discord and close the app'])
     assert.equal(parseDiscordCommand(input),null,input);
 });
 
@@ -35,32 +44,47 @@ test('Discord control checks permissions and is unavailable to agent tools',asyn
   const controller=new ComputerController({readPermissions:()=>permissions,runner:async()=>{calls++;return '{"enabled":true}';}});
   const voice={feature:'mute',state:'on'};
   await assert.rejects(controller.execute('discord.voice',voice,{origin:'ai-chat',verifiedUserIntent:true}),/direct C\.O\.D\.Y\. command/);
+  await assert.rejects(controller.execute('discord.leave',{}, {origin:'ai-chat',verifiedUserIntent:true}),/direct C\.O\.D\.Y\. command/);
   assert.equal(controller.catalog().some(action=>action.name.startsWith('discord.')),false);
   permissions={...permissions,screenshots:false};
   await assert.rejects(controller.execute('discord.share',{screen:2},{origin:'chat'}),/screenshots.*disabled/);
   permissions={...permissions,uiAutomation:false};
   await assert.rejects(controller.execute('discord.voice',voice,{origin:'chat'}),/uiAutomation.*disabled/);
+  await assert.rejects(controller.execute('discord.leave',{}, {origin:'chat'}),/uiAutomation.*disabled/);
+  assert.throws(()=>ensureArgs('discord.leave',{channel:'another call'}));
   assert.throws(()=>ensureArgs('discord.share',{screen:1,app:'Firefox'}));
   assert.throws(()=>ensureArgs('discord.share',{picker:true,screen:1}));
   assert.throws(()=>ensureArgs('discord.share',{app:"Firefox'; Start-Process calc"}));
   assert.equal(calls,0);
   permissions={...permissions,uiAutomation:true};
   const result=await controller.execute('discord.voice',voice,{origin:'chat'});
-  assert.equal(result.result.reply,'Your Discord microphone is muted.');
+  assert.equal(result.result.reply,'Muted.');
   assert.equal(calls,1);
+});
+
+test('Discord disconnect reports whether it left an active call',async()=>{
+  const run=status=>runDiscordCommand('discord.leave',{}, {runner:async script=>{
+    assert.match(script,/-Request '\{"leave":true\}'/);
+    return JSON.stringify({status});
+  }});
+  assert.deepEqual(await run('left'),{reply:'Disconnected.',card:'Disconnected'});
+  assert.deepEqual(await run('not-connected'),{reply:'No active call.',card:'No active call'});
+  await assert.rejects(run('unknown'),/did not confirm/);
 });
 
 test('Discord replies distinguish selected, requested and confirmed stream states',async()=>{
   const args={screen:2};
   const run=status=>runDiscordCommand('discord.share',args,{runner:async()=>JSON.stringify({status})});
-  assert.match((await run('selected')).reply,/choose Go Live to start/);
-  assert.match((await run('review')).reply,/verify the preview/);
-  assert.match((await run('requested')).reply,/confirm the stream started/);
-  assert.equal((await run('started')).reply,'Discord is sharing screen 2.');
+  assert.equal((await run('selected')).reply,'Check the preview, then choose Go Live.');
+  assert.equal((await run('review')).reply,'Select screen 2 in Discord.');
+  assert.equal((await run('requested')).reply,'Check if the stream started.');
+  assert.equal((await run('started')).reply,'Sharing screen 2.');
   const openPicker=status=>runDiscordCommand('discord.share',{picker:true},{runner:async()=>JSON.stringify({status})});
   assert.equal((await openPicker('picker')).card,'Pick source');
   await assert.rejects(openPicker('started'),/did not confirm that the share picker opened/);
   await assert.rejects(runDiscordCommand('discord.voice',{feature:'mute',state:'off'},{runner:async()=>'{"enabled":true}'}),/did not confirm/);
+  const unchanged=await runDiscordCommand('discord.voice',{feature:'mute',state:'on'},{runner:async()=>'{"enabled":true,"changed":false}'});
+  assert.deepEqual(unchanged,{reply:'Muted.',card:'Muted',micMuted:true,micChanged:false});
 });
 
 test('cancelling a local Discord command aborts its operation',async()=>{
@@ -96,32 +120,48 @@ test('the Island renders Discord feedback over listening and keeps recording con
     $,document:{body:$('body')},window:{CODYIcons:{set:(element,icon)=>element.dataset.icon=icon}},
     wakeListening:()=>true,tasks:{connected:false},island:{setMediaPlaying(){}},media:{available:false},
     timer:{status:'finished',deadline:Date.now()},capture:{status:'idle'},game:{active:false},monitors:{items:[]},
-    quickCard:{kind:'utility',source:'discord',text:'Muted',detail:'Discord',icon:'mic',expiresAt:Date.now()+10000},
+    quickCard:{kind:'utility',source:'discord',text:'Muted',detail:'Discord',icon:'mic',micMuted:true,micChanged:true,expiresAt:Date.now()+10000},
     capturePending:false,art:{}
   });
   vm.runInContext(source.slice(source.indexOf('  function renderTimer('),source.indexOf("  document.addEventListener('cody:update-state'")),context);
   context.renderTimer();
   assert.equal($('island-info').hidden,false);
   assert.equal($('island-info-text').textContent,'Muted');
+  assert.equal($('island-info-icon').dataset.icon,'discord-mic');
+  assert.equal($('island-info').dataset.discordMic,'muted');
+  assert.equal($('island-info').dataset.discordMicChanged,'true');
   assert.equal($('island-timer').hidden,true);
 
   context.capture={status:'recording',elapsedMs:1000,capturedAt:Date.now()};
   context.renderTimer();
   assert.equal($('island-recording-controls').hidden,false);
   assert.equal($('island-info-detail').textContent,'Discord · Muted');
+  assert.equal($('island-info').dataset.discordMic,'');
 
   context.capture={status:'idle'};
+  context.quickCard={...context.quickCard,text:'Unmuted',micMuted:false};
+  context.renderTimer();
+  assert.equal($('island-info-text').textContent,'Unmuted');
+  assert.equal($('island-info').dataset.discordMic,'unmuted');
+  assert.equal($('island-info').dataset.discordMicChanged,'true');
+
   context.quickCard=null;
   context.renderTimer();
   assert.equal($('island-info-text').textContent,'Listening…');
+  assert.equal($('island-info').dataset.discordMic,'');
 });
 
 test('typed and spoken Discord commands show progress and results in the Island and bypass AI',async()=>{
-  for(const {input,voice,action,args,reply,card,progress} of [
-    {input:'Discord mute',voice:false,action:'discord.voice',args:{feature:'mute',state:'on'},reply:'Your Discord microphone is muted.',card:'Muted',progress:'Muting…'},
-    {input:'Discord defen',voice:true,action:'discord.voice',args:{feature:'deafen',state:'on'},reply:'You are deafened on Discord.',card:'Deafened',progress:'Deafening…'},
-    {input:'Discord screenshare',voice:true,action:'discord.share',args:{picker:true},reply:'Choose a screen or app in the Discord share picker.',card:'Pick source',progress:'Opening…'},
-    ...[false,true].map(voice=>({input:'share screen two on Discord',voice,action:'discord.share',args:{screen:2},reply:'Discord is sharing screen 2.',card:'Sharing',progress:'Starting share…'}))
+  for(const {input,voice,action,args,reply,card,progress,output,micMuted} of [
+    {input:'mute Discord',voice:true,action:'discord.voice',args:{feature:'mute',state:'on'},reply:'Muted.',card:'Muted',progress:'Muting…',output:{enabled:true,changed:true},micMuted:true},
+    {input:'unmute Discord',voice:true,action:'discord.voice',args:{feature:'mute',state:'off'},reply:'Unmuted.',card:'Unmuted',progress:'Unmuting…',output:{enabled:false,changed:true},micMuted:false},
+    {input:'Discord defen',voice:true,action:'discord.voice',args:{feature:'deafen',state:'on'},reply:'Deafened.',card:'Deafened',progress:'Deafening…',output:{enabled:true,changed:true}},
+    {input:'Discord undeafen',voice:true,action:'discord.voice',args:{feature:'deafen',state:'off'},reply:'Undeafened.',card:'Undeafened',progress:'Undeafening…',output:{enabled:false,changed:true}},
+    {input:'Discord screenshare',voice:true,action:'discord.share',args:{picker:true},reply:'Pick a source in Discord.',card:'Pick source',progress:'Opening…',output:{status:'picker'}},
+    {input:'share screen',voice:true,action:'discord.share',args:{screen:1},reply:'Sharing screen 1.',card:'Sharing',progress:'Starting share…',output:{status:'started'}},
+    {input:'disconnect from Discord',voice:true,action:'discord.leave',args:{},reply:'Disconnected.',card:'Disconnected',progress:'Disconnecting…',output:{status:'left'}},
+    {input:'leave Discord',voice:false,action:'discord.leave',args:{},reply:'No active call.',card:'No active call',progress:'Disconnecting…',output:{status:'not-connected'}},
+    ...[false,true].map(voice=>({input:'share screen two',voice,action:'discord.share',args:{screen:2},reply:'Sharing screen 2.',card:'Sharing',progress:'Starting share…',output:{status:'started'}}))
   ]){
     const engine=new EventEmitter(),handlers=new Map(),calls=[],actions=[],messages=[],cards=[];
     engine.connected=true;engine.status={state:'Idle'};
@@ -132,7 +172,7 @@ test('typed and spoken Discord commands show progress and results in the Island 
     const utilities=new IslandUtilities({controller:{execute:async(action,args,context)=>{
       actions.push({action,args,origin:context.origin});
       assert.equal(cards.at(-1)?.text,progress);
-      return {ok:true,result:{reply,card}};
+      return {ok:true,result:await runDiscordCommand(action,args,{runner:async()=>JSON.stringify(output)})};
     }},showCard:(value,duration)=>cards.push({...value,duration})});
     const settings={voiceAutoSpeak:false};
     const store={data:{settings,activeChatId:'chat'},chat:()=>({messages}),addMessage:(_id,role,text)=>{
@@ -157,5 +197,9 @@ test('typed and spoken Discord commands show progress and results in the Island 
     assert.deepEqual(cards.map(({source,text,detail})=>[source,text,detail]),[['discord',progress,'Discord'],['discord',card,'Discord']]);
     assert.ok(cards[0].duration>=30000);
     assert.equal(messages.at(-1).text,reply);
+    assert.equal(calls.find(call=>call.command==='speak')?.args.text,voice?reply:undefined);
+    assert.equal(cards[0].micMuted,undefined);
+    assert.equal(cards[1].micMuted,micMuted);
+    if(micMuted!==undefined)assert.equal(cards[1].micChanged,true);
   }
 });

@@ -41,6 +41,7 @@ const ACTIONS = Object.freeze({
   'audio.mute': {permission:'audio',risk:'low',description:'Mute or unmute Windows audio'},
   'discord.voice': {permission:'audio',requires:['uiAutomation'],risk:'low',directOnly:true,description:'Change your own Discord mute or deafen state'},
   'discord.share': {permission:'screenshots',requires:['uiAutomation'],risk:'low',directOnly:true,description:'Share the requested screen or window in your current Discord call'},
+  'discord.leave': {permission:'audio',requires:['uiAutomation'],risk:'low',directOnly:true,description:'Disconnect yourself from your current Discord voice call or channel'},
   'spotify.control': {permission:'audio',risk:'low',description:'Control Spotify desktop playback'},
   'media.control': {permission:'audio',risk:'low',description:'Control the media player displayed in the Island'},
   'plezy.play': {permission:'audio',risk:'low',description:'Search for an exact title in the installed Plezy app and start playback'},

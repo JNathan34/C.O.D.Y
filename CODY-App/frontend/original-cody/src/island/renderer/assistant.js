@@ -24,6 +24,9 @@
     const discord=activeCard?.source==='discord'?activeCard:null;
     const recording=['starting','recording','paused','stopping'].includes(capture.status);
     infoUpdate.dataset.discord=String(Boolean(discord&&!recording&&!game.active));
+    const discordMic=infoUpdate.dataset.discord==='true'&&typeof discord?.micMuted==='boolean';
+    infoUpdate.dataset.discordMic=discordMic?(discord.micMuted?'muted':'unmuted'):'';
+    infoUpdate.dataset.discordMicChanged=String(Boolean(discordMic&&discord.micChanged));
     infoUpdate.dataset.update='false';infoUpdate.removeAttribute('role');infoUpdate.removeAttribute('tabindex');infoUpdate.removeAttribute('aria-label');
     $('island-update-progress').hidden=true;
     if(wakeListening()&&!discord&&!recording){
@@ -82,7 +85,10 @@
       $('island-info-text').textContent=quick?quickCard.text:media.title;
       $('island-info-detail').textContent=quick?(quickCard.detail||''):`${media.playing?'':'Paused · '}${media.artist||media.app||'Media'}`;
       $('island-info-icon').hidden=Boolean(showMedia);art.hidden=!showMedia;
-      if(quick)window.CODYIcons.set($('island-info-icon'),quickCard.icon||'calculator');
+      if(quick){
+        const icon=$('island-info-icon'),name=discordMic?'discord-mic':quickCard.icon||'calculator';
+        if(icon.dataset.icon!==name)window.CODYIcons.set(icon,name);
+      }
       else{const candidates=window.CODYMediaArt.candidates(media),key=JSON.stringify(candidates);if(key!==artKey){artKey=key;artCandidates=candidates;artIndex=0;art.src=candidates[0];}}
       $('island-media-controls').hidden=!showMedia;
       window.CODYIcons.set($('island-media-toggle'),media.playing?'pause':'play');

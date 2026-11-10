@@ -117,6 +117,17 @@ body.utility-layout:not(.panel-open) .island-info{left:34px;right:80px;width:aut
 body.utility-layout:not(.panel-open) .island-info[data-discord="true"]{left:28px;right:60px}
 body.utility-layout:not(.panel-open) .island-info:has(#island-info-icon[data-icon="clock"]){left:38px}
 body.utility-layout #island-info-icon .lucide-control{width:16px;height:16px}
+.island-info[data-discord-mic="muted"] #island-info-icon{color:#ff5f70}
+.discord-mic-slash{stroke-dasharray:1;stroke-dashoffset:1;opacity:0}
+.island-info[data-discord-mic="muted"] .discord-mic-slash{stroke-dashoffset:0;opacity:1}
+@media(prefers-reduced-motion:no-preference){
+  .island-info[data-discord-mic-changed="true"] #island-info-icon{animation:discord-mic-color 260ms ease-out}
+  .island-info[data-discord-mic-changed="true"] .discord-mic-slash{animation:discord-mic-slash 260ms ease-out}
+  .island-info[data-discord-mic-changed="true"][data-discord-mic="unmuted"] #island-info-icon,
+  .island-info[data-discord-mic-changed="true"][data-discord-mic="unmuted"] .discord-mic-slash{animation-direction:reverse}
+}
+@keyframes discord-mic-color{from{color:#c5eff7}to{color:#ff5f70}}
+@keyframes discord-mic-slash{from{stroke-dashoffset:1;opacity:0}to{stroke-dashoffset:0;opacity:1}}
 #island-media-art{display:block;width:24px;height:24px;flex-shrink:0;object-fit:cover;border-radius:5px;background:#1b2026}
 #island-media-art[hidden],#island-info-icon[hidden]{display:none}
 .island-info-copy{pointer-events:none}

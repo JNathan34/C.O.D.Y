@@ -1,8 +1,8 @@
 param([Parameter(Mandatory=$true)][string]$Request)
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
-Add-Type -AssemblyName Accessibility
-Add-Type -ReferencedAssemblies Accessibility,System.Windows.Forms -TypeDefinition @'
+Add-Type -AssemblyName Accessibility,UIAutomationClient,UIAutomationTypes
+Add-Type -ReferencedAssemblies Accessibility,System.Windows.Forms,UIAutomationClient,UIAutomationTypes -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,6 +10,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Windows.Automation;
 using System.Windows.Forms;
 using Accessibility;
 
@@ -17,6 +18,9 @@ public sealed class CodyDiscordControl
 {
     private static readonly string[] DiscordProcesses = { "Discord", "DiscordPTB", "DiscordCanary" };
     private static readonly string[] ShareButtons = { "Share Your Screen", "Share Screen", "Screen Share", "Start Screen Share", "Start Sharing Your Screen" };
+    private static readonly string[] OwnVoicePanels = { "User status and settings", "User area" };
+    private static readonly string[] LeaveCallButtons = { "Disconnect from Voice", "Disconnect from Voice Channel", "Leave Call", "End Call", "Hang Up" };
+    private static readonly string[] VoiceStatus = { "Voice Connected", "Video Connected", "RTC Connecting", "Awaiting Endpoint" };
     private static readonly string[] PickerNames = { "Share Your Screen", "Share Screen", "Screen Share", "Go Live", "Screen Share Settings" };
     private static readonly string[] StopButtons = { "Stop Streaming", "Stop Stream", "Stop Sharing", "Stop Screen Sharing", "Stop Sharing Your Screen", "Stop Sharing Screen", "Stop Screenshare" };
     private static readonly string[] ScreenTabs = { "Screens", "Entire Screen", "Displays" };
@@ -36,6 +40,9 @@ public sealed class CodyDiscordControl
     private const int Unavailable = 0x1;
     private const int Checked = 0x10;
     private const int SelectedOrPressed = 0x1A;
+    private const int DialogRole = 18;
+    private const int PageTabRole = 37;
+    private const int PageTabListRole = 60;
     private const uint ChromiumAccessibilityProbe = 1;
     private const uint KeepBoundsAndDoNotActivate = 0x213; // SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER
     private const int ExtendedWindowStyle = -20;
@@ -267,6 +274,48 @@ public sealed class CodyDiscordControl
     private static readonly string[] Deafen = { "Deafen", "Deafen Audio" };
     private static readonly string[] Undeafen = { "Undeafen", "Undeafen Audio" };
 
+    private static Node[] DisconnectControls(List<Node> nodes)
+    {
+        var panels = nodes.Where(node => IsNamed(node, OwnVoicePanels)).ToArray();
+        // The channel view can have a second Disconnect button. Use the persistent self controls first.
+        var own = nodes.Where(node => node.IsAction &&
+            (node.Name.Equals("Disconnect", StringComparison.OrdinalIgnoreCase) || IsNamed(node, LeaveCallButtons)) &&
+            panels.Any(panel => Within(node, panel))).Take(2).ToArray();
+        return own.Length > 0 ? own : nodes.Where(node => node.IsAction && IsNamed(node, LeaveCallButtons)).Take(2).ToArray();
+    }
+
+    private static bool ShowsActiveCall(List<Node> nodes)
+    {
+        var panels = nodes.Where(node => IsNamed(node, OwnVoicePanels)).ToArray();
+        return nodes.Any(node => node.IsAction && IsNamed(node, ShareButtons) ||
+            IsNamed(node, VoiceStatus) && panels.Any(panel => Within(node, panel)));
+    }
+
+    public string Leave()
+    {
+        return WithBackgroundWindow(() => {
+            var nodes = WaitFor(() => {
+                var snapshot = Read();
+                return snapshot.Any(node => IsNamed(node, OwnVoicePanels)) || DisconnectControls(snapshot).Length > 0 ? snapshot : null;
+            }, 3500);
+            if (nodes == null)
+                throw new InvalidOperationException("Open your signed-in Discord window so C.O.D.Y. can find your call controls.");
+            var controls = DisconnectControls(nodes);
+            if (controls.Length == 0 && !ShowsActiveCall(nodes)) return "not-connected";
+            if (controls.Length != 1 || !controls[0].Enabled)
+                throw new InvalidOperationException("C.O.D.Y. could not identify your Discord disconnect button.");
+            controls[0].Invoke();
+            var disconnected = WaitFor(() => {
+                var snapshot = Read();
+                return snapshot.Any(node => IsNamed(node, OwnVoicePanels)) && !ShowsActiveCall(snapshot) &&
+                    DisconnectControls(snapshot).Length == 0 ? snapshot : null;
+            }, 4500);
+            if (disconnected == null)
+                throw new InvalidOperationException("Discord did not confirm that you left the call.");
+            return "left";
+        });
+    }
+
     private VoiceState ReadVoice(string feature)
     {
         List<Node> nodes = Read();
@@ -311,14 +360,20 @@ public sealed class CodyDiscordControl
         return null;
     }
 
-    public bool Voice(string feature, string state)
+    public sealed class VoiceResult
+    {
+        public bool Enabled { get; set; }
+        public bool Changed { get; set; }
+    }
+
+    public VoiceResult Voice(string feature, string state)
     {
         if ((feature != "mute" && feature != "deafen") || (state != "on" && state != "off" && state != "toggle"))
             throw new ArgumentException("Invalid Discord voice command.");
         return WithBackgroundWindow(() => SetVoice(feature, state));
     }
 
-    private bool SetVoice(string feature, string state)
+    private VoiceResult SetVoice(string feature, string state)
     {
         VoiceState current = WaitFor(() => ReadVoice(feature), 5000);
         if (current == null)
@@ -327,31 +382,62 @@ public sealed class CodyDiscordControl
         if (current.Enabled == desired)
         {
             current.Control.CheckCurrent(false, true);
-            return desired;
+            return new VoiceResult { Enabled = desired };
         }
         if (!current.Control.Enabled)
             throw new InvalidOperationException("Discord's " + feature + " control is disabled. Check your voice state in Discord.");
         current.Control.Invoke(true);
         // Re-read the invoked control first. Scanning the full Chromium tree can take several seconds.
         if (WaitFor(() => ReadVoiceState(current.Control, feature) == desired ? current : null, 1500) != null)
-            return desired;
+            return new VoiceResult { Enabled = desired, Changed = true };
         VoiceState confirmed = WaitFor(() => {
             VoiceState reading = ReadVoice(feature);
             return reading != null && reading.Enabled == desired ? reading : null;
         }, 5000);
         if (confirmed == null)
             throw new InvalidOperationException("Discord did not confirm the requested voice state.");
-        return confirmed.Enabled;
+        return new VoiceResult { Enabled = confirmed.Enabled, Changed = true };
     }
 
     private static Node Picker(List<Node> nodes)
     {
-        var dialogs = nodes.Where(node => node.Role == 18 && (IsNamed(node, PickerNames) ||
-            nodes.Any(label => label.Role != 18 && !label.IsAction && Within(label, node) && IsNamed(label, PickerNames))))
-            .ToArray();
+        var dialogs = nodes.Where(node => node.Role == DialogRole && (IsNamed(node, PickerNames) ||
+            nodes.Any(label => label.Role != DialogRole && !label.IsAction && Within(label, node) && IsNamed(label, PickerNames)) ||
+            HasShareTabs(nodes, node))).ToArray();
         // A parent dialog can contain the same heading as its nested source picker.
         var innermost = dialogs.Where(dialog => !dialogs.Any(other => other != dialog && Within(other, dialog))).Take(2).ToArray();
         return innermost.Length == 1 ? innermost[0] : null;
+    }
+
+    private static bool HasShareTabs(List<Node> nodes, Node dialog)
+    {
+        // Current Discord exposes an unnamed modal with both categories in one tab list.
+        return nodes.Any(tab => tab.Role == PageTabRole && IsNamed(tab, ScreenTabs) &&
+            tab.Parent != null && tab.Parent.Role == PageTabListRole && Within(tab.Parent, dialog) &&
+            nodes.Any(other => other.Parent == tab.Parent && other.Role == PageTabRole && IsNamed(other, AppTabs)));
+    }
+
+    private void SelectShareTab(Node tab)
+    {
+        if (tab.Role == PageTabRole)
+        {
+            tab.CheckCurrent(true, true);
+            // Chromium exposes these as MSAA tabs but their default action can do nothing.
+            // UI Automation exposes the actual SelectionItem action.
+            var root = AutomationElement.FromHandle(window);
+            var tabs = root.FindAll(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.NameProperty, tab.Name),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem),
+                new PropertyCondition(AutomationElement.IsOffscreenProperty, false),
+                new PropertyCondition(AutomationElement.IsEnabledProperty, true)));
+            object pattern;
+            if (tabs.Count == 1 && tabs[0].TryGetCurrentPattern(SelectionItemPattern.Pattern, out pattern))
+            {
+                ((SelectionItemPattern)pattern).Select();
+                return;
+            }
+        }
+        tab.Invoke(true);
     }
 
     private static Source[] Sources(List<Node> nodes, Node picker, HashSet<string> names)
@@ -439,7 +525,7 @@ public sealed class CodyDiscordControl
         string[] category = screen != 0 ? ScreenTabs : AppTabs;
         Node tab = SingleAction(nodes.Where(node => Within(node, picker)), category);
         if (tab == null) return "review";
-        if (!tab.Selected) tab.Invoke();
+        if (!tab.Selected) SelectShareTab(tab);
         Source[] sources = WaitFor(() => {
             nodes = Read();
             Node current = Picker(nodes);
@@ -456,10 +542,17 @@ public sealed class CodyDiscordControl
         sources[0].Action.Invoke();
         var exact = new HashSet<string>(new[] { chosen }, StringComparer.OrdinalIgnoreCase);
         bool selectionConfirmed = false;
+        bool startedOnSelection = false;
         Node goLive = WaitFor(() => {
             nodes = Read();
             Node current = Picker(nodes);
-            if (current == null) return null;
+            if (current == null)
+            {
+                // Some picker layouts start streaming directly from the source tile.
+                Node stop = nodes.FirstOrDefault(node => node.IsAction && IsNamed(node, StopButtons));
+                startedOnSelection = stop != null;
+                return stop;
+            }
             var controls = nodes.Where(node => Within(node, current)).ToArray();
             Source[] options = Sources(nodes, current, exact);
             bool selected = options.Length == 1 && (options[0].Action.Selected || options[0].Label.Selected);
@@ -468,6 +561,7 @@ public sealed class CodyDiscordControl
             selectionConfirmed = selected || preview;
             return selectionConfirmed ? SingleAction(controls, GoLiveButtons) : null;
         }, 2200);
+        if (startedOnSelection) return "started";
         if (goLive == null) return selectionConfirmed ? "selected" : "review";
         goLive.Invoke();
         return WaitFor(() => {
@@ -480,8 +574,11 @@ public sealed class CodyDiscordControl
 
 $command=ConvertFrom-Json -InputObject $Request
 $discord=New-Object CodyDiscordControl
-if($null -ne $command.feature){
-  @{enabled=$discord.Voice([string]$command.feature,[string]$command.state)} | ConvertTo-Json -Compress
+if($command.leave -eq $true){
+  @{status=$discord.Leave()} | ConvertTo-Json -Compress
+}elseif($null -ne $command.feature){
+  $result=$discord.Voice([string]$command.feature,[string]$command.state)
+  @{enabled=$result.Enabled;changed=$result.Changed} | ConvertTo-Json -Compress
 }else{
   @{status=$discord.Share([int]$command.screen,[string]$command.app,[bool]$command.picker)} | ConvertTo-Json -Compress
 }
