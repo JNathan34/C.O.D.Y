@@ -38,14 +38,19 @@ function Select-CodyMediaSession($sessions,$current,[scriptblock]$Eligible=$null
             if(-not (Test-CodyMediaSource $candidate.SourceAppUserModelId)){continue}
             $status=$candidate.GetPlaybackInfo().PlaybackStatus.ToString()
             if($status -notin @('Playing','Paused')){continue}
-            if($Eligible -and -not (& $Eligible $candidate)){continue}
             if($status -eq 'Playing'){$playing+=,$candidate}
             elseif($status -eq 'Paused'){$paused+=,$candidate}
         }catch{}
     }
-    if($current){foreach($candidate in $playing){if($candidate.SourceAppUserModelId -eq $current.SourceAppUserModelId){return $candidate}}}
-    if($playing.Count){return $playing[0]}
-    if($current){foreach($candidate in $paused){if($candidate.SourceAppUserModelId -eq $current.SourceAppUserModelId){return $candidate}}}
-    if($paused.Count){return $paused[0]}
+    $currentSource=if($current){$current.SourceAppUserModelId}
+    foreach($group in @(@{sessions=$playing},@{sessions=$paused})){
+        $preferred=@($group.sessions | Where-Object {$_.SourceAppUserModelId -eq $currentSource})
+        $others=@($group.sessions | Where-Object {$_.SourceAppUserModelId -ne $currentSource})
+        foreach($candidate in ($preferred+$others)){
+            try{
+                if(-not $Eligible -or (& $Eligible $candidate)){return $candidate}
+            }catch{}
+        }
+    }
     return $null
 }

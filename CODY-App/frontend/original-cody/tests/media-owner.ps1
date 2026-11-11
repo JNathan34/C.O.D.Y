@@ -13,3 +13,26 @@ Assert (Test-CodyMediaOwner 'Plezy' 'Paused' @([pscustomobject]@{ProcessName='pl
 Assert (-not (Test-CodyMediaOwner 'firefox.exe' 'Paused' @())) 'Closed browser media is hidden'
 Assert (Test-CodyMediaOwner 'UnknownPlayer' 'Paused' @()) 'Unknown media ownership is not guessed'
 '9 media owner checks passed'
+
+function New-Session($source,$status){
+    $session=[pscustomobject]@{SourceAppUserModelId=$source;Status=$status}
+    $session | Add-Member -MemberType ScriptMethod -Name GetPlaybackInfo -Value { @{PlaybackStatus=$this.Status} }
+    return $session
+}
+$playing=New-Session 'Spotify.exe' 'Playing'
+$current=New-Session 'Plezy.exe' 'Playing'
+$paused=New-Session 'vlc.exe' 'Paused'
+$checked=[System.Collections.Generic.List[string]]::new()
+$selected=Select-CodyMediaSession @($paused,$playing,$current) $current {
+    param($candidate)
+    $checked.Add($candidate.SourceAppUserModelId)
+    return $true
+}
+Assert ($selected -eq $current -and ($checked -join ',') -eq 'Plezy.exe') 'Only fetch metadata for the preferred player when eligible'
+$checked.Clear()
+$selected=Select-CodyMediaSession @($paused,$playing,$current) $current {
+    param($candidate)
+    $checked.Add($candidate.SourceAppUserModelId)
+    return $candidate -ne $current
+}
+Assert ($selected -eq $playing -and ($checked -join ',') -eq 'Plezy.exe,Spotify.exe') 'An ineligible current session falls back to another playing session first'

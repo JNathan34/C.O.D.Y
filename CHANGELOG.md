@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.21 — 11 November 2026
+
+- Keep the microphone open after **“Hey Cody”** and buffer the start of your request while speech recognition starts.
+- Recognize more ways to leave a Discord call. Route clear speech variants through the built-in Discord command and ask about ambiguous transcriptions.
+- Respond faster to play, pause, skip and seek commands. Recognize more playback and volume phrases locally and reduce repeated work for local commands.
+
 ## 0.15.20 — 10 November 2026
 
 - Say **“Stop screen share”** or **“Discord stop streaming”** to end your Discord stream and stay in the call.

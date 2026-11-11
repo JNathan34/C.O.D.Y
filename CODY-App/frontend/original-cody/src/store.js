@@ -23,7 +23,7 @@ class StateStore {
   select(id){if(!this.chat(id))throw Error('Chat not found');this.data.activeChatId=id;this.save();}
   chat(id){return this.data.chats.find(c=>c.id===id);}
   deleteChat(id){this.data.chats=this.data.chats.filter(c=>c.id!==id);if(this.data.activeChatId===id)this.data.activeChatId=this.data.chats[0]?.id||null;this.save();}
-  addMessage(id,role,text,mode){const chat=this.chat(id);if(!chat)throw Error('Chat not found');const msg={id:randomUUID(),role,text:String(text).slice(0,200000),mode:mode||'chat',at:new Date().toISOString()};chat.messages.push(msg);chat.messages=chat.messages.slice(-120);if(role==='user'&&chat.title==='New chat')chat.title=suggestedTitle(text);chat.updatedAt=new Date().toISOString();this.save();return msg;}
+  addMessage(id,role,text,mode,{persist=true}={}){const chat=this.chat(id);if(!chat)throw Error('Chat not found');const msg={id:randomUUID(),role,text:String(text).slice(0,200000),mode:mode||'chat',at:new Date().toISOString()};chat.messages.push(msg);chat.messages=chat.messages.slice(-120);if(role==='user'&&chat.title==='New chat')chat.title=suggestedTitle(text);chat.updatedAt=new Date().toISOString();if(persist)this.save();else this.scheduleSave();return msg;}
   appendMessage(id,messageId,delta){const chat=this.chat(id);if(!chat)return;const msg=chat.messages.find(m=>m.id===messageId);if(msg)msg.text+=String(delta);this.save();}
   updateMessage(id,messageId,text,{persist=true}={}){const chat=this.chat(id);if(!chat)return;const msg=chat.messages.find(m=>m.id===messageId);if(msg)msg.text=String(text);if(persist)this.save();else this.scheduleSave();}
   scheduleSave(){if(this.pendingSave)return;this.pendingSave=setTimeout(()=>{this.pendingSave=null;this.save();},1200);this.pendingSave.unref?.();}

@@ -6,8 +6,8 @@ function commandText(input,{preserveShow=false,imperativeOnly=false}={}){
     const before=text;
     text=text.replace(/^(?:um|uh|erm|er|hey|okay|ok)[,.!]?\s+/i,'')
       .replace(/^(?:c[.\s]*o[.\s]*d[.\s]*y|kodi|codi)[,.!?:]*(?:\s+|$)/i,'');
-    if(imperativeOnly)text=text.replace(/^(?:(?:can|could|would|will) you|would you mind|i(?:'d| would) like you to)\s+/i,'').replace(/^please\s+/i,'').trim();
-    else text=text.replace(/^(?:(?:can|could|would|will) you|would you mind|do you know|i(?:'d| would) like (?:you to|to know))\s+/i,'')
+    if(imperativeOnly)text=text.replace(/^(?:would you mind|(?:can|could|would|will) you|i(?:'d| would) like you to)\s+/i,'').replace(/^please\s+/i,'').trim();
+    else text=text.replace(/^(?:would you mind|(?:can|could|would|will) you|do you know|i(?:'d| would) like (?:you to|to know))\s+/i,'')
       .replace(preserveShow?/^(?:please|tell me|give me)\s+/i:/^(?:please|tell me|give me|show me)\s+/i,'').trim();
     if(text===before)break;
   }

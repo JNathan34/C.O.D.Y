@@ -24,5 +24,11 @@ test('plain play and pause choose the current player, explicit Plezy stays Plezy
 });
 test('relative seeking handles minutes, seconds and spoken numbers without skipping a track',()=>{
   for(const [text,seconds,target]of [['skip 2 mins',120,'current'],['go back 30 seconds',-30,'current'],['rewind two minutes on Plezy',-120,'plezy'],['skip forward 1.5 minutes',90,'current']])assert.deepEqual(parseMediaCommand(text),{action:'media.control',args:{command:'seek',target,seconds}});
-  for(const text of ['skip 2 mins and open calculator','skip track','skip 999999 hours','skip 0 seconds'])assert.equal(parseMediaCommand(text),null,text);
+  for(const text of ['skip 2 mins and open calculator','skip 999999 hours','skip 0 seconds'])assert.equal(parseMediaCommand(text),null,text);
+});
+test('everyday playback phrases target the current player without swallowing other requests',()=>{
+  for(const [text,command] of [['continue playback','play'],['pause this song','pause'],['skip track','next'],['skip this song','next'],['next episode','next'],['previous track','previous']]){
+    assert.deepEqual(parseMediaCommand(text),{action:'media.control',args:{command,target:'current'}});
+  }
+  for(const text of ['continue','next','skip','skip this song and open calculator','skip this song on Spotify'])assert.equal(parseMediaCommand(text),null,text);
 });

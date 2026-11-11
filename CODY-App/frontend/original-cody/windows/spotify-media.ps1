@@ -17,12 +17,19 @@ using System.Threading;
 using System.Collections.Concurrent;
 public static class CodyMediaInput {
   public static readonly ConcurrentQueue<string> Lines = new ConcurrentQueue<string>();
+  public static readonly AutoResetEvent Ready = new AutoResetEvent(false);
   public static volatile bool Closed;
   public static void Start() {
     var reader = new Thread(() => {
-      try { string line; while ((line = Console.ReadLine()) != null) Lines.Enqueue(line); }
+      try {
+        string line;
+        while ((line = Console.ReadLine()) != null) {
+          Lines.Enqueue(line);
+          Ready.Set();
+        }
+      }
       catch { }
-      finally { Closed = true; }
+      finally { Closed = true; Ready.Set(); }
     });
     reader.IsBackground = true;
     reader.Start();
@@ -35,9 +42,27 @@ try {
   $previous='';$nextPoll=[DateTime]::MinValue;$artKey='';$artwork=$null;$artService='';$artRetry=[DateTime]::MinValue;$appIcons=@{}
   do {
     $line=$null;$hasCommand=[CodyMediaInput]::Lines.TryDequeue([ref]$line)
-    if($hasCommand -or [DateTime]::UtcNow -ge $nextPoll){
-      $ownerProcesses=@(Get-Process -ErrorAction SilentlyContinue)
-      $sessions=@($manager.GetSessions() | Where-Object {try{Test-CodyMediaOwner $_.SourceAppUserModelId ($_.GetPlaybackInfo().PlaybackStatus.ToString()) $ownerProcesses}catch{$false}})
+    $request=if($hasCommand){$line | ConvertFrom-Json}
+    $pollDue=-not $hasCommand -and [DateTime]::UtcNow -ge $nextPoll
+    $selectCurrent=$pollDue -or ($hasCommand -and $request.action -ne 'refresh' -and $request.target -eq 'current')
+    if($pollDue -or ($hasCommand -and $request.action -ne 'refresh')){
+      $sessions=@($manager.GetSessions())
+      $ownerProcesses=$null
+      if($selectCurrent){
+        $ownerProcesses=@(Get-Process -ErrorAction SilentlyContinue)
+      }else{
+        $sessions=@($sessions | Where-Object {
+          $source=$_.SourceAppUserModelId
+          switch($request.target){
+            'active'{$source -eq $request.source}
+            'plezy'{$source -match '(?i)plezy'}
+            default{$source -match '(?i)spotify'}
+          }
+        })
+      }
+      $sessions=@($sessions | Where-Object {try{Test-CodyMediaOwner $_.SourceAppUserModelId ($_.GetPlaybackInfo().PlaybackStatus.ToString()) $ownerProcesses}catch{$false}})
+    }
+    if($selectCurrent){
       $metadataBySource=@{}
       $eligible={param($candidate)
         try{
@@ -50,14 +75,9 @@ try {
     }
     if($hasCommand){
       if($line){
-        $request=$line | ConvertFrom-Json
         try {
           if($request.action -eq 'refresh'){$previous='';$nextPoll=[DateTime]::MinValue;continue}
-          if($request.target -eq 'active'){
-            $target=$sessions | Where-Object {$_.SourceAppUserModelId -eq $request.source} | Select-Object -First 1
-          }elseif($request.target -eq 'current'){$target=$session}
-          elseif($request.target -eq 'plezy'){$target=$sessions | Where-Object {$_.SourceAppUserModelId -match '(?i)plezy'} | Select-Object -First 1}
-          else{$target=$sessions | Where-Object {$_.SourceAppUserModelId -match '(?i)spotify'} | Select-Object -First 1}
+          $target=if($request.target -eq 'current'){$session}else{$sessions | Select-Object -First 1}
           if(-not $target){throw 'That media player is no longer available. Open it and start playback first.'}
           if(-not (Test-CodyMediaSource $target.SourceAppUserModelId)){throw 'This audio session is not a media player.'}
           $operation=switch($request.action){'play'{$target.TryPlayAsync()};'pause'{$target.TryPauseAsync()};'toggle'{$target.TryTogglePlayPauseAsync()};'next'{$target.TrySkipNextAsync()};'previous'{$target.TrySkipPreviousAsync()};'seek'{
@@ -70,8 +90,9 @@ try {
         }catch{Send @{id=$request.id;error=$_.Exception.Message}}
       }
       $nextPoll=[DateTime]::MinValue
+      continue
     }
-    if([DateTime]::UtcNow -ge $nextPoll){
+    if($pollDue){
       $state=@{available=$false;title='';artist='';playing=$false;source='';app=''}
       if($session){
         $properties=$metadataBySource[$session.SourceAppUserModelId]
@@ -95,6 +116,10 @@ try {
       if($json -ne $previous){Send @{state=$state};$previous=$json}
       $nextPoll=[DateTime]::UtcNow.AddSeconds(2)
     }
-    if(-not $Once){if([CodyMediaInput]::Closed -and [CodyMediaInput]::Lines.IsEmpty){break};Start-Sleep -Milliseconds 100}
+    if(-not $Once -and [CodyMediaInput]::Lines.IsEmpty){
+      if([CodyMediaInput]::Closed){break}
+      $wait=[Math]::Max(0,($nextPoll-[DateTime]::UtcNow).TotalMilliseconds)
+      [void][CodyMediaInput]::Ready.WaitOne([int][Math]::Ceiling($wait))
+    }
   }while(-not $Once)
 }catch{Send @{state=@{available=$false;error=$_.Exception.Message}};exit 1}

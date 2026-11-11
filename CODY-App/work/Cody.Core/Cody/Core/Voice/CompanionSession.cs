@@ -1132,7 +1132,9 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 
 	public Task BeginPushToTalkAsync()=>BeginPushToTalkWithPrefixAsync(ReadOnlyMemory<byte>.Empty);
 
-    public Task BeginPushToTalkWithPrefixAsync(ReadOnlyMemory<byte> prefix)
+    private bool usesExternalVoiceAudio;
+
+    public Task BeginPushToTalkWithPrefixAsync(ReadOnlyMemory<byte> prefix, bool externalAudio = false)
 	{
 		options.Drive?.StopBecauseUserSpoke();
 		InterruptForNewInput(clearDrawing: false);
@@ -1176,13 +1178,14 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			pressAudioLength = 0;
 			pressFrameCount = 0;
 			pressWasRefused = false;
+			usesExternalVoiceAudio = externalAudio;
 			isListening = true;
 		}
 		EndBluetoothHold(release: false);
 		try
 		{
-            if(!prefix.IsEmpty)OnMicrophoneFrame(prefix);
-			microphone.Start();
+            if(!prefix.IsEmpty)RecordVoiceFrame(prefix, externalAudio);
+			if(!externalAudio)microphone.Start();
 		}
 		catch (Exception ex)
 		{
@@ -1241,6 +1244,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		long heldMs;
 		int num;
 		long releaseGeneration;
+		bool externalAudio;
 		lock (gate)
 		{
 			if (pressWasRefused)
@@ -1256,6 +1260,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			heldMs = Environment.TickCount64 - pressStartedTicks;
 			num = pressFrameCount;
 			releaseGeneration = generation;
+			externalAudio = usesExternalVoiceAudio;
 		}
 		long releasedAtTicks = Environment.TickCount64;
 		if (TimeSpan.FromMilliseconds(heldMs, 0L) < options.MinimumHold)
@@ -1276,8 +1281,8 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		(string? DisplayName, string? ProcessName) frontApp = options.DesktopActions.FrontApplication();
 		double num2 = options.CaptureSettleSeconds?.Invoke() ?? 0.0;
 		Task<TurnCapture> captureTask = ((num2 > 0.0) ? Task.Delay(TimeSpan.FromSeconds(num2)).ContinueWith((Task _) => CaptureForTurnAsync(endHighlight: true), TaskScheduler.Default).Unwrap() : CaptureForTurnAsync(endHighlight: true));
-		bool capturesFromBluetooth = microphone.IsBluetoothDevice;
-		if (heldMs > (capturesFromBluetooth ? 3000 : 1500) && num == 0)
+		bool capturesFromBluetooth = !externalAudio && microphone.IsBluetoothDevice;
+		if (!externalAudio && heldMs > (capturesFromBluetooth ? 3000 : 1500) && num == 0)
 		{
 			string deviceName = microphone.DeviceName;
 			Log.Warn("Companion", $"{(double)heldMs / 1000.0:0.0} s hold, no audio from the mic ('{deviceName ?? "unknown"}')");
@@ -1295,7 +1300,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			consecutiveDeadAirPresses = 0;
 			hasReportedIrrecoverableMicrophone = false;
 		}
-		await Task.Delay(ReleaseTail).ConfigureAwait(continueOnCapturedContext: false);
+		if(!externalAudio)await Task.Delay(ReleaseTail).ConfigureAwait(continueOnCapturedContext: false);
 		lock (gate)
 		{
 			if (generation != releaseGeneration || ears != transcriber)
@@ -1312,7 +1317,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 				microphone.StopKeepingDeviceOpen();
 				HoldBluetoothMicrophoneOpenUntilTheReplyPlaysOut();
 			}
-			else
+			else if(!externalAudio)
 			{
 				microphone.Stop();
 			}
@@ -1485,14 +1490,18 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		return null;
 	}
 
-	private void OnMicrophoneFrame(ReadOnlyMemory<byte> frame)
+	private void OnMicrophoneFrame(ReadOnlyMemory<byte> frame) => RecordVoiceFrame(frame, false);
+
+	public bool PushExternalVoiceFrame(ReadOnlyMemory<byte> frame) => RecordVoiceFrame(frame, true);
+
+	private bool RecordVoiceFrame(ReadOnlyMemory<byte> frame, bool externalAudio)
 	{
 		DeepgramTranscriber deepgramTranscriber;
 		lock (gate)
 		{
-			if (!isListening)
+			if (!isListening || usesExternalVoiceAudio != externalAudio)
 			{
-				return;
+				return false;
 			}
 			deepgramTranscriber = ears;
 			pressFrameCount++;
@@ -1514,6 +1523,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			}
 		}
 		deepgramTranscriber?.PushAudio(frame.Span);
+		return true;
 	}
 
 	private void StartLiveTranscriptLoop(DeepgramTranscriber transcriber)

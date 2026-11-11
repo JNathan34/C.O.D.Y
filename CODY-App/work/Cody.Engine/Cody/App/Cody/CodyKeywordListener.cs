@@ -17,7 +17,7 @@ internal static class CodyKeywordListener
     private static readonly Queue<byte[]> prefix=new();
     internal const int MaxPrefixBytes = 2 * WasapiMicrophoneCapture.CaptureSampleRate * sizeof(short);
     private static int prefixBytes;
-    private static bool listening,announced;
+    private static bool listening,announced,streaming;
     private static string detected;
     private static float speechPeak;
     private static KeywordSpotter longWords,nameOnly;
@@ -37,7 +37,7 @@ internal static class CodyKeywordListener
         c.KeywordsBuf=keywords;c.KeywordsBufSize=Encoding.UTF8.GetByteCount(keywords);
         return new KeywordSpotter(c);
     }
-    private static void Reset(){longStream?.Dispose();nameStream?.Dispose();longStream=longWords?.CreateStream();nameStream=nameOnly?.CreateStream();detected=null;announced=false;speechPeak=0;ClearPrefix();}
+    private static void Reset(){longStream?.Dispose();nameStream?.Dispose();longStream=longWords?.CreateStream();nameStream=nameOnly?.CreateStream();detected=null;announced=false;streaming=false;speechPeak=0;ClearPrefix();}
     private static void ClearPrefix(){prefix.Clear();prefixBytes=0;}
     private static string Detect(int rate,float[] samples){
         if(longWords!=null){
@@ -67,6 +67,10 @@ internal static class CodyKeywordListener
     private static void Frame(ReadOnlyMemory<byte> input){
         lock(gate){
             if(!listening)return;
+            if(streaming){
+                Send(new{type="audio",epoch,pcm=Convert.ToBase64String(input.Span)});
+                return;
+            }
             firstFrame.Set();
             var data=input.Length>MaxPrefixBytes?input.Slice(input.Length-MaxPrefixBytes).ToArray():input.ToArray();
             prefix.Enqueue(data);prefixBytes+=data.Length;
@@ -106,7 +110,7 @@ internal static class CodyKeywordListener
             }return 0;}
             using var microphone=new WasapiMicrophoneCapture();microphone.Frame+=Frame;
             microphone.DeviceProvedDead+=message=>Send(new{type="error",message="Wake microphone became unavailable: "+message});
-            Send(new{type="ready",detector="keyword",sampleRate=24000});
+            Send(new{type="ready",detector="keyword",sampleRate=24000,streamingCapture=true});
             string line;while((line=Console.ReadLine())!=null){
                 using var command=JsonDocument.Parse(line);string mode=command.RootElement.GetProperty("mode").GetString();int requestedEpoch=command.RootElement.GetProperty("epoch").GetInt32();
                 if(mode=="quit")break;
@@ -118,9 +122,17 @@ internal static class CodyKeywordListener
                         announced=true;
                         if(detected!=null)SendWake();
                     }
+                }else if(mode=="capture"){
+                    lock(gate){
+                        if(!listening||detected==null||streaming)throw new InvalidOperationException("Wake capture requires a confirmed phrase.");
+                        string audio=Convert.ToBase64String(prefix.SelectMany(x=>x).ToArray());
+                        ClearPrefix();
+                        epoch=requestedEpoch;streaming=true;
+                        Send(new{type="state",mode="capturing",epoch,audioPrefix=audio});
+                    }
                 }else if(mode=="pause"){
                     microphone.Stop();string audio;
-                    lock(gate){audio=detected!=null?Convert.ToBase64String(prefix.SelectMany(x=>x).ToArray()):null;epoch=requestedEpoch;listening=false;ClearPrefix();}
+                    lock(gate){audio=detected!=null&&!streaming?Convert.ToBase64String(prefix.SelectMany(x=>x).ToArray()):null;epoch=requestedEpoch;listening=false;streaming=false;ClearPrefix();}
                     Send(new{type="state",mode="paused",epoch=requestedEpoch,audioPrefix=audio});
                 }
             }

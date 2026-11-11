@@ -26,6 +26,7 @@ public static class CodyEngineBridge
     private static volatile bool escapeWork;
     internal static bool EscapeCancellationAvailable=>escapeCancellation!=null;
     internal static void CancelCurrent(){
+        voiceStartGeneration++;
         CodyIndependentInput.End();
         string target=CodyJobReports.CancellationTarget(host,host.ClickyDrive?.CodyOwningThread,turn,host.ClickyDrive?.ClaimsEscape!=true&&host.Services.Companion.State==VoiceState.Idle);
         if(target!=null)_=StopTask(target);
@@ -39,6 +40,8 @@ public static class CodyEngineBridge
     private static StreamWriter output;
     private static readonly SemaphoreSlim writes = new(1, 1);
     private static string turn = "";
+    private static string wakeAudioTurn;
+    private static int voiceStartGeneration;
     private static CancellationTokenSource speechCancellation;
     private static bool customSpeech;
     private static bool cachedSpeaking;
@@ -61,7 +64,7 @@ public static class CodyEngineBridge
         host.Real.Core.Settings.Update(settings=>{
             settings.DictationLanguageCode=language;settings.DictationSpecificLanguageCode="en";
             settings.DictationCustomWords??=new System.Collections.Generic.List<string>();
-            foreach(string word in new[]{"CPU","GPU","RAM","Wi-Fi","Plezy","C.O.D.Y.","Derby","weather"})
+            foreach(string word in new[]{"Discord","Discord call","Discord voice channel","CPU","GPU","RAM","Wi-Fi","Plezy","C.O.D.Y.","Derby","weather"})
                 if(settings.DictationCustomWords.Count<100&&!settings.DictationCustomWords.Contains(word,StringComparer.OrdinalIgnoreCase))settings.DictationCustomWords.Add(word);
         });
         if(save)File.WriteAllText(RecognitionLanguagePath,language);
@@ -108,8 +111,11 @@ public static class CodyEngineBridge
             escapeWork=CodyIndependentInput.Active||host.ClickyDrive?.ClaimsEscape==true||session.State!=VoiceState.Idle||host.Real.Agents.Tasks.Any(task=>task.Status is AgentTaskStatus.Starting or AgentTaskStatus.Running or AgentTaskStatus.WaitingForUser);
             bool yielding=HeyClicky.Platform.Win32.ScreenCaptureYield.IsYielding;
             if(captureUi!=yielding){captureUi=yielding;Emit("screen-capture-ui",new{active=yielding});}
-            CodyCursorVisuals.Tick(cachedSpeaking?VoiceState.Responding:session.State,session.State==VoiceState.Listening?host.Services.Microphone.Level:host.Services.Audio.Level);
-            Emit("meter", new { dictationActive=host.Real.Dictation.IsSessionActive,voiceActive=CodyVoiceActivity.Speaking,level = session.State == VoiceState.Listening ? host.Services.Microphone.Level : host.Services.Audio.Level, state = session.State.ToString() });
+            float level=session.State==VoiceState.Listening
+                ? (wakeAudioTurn==turn?CodyVoiceActivity.StreamLevel:host.Services.Microphone.Level)
+                : host.Services.Audio.Level;
+            CodyCursorVisuals.Tick(cachedSpeaking?VoiceState.Responding:session.State,level);
+            Emit("meter", new { dictationActive=host.Real.Dictation.IsSessionActive,voiceActive=CodyVoiceActivity.Speaking,wakeSpeechHeard=wakeAudioTurn==turn&&CodyVoiceActivity.StreamHeardSpeech,level,state=session.State.ToString() });
             if(++consentTicks%10==0){host.ClickyDriveConsent?.SyncCodyApprovals();Consent.Sweep();CodyBrowserSetup.Tick();}
             if(consentTicks%5==0){CodyJobReports.Tick(host);CodyModelZoom.Refresh();CodyOverlayOrder.Refresh();}
         };
@@ -286,6 +292,7 @@ public static class CodyEngineBridge
                         if(microphoneMuted)File.WriteAllText(muteFile,"muted");else if(File.Exists(muteFile))File.Delete(muteFile);
                         MicrophoneMuted=microphoneMuted;
                         if(microphoneMuted){
+                            voiceStartGeneration++;
                             host.Real.Dictation.CancelActiveSession();
                             if(session.State==VoiceState.Listening)session.Cancel();
                             CodyVoiceActivity.End();
@@ -295,8 +302,11 @@ public static class CodyEngineBridge
                         if(CodyIndependentInput.Active)throw new InvalidOperationException("Press Esc to stop computer use first.");
                         if(MicrophoneMuted)throw new InvalidOperationException("C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.");
                         StopSpeech(request.TryGetProperty("gameDuplex", out var duplex) && duplex.GetBoolean());
+                        int voiceStart=++voiceStartGeneration;
                         string textTarget=request.TryGetProperty("captureText",out var captureText)&&captureText.GetBoolean()?await CodyProofread.Capture(request.GetProperty("clientPid").GetInt32()):null;
+                        if(voiceStart!=voiceStartGeneration)return new { listening=false };
                         turn = Text("turn", id);
+                        wakeAudioTurn=null;
                         utilityOnly = CodyMemoryPolicy.LocalOnly || (request.TryGetProperty("utilityOnly", out var onlyUtility) && onlyUtility.GetBoolean());
                         lastTranscript = routedUtility = null;
                         byte[] audioPrefix=Array.Empty<byte>();
@@ -307,17 +317,33 @@ public static class CodyEngineBridge
                             audioPrefix=Convert.FromBase64String(encoded);if(audioPrefix.Length%2!=0)throw new ArgumentException("Invalid wake audio samples.");
                         }
                         if(MicrophoneMuted)throw new InvalidOperationException("C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.");
-                        CodyVoiceActivity.Begin(host.Services.Microphone,request.TryGetProperty("wake",out var wakeCapture)&&wakeCapture.GetBoolean());
-                        await ((CompanionSession)session).BeginPushToTalkWithPrefixAsync(audioPrefix);
+                        bool wake=request.TryGetProperty("wake",out var wakeCapture)&&wakeCapture.GetBoolean();
+                        bool streamed=wake&&request.TryGetProperty("streamedAudio",out var streamAudio)&&streamAudio.GetBoolean();
+                        CodyVoiceActivity.Begin(host.Services.Microphone,wake&&!streamed);
+                        await session.BeginPushToTalkWithPrefixAsync(audioPrefix,streamed);
                         if(MicrophoneMuted){session.Cancel();CodyVoiceActivity.End();return new { listening=false,textTarget };}
+                        if(streamed&&session.State==VoiceState.Listening){
+                            wakeAudioTurn=turn;
+                            CodyVoiceActivity.Begin(host.Services.Microphone,true,streamed:true);
+                        }
                         return new { listening = session.State == VoiceState.Listening, textTarget };
+                    case "wake-audio":
+                        if(MicrophoneMuted||host.Real.Dictation.IsSessionActive||wakeAudioTurn!=turn||Text("turn")!=turn||session.State!=VoiceState.Listening)return new{accepted=false};
+                        string pcm=Text("pcm");
+                        int maxFrame=WasapiMicrophoneCapture.BytesPerFrame;
+                        if(pcm.Length==0||pcm.Length>(maxFrame+2)/3*4)throw new ArgumentException("Invalid wake audio frame.");
+                        byte[] frame=Convert.FromBase64String(pcm);
+                        if(frame.Length==0||frame.Length>maxFrame||frame.Length%2!=0)throw new ArgumentException("Invalid wake audio samples.");
+                        bool accepted=session.PushExternalVoiceFrame(frame);
+                        if(accepted)CodyVoiceActivity.StreamFrame(frame,WasapiMicrophoneCapture.CaptureSampleRate);
+                        return new{accepted};
                     case "end":
                         voiceEnding = true; routedUtility = null;voiceControlStopped=false;
                         try { await session.EndPushToTalkAsync(); }
                         catch(OperationCanceledException) when(routedUtility != null||voiceControlStopped) { }
                         finally { voiceEnding = false; }
                         return new { text = session.ResponseText, utilityText = routedUtility, transcript = lastTranscript,controlStopped=voiceControlStopped };
-                    case "cancel": CodyIndependentInput.End();host.ClickyDrive?.HandleEscape();CodyProofread.Cancel();StopSpeech(); session.Cancel(); return new { cancelled = true };
+                    case "cancel": voiceStartGeneration++;CodyIndependentInput.End();host.ClickyDrive?.HandleEscape();CodyProofread.Cancel();StopSpeech(); session.Cancel(); return new { cancelled = true };
                     case "fresh": session.StartFreshSession(); return new { fresh = true };
                     case "clear": host.Real.Canvas.Clear(); return new { cleared = true };
                     case "audio-state": return JsonSerializer.Deserialize<JsonElement>(NativeAudioControl.State());

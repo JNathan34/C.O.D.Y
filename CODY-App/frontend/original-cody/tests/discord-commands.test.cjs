@@ -28,9 +28,10 @@ test('Discord commands recognize typed and spoken mute, deafen, share and discon
     ['share Firefox on Discord',{app:'Firefox'}],['share the Google Chrome window on Discord',{app:'Google Chrome'}]
   ])assert.deepEqual(parseDiscordCommand(input),{action:'discord.share',args},input);
   for(const input of [
-    'leave Discord','disconnect from Discord','CODY, please disconnect me from Discord',
+    'leave Discord','leave the Discord','disconnect from Discord','CODY, please disconnect me from Discord',
     'leave my Discord voice channel','leave the call on Discord','hang up on Discord',
-    'end the Discord call','Discord, disconnect','Discord leave voice channel'
+    'end the Discord call','Discord, disconnect','Discord leave voice channel',
+    'get me out of the Discord call','drop out of the voice chat in Discord','would you mind leaving the Discord VC'
   ])assert.deepEqual(parseDiscordCommand(input),{action:'discord.leave',args:{}},input);
   for(const input of [
     'stop screen share','stop sharing my screen','Discord stop screenshare',
@@ -41,6 +42,21 @@ test('Discord commands recognize typed and spoken mute, deafen, share and discon
     'leave Discord server','disconnect from Wi-Fi','close Discord','leave the call','don’t leave Discord','tell me how to leave Discord','do you know leave Discord','leave Discord and close the app',
     'stop screen recording','stop streaming','stop screen share on Zoom','don’t stop screen share','tell me how to stop screen share','stop screen share and leave Discord'])
     assert.equal(parseDiscordCommand(input),null,input);
+});
+
+test('speech repair requires an entire Discord leave command and asks about ambiguous app names',()=>{
+  const spoken={spoken:true};
+  for(const input of ['leave the dis cord','could you leave the disc cord call','disconnect from disk cord','hang up on Dischord']){
+    assert.deepEqual(parseDiscordCommand(input,spoken),{action:'discord.leave',args:{}},input);
+    assert.equal(parseDiscordCommand(input),null,input);
+  }
+  for(const input of ['leave the disco','disconnect from this cord','leave the Discord cool','leave the discourse']){
+    assert.deepEqual(parseDiscordCommand(input,spoken),{action:'discord.leave-clarify',args:{}},input);
+    assert.equal(parseDiscordCommand(input),null,input);
+  }
+  for(const input of ['leave the disc cord server','do not leave the disc cord','how do I leave the disco',
+    'leave the disc cord and open Spotify','leave the call on Teams','leave this call','leave it on Discord',
+    'write “leave the disco”','tell me about Dischord'])assert.equal(parseDiscordCommand(input,spoken),null,input);
 });
 
 test('Discord control checks permissions and is unavailable to agent tools',async()=>{
@@ -176,7 +192,7 @@ test('the Island renders Discord feedback over listening and keeps recording con
 });
 
 test('typed and spoken Discord commands show progress and results in the Island and bypass AI',async()=>{
-  for(const {input,voice,action,args,reply,card,progress,output,micMuted} of [
+  for(const {input,voice,wake=false,action,args,reply,card,progress,output,micMuted} of [
     {input:'mute Discord',voice:true,action:'discord.voice',args:{feature:'mute',state:'on'},reply:'Muted.',card:'Muted',progress:'Muting…',output:{enabled:true,changed:true},micMuted:true},
     {input:'unmute Discord',voice:true,action:'discord.voice',args:{feature:'mute',state:'off'},reply:'Unmuted.',card:'Unmuted',progress:'Unmuting…',output:{enabled:false,changed:true},micMuted:false},
     {input:'Discord defen',voice:true,action:'discord.voice',args:{feature:'deafen',state:'on'},reply:'Deafened.',card:'Deafened',progress:'Deafening…',output:{enabled:true,changed:true}},
@@ -184,6 +200,9 @@ test('typed and spoken Discord commands show progress and results in the Island 
     {input:'Discord screenshare',voice:true,action:'discord.share',args:{picker:true},reply:'Pick a source in Discord.',card:'Pick source',progress:'Opening…',output:{status:'picker'}},
     {input:'share screen',voice:true,action:'discord.share',args:{screen:1},reply:'Sharing screen 1.',card:'Sharing',progress:'Starting share…',output:{status:'started'}},
     {input:'disconnect from Discord',voice:true,action:'discord.leave',args:{},reply:'Disconnected.',card:'Disconnected',progress:'Disconnecting…',output:{status:'left'}},
+    {input:'leave the disc cord',voice:true,action:'discord.leave',args:{},reply:'Disconnected.',card:'Disconnected',progress:'Disconnecting…',output:{status:'left'}},
+    {input:'Hey Cody, leave the dis cord',voice:true,wake:true,action:'discord.leave',args:{},reply:'Disconnected.',card:'Disconnected',progress:'Disconnecting…',output:{status:'left'}},
+    {input:'leave the disco',voice:true,reply:'Did you mean to leave your Discord call? Say “disconnect from Discord” to leave.',card:'Leave Discord call?'},
     {input:'leave Discord',voice:false,action:'discord.leave',args:{},reply:'No active call.',card:'No active call',progress:'Disconnecting…',output:{status:'not-connected'}},
     {input:'stop screen share',voice:true,action:'discord.stop-share',args:{},reply:'Screen share stopped.',card:'Share stopped',progress:'Stopping share…',output:{status:'stopped'}},
     ...[false,true].map(voice=>({input:'share screen two',voice,action:'discord.share',args:{screen:2},reply:'Sharing screen 2.',card:'Sharing',progress:'Starting share…',output:{status:'started'}}))
@@ -204,27 +223,29 @@ test('typed and spoken Discord commands show progress and results in the Island 
       const message={id:String(messages.length),role,text};messages.push(message);return message;
     },updateMessage(){},save(){},publicState:()=>({settings})};
     const webContents={mainFrame:{}};
-    installNativeIpc({ipcMain:{removeHandler(){},handle:(name,fn)=>handlers.set(name,fn)},engine,store,utilities,sendUI(){},getState:()=>({}),getWindow:()=>({webContents})});
+    const bindings=installNativeIpc({ipcMain:{removeHandler(){},handle:(name,fn)=>handlers.set(name,fn)},engine,store,utilities,sendUI(){},getState:()=>({}),getWindow:()=>({webContents})});
     const invoke=(name,...args)=>handlers.get(name)({sender:webContents,senderFrame:webContents.mainFrame},...args);
     if(voice){
-      await invoke('native-begin');
+      if(wake)await bindings.beginVoice({wake:true});
+      else await invoke('native-begin');
       const turn=calls.find(call=>call.command==='begin').args.turn;
       engine.emit('classify-utility',{turn,text:input});
       await new Promise(resolve=>setImmediate(resolve));
       assert.equal(calls.find(call=>call.command==='utility-route').args.handled,true);
-      await invoke('native-end');
+      if(wake)await bindings.endWakeVoice();
+      else await invoke('native-end');
     }else{
       await invoke('send-message',{chatId:'chat',text:input});
       await new Promise(resolve=>setImmediate(resolve));
     }
-    assert.deepEqual(actions,[{action,args,origin:'chat'}]);
+    assert.deepEqual(actions,action?[{action,args,origin:'chat'}]:[]);
     assert.equal(calls.some(call=>call.command==='submit'),false);
-    assert.deepEqual(cards.map(({source,text,detail})=>[source,text,detail]),[['discord',progress,'Discord'],['discord',card,'Discord']]);
-    assert.ok(cards[0].duration>=30000);
+    assert.deepEqual(cards.map(({source,text,detail})=>[source,text,detail]),(progress?[progress,card]:[card]).map(text=>['discord',text,'Discord']));
+    if(progress)assert.ok(cards[0].duration>=30000);
     assert.equal(messages.at(-1).text,reply);
     assert.equal(calls.find(call=>call.command==='speak')?.args.text,voice?reply:undefined);
     assert.equal(cards[0].micMuted,undefined);
-    assert.equal(cards[1].micMuted,micMuted);
+    assert.equal(cards.at(-1).micMuted,micMuted);
     if(micMuted!==undefined)assert.equal(cards[1].micChanged,true);
   }
 });

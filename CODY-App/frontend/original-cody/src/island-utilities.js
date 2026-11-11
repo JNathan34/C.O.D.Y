@@ -36,9 +36,9 @@ function matchesApp(window,name){
 
 class IslandUtilities {
   constructor({tasks,monitors,capture,rps,weather,timer,spotify,controller,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{tasks,monitors,capture,rps,weather,timer,spotify,controller,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
-  match(input){
+  match(input,{spoken=false}={}){
     const system=parseSystemCommand(input);if(system)return {kind:'direct',...system,text:input};
-    const discord=parseDiscordCommand(input);if(discord)return {kind:'direct',...discord};
+    const discord=parseDiscordCommand(input,{spoken});if(discord)return {kind:discord.action==='discord.leave-clarify'?'local':'direct',...discord};
     if(/^(?:(?:show|open|view)(?: me)? (?:my |the )?(?:background )?tasks|background tasks)$/i.test(commandText(input,{preserveShow:true})))return {kind:'local',action:'background-tasks'};
     if(isProofreadCommand(input))return {kind:'direct',action:'text.proofread',args:{}};
     const appLayout=parseAppCommand(input);if(appLayout)return {kind:'direct',...appLayout,text:input};
@@ -52,7 +52,7 @@ class IslandUtilities {
     const target=app&&(APP_ALIASES[app.toLowerCase()]||app.toLowerCase());
     const direct=target&&APP_NAMES[target]?parseDirectAction("open "+target):parseDirectAction(text);
     if(direct&&['audio.set','audio.mute','spotify.control','media.control','app.open'].includes(direct.action))return {kind:'direct',...direct,text};
-    let query=commandText(text).toLowerCase().replace(/'/g,'');
+    let query=commandText(text).toLowerCase().replace(/'/g,'').replace(/\b(?:music|sound|audio|system|computer) volume\b/g,'volume');
     query=query.replace(/^(?:turn|put) (up|down) (?:the )?(volume|music|sound)(.*)$/,'turn the $2 $1$3')
       .replace(/^(increase|raise|decrease|lower) (?:the )?(volume|music|sound)(.*)$/,(_,verb,item,tail)=>'turn the '+item+' '+(/increase|raise/.test(verb)?'up':'down')+tail)
       .replace(/^(volume|music|sound) (up|down)(.*)$/,'turn the $1 $2$3')
@@ -72,7 +72,7 @@ class IslandUtilities {
   volumeCard(state,generation=this.generation){if(generation!==this.generation)return "";const card={kind:'utility',text:state.muted?'Muted':state.level+'%',detail:'Volume',icon:state.muted?'volume-x':'volume-2'};this.showCard(card);return state.muted?'Sound is muted.':`Volume is ${state.level}%.`;}
   mediaCard(fallback){const media=this.spotify.snapshot();this.clearCard();this.refreshMedia();if(!media.available||!media.title)this.showCard({kind:'utility',text:fallback||'No track playing',detail:'Music',icon:'music'});return media;}
   async run(input,chatId,context={}){
-    const route=this.match(input);if(!route)return {handled:false};
+    const route=context.route??this.match(input);if(!route)return {handled:false};
     const discord=route.action.startsWith('discord.');
     if(discord&&this.discordOperation)return {handled:true,error:true,reply:'A Discord command is already running. Try again when it finishes.'};
     const generation=this.generation=(this.generation||0)+1;
@@ -94,6 +94,11 @@ class IslandUtilities {
         case 'timer':reply=this.timer.execute(route.timer,chatId);if(['start','cancel'].includes(route.timer.action))this.clearCard();this.refreshMedia();confirmation=route.timer.action==='start'?'Timer set.':route.timer.action==='cancel'?'Timer stopped.':undefined;break;
         case 'spotify-status':{const media=this.mediaCard();reply=media.available?`${media.playing?'Playing':'Paused'}: ${media.title||'Music'}${media.artist?' — '+media.artist:''}.`:'Open a music player and start a track to show it in the Island.';break;}
         case 'volume-status':reply=this.volumeCard(await this.audioState(),generation);break;
+        case 'discord.leave-clarify':{
+          reply='Did you mean to leave your Discord call? Say “disconnect from Discord” to leave.';
+          show(discordCard('Leave Discord call?','circle-help',reply));
+          break;
+        }
         case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':{
           const sharing=route.action==='discord.share';
           const stopping=route.action==='discord.stop-share';

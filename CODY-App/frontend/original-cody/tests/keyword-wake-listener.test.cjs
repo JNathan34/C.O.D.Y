@@ -3,15 +3,59 @@ const test=require('node:test'),assert=require('node:assert/strict'),{EventEmitt
 const {KeywordWakeListener,stripWakeText,isListeningCancellation,endPauseMs}=require('../src/voice/keyword-wake-listener');
 const prefs={wakeWordEnabled:true,wakeHeyCody:true,wakeOkayCody:true,wakeCody:true};
 const flush=()=>new Promise(r=>setImmediate(r));
-function fixture(){let now=10000,reason=null,captureReason=null;const calls=[],children=[];
+function fixture({streaming=false}={}){let now=10000,reason=null,captureReason=null;const calls=[],children=[];
  const listener=new KeywordWakeListener({launch:phrases=>({command:'native',args:phrases}),now:()=>now,canListen:()=>reason,canCapture:()=>captureReason,
- beginVoice:async options=>{calls.push(['begin',options]);return {listening:true};},endVoice:async()=>calls.push(['end']),cancelVoice:async()=>calls.push(['cancel']),onWake:async()=>calls.push(['cue']),
- spawnProcess:()=>{const child=new EventEmitter();child.stdout=new EventEmitter();child.stdout.setEncoding=()=>{};child.stderr=new EventEmitter();child.stdin=new EventEmitter();child.writes=[];child.stdin.write=line=>{const command=JSON.parse(line);child.writes.push(command);queueMicrotask(()=>listener.receive({type:'state',mode:command.mode==='listen'?'listening':'paused',epoch:command.epoch,audioPrefix:command.mode==='pause'?'AAAA':null}));};child.stdin.end=()=>{};child.kill=()=>child.killed=true;children.push(child);return child;}});
- return {listener,calls,children,start:async()=>{listener.configure(prefs);listener.receive({type:'ready'});await flush();},advance:n=>now+=n,block:value=>{reason=value;listener.update();},captureBlock:value=>{captureReason=value;listener.update();},wake:()=>listener.receive({type:'wake',phrase:'hey cody',epoch:listener.epoch})};
+ beginVoice:async options=>{calls.push(['begin',options]);return {listening:true};},forwardAudio:async pcm=>{calls.push(['audio',pcm]);return {accepted:true};},endVoice:async()=>calls.push(['end']),cancelVoice:async()=>calls.push(['cancel']),onWake:async()=>calls.push(['cue']),
+ spawnProcess:()=>{const child=new EventEmitter();child.stdout=new EventEmitter();child.stdout.setEncoding=()=>{};child.stderr=new EventEmitter();child.stdin=new EventEmitter();child.writes=[];child.stdin.write=line=>{const command=JSON.parse(line);child.writes.push(command);queueMicrotask(()=>listener.receive({type:'state',mode:{listen:'listening',pause:'paused',capture:'capturing'}[command.mode],epoch:command.epoch,audioPrefix:command.mode==='listen'?null:'AAA='}));};child.stdin.end=()=>{};child.kill=()=>child.killed=true;children.push(child);return child;}});
+ return {listener,calls,children,start:async()=>{listener.configure(prefs);listener.receive({type:'ready',streamingCapture:streaming});await flush();},advance:n=>now+=n,block:value=>{reason=value;listener.update();},captureBlock:value=>{captureReason=value;listener.update();},wake:()=>listener.receive({type:'wake',phrase:'hey cody',epoch:listener.epoch}),audio:(pcm,epoch=listener.epoch)=>listener.receive({type:'audio',pcm,epoch})};
 }
 test('wake addresses are removed without changing the actual request',()=>{for(const s of ['Hey Cody, what is the time?','OK Cody what is the time?','Okay, Cody: what is the time?','Cody what is the time?','Hey C.O.D.Y., what is the time?','HeyCody what is the time?'])assert.equal(stripWakeText(s),'what is the time?');assert.equal(stripWakeText('tell Cody the time'),'tell Cody the time');assert.equal(stripWakeText('Hey Cody'),'');});
 test('standby never begins a voice request from partial guesses or generic speech',async()=>{const f=fixture();await f.start();for(const type of ['activity','speech'])f.listener.receive({type,phrase:'hey cody',text:'Hey Cody',epoch:f.listener.epoch});assert.equal(f.listener.mode,'listening');assert.deepEqual(f.calls,[]);f.listener.close();});
-test('confirmed wake waits for the microphone handoff and preserves buffered speech',async()=>{const f=fixture();await f.start();f.wake();await flush();assert.equal(f.listener.capture,true);assert.equal(f.listener.mode,'armed');assert.deepEqual(f.calls.map(c=>c[0]),['begin','cue']);assert.deepEqual(f.calls[0][1],{wake:true,audioPrefix:'AAAA'});assert.equal(f.listener.wire,'pause');f.listener.close();});
+test('older wake helpers can still hand off their buffered speech',async()=>{const f=fixture();await f.start();f.wake();await flush();assert.equal(f.listener.capture,true);assert.equal(f.listener.mode,'armed');assert.deepEqual(f.calls.map(c=>c[0]),['begin','cue']);assert.deepEqual(f.calls[0][1],{wake:true,audioPrefix:'AAA='});assert.equal(f.listener.wire,'pause');f.listener.close();});
+test('streamed wake keeps the microphone open and forwards speech captured during startup in order',async()=>{
+ const f=fixture({streaming:true});
+ await f.start();
+ let ready;
+ f.listener.beginVoice=options=>{f.calls.push(['begin',options]);return new Promise(resolve=>ready=resolve);};
+ f.wake();
+ await flush();
+ assert.equal(f.listener.mode,'armed');
+ assert.deepEqual(f.calls,[['begin',{wake:true,audioPrefix:'AAA=',streamedAudio:true}]]);
+ assert.deepEqual(f.children[0].writes.map(({mode})=>mode),['listen','capture']);
+ f.audio('AQI=');
+ f.audio('AwQ=');
+ f.audio('AAE=',f.listener.epoch-1);
+ assert.equal(f.calls.length,1);
+ ready({listening:true});
+ await flush();
+ f.audio('BQY=');
+ assert.deepEqual(f.calls.filter(([action])=>action==='audio'),[['audio','AQI='],['audio','AwQ='],['audio','BQY=']]);
+ f.listener.meter({state:'Listening',voiceActive:false,wakeSpeechHeard:true});
+ f.advance(1800);
+ f.listener.update();
+ await flush();
+ f.audio('Bwg=');
+ assert.equal(f.calls.filter(([action])=>action==='end').length,1);
+ assert.equal(f.calls.filter(([action])=>action==='audio').length,3);
+ assert.equal(f.children[0].writes.at(-1).mode,'pause');
+ f.listener.close();
+});
+test('locking during streamed startup discards audio and cancels the pending capture',async()=>{
+ const f=fixture({streaming:true});
+ await f.start();
+ let ready;
+ f.listener.beginVoice=()=>new Promise(resolve=>ready=resolve);
+ f.wake();
+ await flush();
+ f.audio('AQI=');
+ f.captureBlock('Paused while this PC is locked.');
+ ready({listening:true});
+ await flush();
+ assert.deepEqual(f.calls,[['cancel']]);
+ assert.equal(f.listener.capture,false);
+ assert.equal(f.children[0].writes.at(-1).mode,'pause');
+ f.listener.close();
+});
 test('a wake received before the listening acknowledgement survives until handoff',async()=>{
  const f=fixture();
  const starting=f.start();

@@ -1,6 +1,7 @@
 'use strict';
 const {EventEmitter}=require('node:events'),{spawn}=require('node:child_process');
 const {phrasesFor}=require('./wake-listener');
+const MAX_QUEUED_FRAMES=300; // Six seconds of 20 ms PCM frames.
 function stripWakeText(text){return String(text||'').trim().replace(/^(?:(?:hey|ok(?:ay)?)[,\s]*)?(?:c[.\s]*o[.\s]*d[.\s]*y|codey|codi)\b[\s,.:;!?-]*/i,'').trim();}
 function isListeningCancellation(text){
  const value=stripWakeText(text).toLowerCase().replace(/[’]/g,"'").replace(/[.!?,;]+$/,'').trim();
@@ -23,15 +24,15 @@ function endPauseMs(text,learned=0){
  return Math.max(/[.!?]$/.test(value)?1050:1400,learned);
 }
 class KeywordWakeListener extends EventEmitter{
- constructor({launch,canListen=()=>null,canCapture=()=>null,beginVoice,endVoice,cancelVoice,onWake=()=>{},spawnProcess=spawn,now=Date.now}={}){
-  super();Object.assign(this,{launch,canListen,canCapture,beginVoice,endVoice,cancelVoice,onWake,spawnProcess,now});this.enabled=false;this.capture=false;this.opening=false;this.finishing=false;this.phrases=[];this.mode='off';this.message='Hands-free listening is off.';this.epoch=0;this.generation=0;this.cooldown=0;this.failures=0;this.poll=setInterval(()=>this.update(),100);this.poll.unref?.();
+ constructor({launch,canListen=()=>null,canCapture=()=>null,beginVoice,forwardAudio,endVoice,cancelVoice,onWake=()=>{},spawnProcess=spawn,now=Date.now}={}){
+  super();Object.assign(this,{launch,canListen,canCapture,beginVoice,forwardAudio,endVoice,cancelVoice,onWake,spawnProcess,now});this.enabled=false;this.capture=false;this.opening=false;this.finishing=false;this.phrases=[];this.mode='off';this.message='Hands-free listening is off.';this.epoch=0;this.generation=0;this.cooldown=0;this.failures=0;this.poll=setInterval(()=>this.update(),100);this.poll.unref?.();
  }
  snapshot(){return {enabled:this.enabled,mode:this.mode,message:this.message,phrases:[...this.phrases],local:true,detector:'keyword'};}
  setMuted(muted){this.muted=Boolean(muted);if(this.muted){this.stop();this.status('paused','C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.');}else this.update();}
  status(mode,message){if(mode===this.mode&&message===this.message)return;this.mode=mode;this.message=message;this.emit('change',this.snapshot());}
  configure(prefs){const phrases=phrasesFor(prefs),changed=JSON.stringify(phrases)!==JSON.stringify(this.phrases);this.phrases=phrases;this.enabled=prefs.wakeWordEnabled===true;if(changed||!this.enabled)this.stop();if(!this.enabled)this.status('off','Hands-free listening is off.');else this.update();return this.snapshot();}
  stop(){
-  this.generation++;this.finishing=false;this.aborting=false;clearTimeout(this.startup);clearTimeout(this.retry);this.retry=null;this.ready=false;this.wire=null;this.confirmed=null;this.lastState=null;this.cancelCandidate=null;this.queuedWake=null;
+  this.generation++;this.finishing=false;this.aborting=false;clearTimeout(this.startup);clearTimeout(this.retry);this.retry=null;this.ready=false;this.wire=null;this.confirmed=null;this.lastState=null;this.cancelCandidate=null;this.queuedWake=null;this.stream=null;
   const pending=this.pending;this.pending=null;if(pending){clearTimeout(pending.timer);pending.reject(Error('Wake listener stopped.'));}
   const child=this.child;this.child=null;if(child)try{child.stdin.end(JSON.stringify({mode:'quit',epoch:++this.epoch})+'\n');child.kill();}catch{}
   if(this.capture||this.opening){this.capture=false;this.opening=false;void this.cancelVoice?.().catch(error=>this.emit('diagnostic',error.message));}
@@ -63,7 +64,11 @@ class KeywordWakeListener extends EventEmitter{
   if(!this.phrases.length){this.stop();this.status('paused','Choose at least one wake phrase.');return;}
   if(!this.child){this.start();return;}if(!this.ready)return;
   if(this.cancelCandidate&&(this.capture||this.finishing)&&this.now()-this.cancelCandidate.since>=250&&this.now()-this.lastSpeech>=200){void this.abort('Cancelled. Say a wake phrase when ready.');return;}
-  if(this.capture){const reason=this.canCapture();if(reason){void this.abort(reason);return;}this.tickCapture();return;}
+  if(this.capture||this.opening){
+   const reason=this.canCapture();if(reason){void this.abort(reason);return;}
+   if(this.capture)this.tickCapture();
+   return;
+  }
   if(this.opening||this.finishing)return;
   const reason=this.canListen();
   if(reason||this.now()<this.cooldown){
@@ -76,8 +81,19 @@ class KeywordWakeListener extends EventEmitter{
  receive(value){
   if(this.muted)return;
   if(!this.enabled||this.closed||!value)return;
-  if(value.type==='ready'){clearTimeout(this.startup);this.ready=true;this.update();return;}
+  if(value.type==='ready'){clearTimeout(this.startup);this.ready=true;this.streamingCapture=value.streamingCapture===true&&typeof this.forwardAudio==='function';this.update();return;}
   if(value.type==='error'){this.fault(value.message);return;}
+  if(value.type==='audio'){
+   const stream=this.stream;
+   if(!stream||value.epoch!==this.epoch||this.confirmed!==this.epoch)return;
+   if(typeof value.pcm!=='string'||!value.pcm.length||value.pcm.length>1280||stream.frames.length+stream.inFlight>=MAX_QUEUED_FRAMES){
+    void this.abort('Wake audio could not reach speech recognition in time. Try again.');
+    return;
+   }
+   if(this.capture)this.sendAudio(stream,value.pcm);
+   else stream.frames.push(value.pcm);
+   return;
+  }
   if(value.type==='state'){
    if(value.epoch!==this.epoch)return;this.confirmed=value.epoch;this.lastState=value;
    if(this.pending?.epoch===value.epoch){clearTimeout(this.pending.timer);this.pending.resolve(value);this.pending=null;}
@@ -92,6 +108,19 @@ class KeywordWakeListener extends EventEmitter{
    else void this.wake();
   }
  }
+ sendAudio(stream,pcm){
+  stream.inFlight++;
+  void this.forwardAudio(pcm).then(result=>{
+   if(this.stream===stream&&result?.accepted!==true)void this.abort('Wake audio was interrupted. Try again.');
+  }).catch(error=>{
+   if(this.stream===stream){this.emit('diagnostic',error.message);void this.abort('Wake audio was interrupted. Try again.');}
+  }).finally(()=>stream.inFlight--);
+ }
+ releaseStream(){
+  if(!this.stream)return;
+  this.stream=null;
+  void this.request('pause');
+ }
  async wake(){
   if(this.muted)return false;
   if(this.opening||this.capture||this.finishing)return false;
@@ -102,18 +131,24 @@ class KeywordWakeListener extends EventEmitter{
    return false;
   }
   const generation=this.generation;this.opening=true;this.status('arming','Opening the microphone…');
+  const stream=this.streamingCapture?{frames:[],inFlight:0}:null;
+  this.stream=stream;
   try{
-   const state=await this.request('pause');if(generation!==this.generation||!this.enabled||this.canListen())return false;
-   const result=await this.beginVoice({wake:true,audioPrefix:state.audioPrefix||undefined});
-   if(generation!==this.generation||!this.enabled){await this.cancelVoice();return false;}
+   const state=await this.request(stream?'capture':'pause');if(generation!==this.generation||!this.enabled||this.canListen())return false;
+   if(stream)this.status('armed','Listening for your request…');
+   const result=await this.beginVoice({wake:true,audioPrefix:state.audioPrefix||undefined,...(stream?{streamedAudio:true}:{})});
+   if(generation!==this.generation||!this.enabled)return false;
    if(!result?.listening)throw Error(result?.error||'Voice recognition did not start. Check your microphone and HeyClicky sign-in.');
    this.capture=true;this.started=this.now();this.lastSpeech=0;this.heardSpeech=false;this.speechFrames=0;this.noise=.02;this.transcript='';this.cancelCandidate=null;this.levels=[];this.lastTranscriptAt=this.started;this.pauseTolerance=0;this.status('armed','Listening for your request…');
+   if(stream){for(const pcm of stream.frames)this.sendAudio(stream,pcm);stream.frames=[];}
    try{await this.onWake();}catch{}return true;
   }catch(error){if(generation===this.generation){this.emit('diagnostic',error.message);this.cooldown=this.now()+1500;this.status('error','Wake phrase heard. '+error.message);await this.cancelVoice?.().catch(()=>{});}return false;}
-  finally{if(generation===this.generation)this.opening=false;}
+  finally{if(generation===this.generation){this.opening=false;if(!this.capture)this.releaseStream();}}
  }
  meter(value){
-  if(!this.capture||value.state!=='Listening'||this.now()-this.started<450)return;
+  if(!this.capture||value.state!=='Listening')return;
+  if(this.stream&&value.wakeSpeechHeard&&!this.heardSpeech){this.heardSpeech=true;this.lastSpeech=this.now();}
+  if(this.now()-this.started<450&&(!this.stream||typeof value.voiceActive!=='boolean'))return;
   if(typeof value.voiceActive==='boolean'){
    if(value.voiceActive){if(this.heardSpeech&&this.transcript&&this.now()-this.lastSpeech>=700)this.pauseTolerance=Math.min(2600,Math.max(this.pauseTolerance,this.now()-this.lastSpeech+300));this.heardSpeech=true;this.lastSpeech=this.now();}
    return;
@@ -158,12 +193,14 @@ class KeywordWakeListener extends EventEmitter{
   if(!this.capture||this.finishing)return;
   if(this.cancelCandidate){void this.abort('Cancelled. Say a wake phrase when ready.');return;}
   const generation=this.generation;this.capture=false;this.finishing=true;this.status('processing','Sending your request…');
+  this.releaseStream();
   try{await this.endVoice();}catch(error){if(generation===this.generation){this.emit('diagnostic',error.message);await this.cancelVoice?.().catch(()=>{});}}
   finally{if(generation===this.generation){this.finishing=false;this.cooldown=this.now()+1000;this.cooldownMessage='Waiting for the reply to finish…';this.update();}}
  }
  async abort(message){
   if(this.aborting||!this.capture&&!this.opening&&!this.finishing)return;
   this.capture=false;this.opening=false;this.cancelCandidate=null;const generation=++this.generation;this.finishing=true;this.aborting=true;
+  this.releaseStream();
   this.status('paused',message);
   try{await this.cancelVoice();}catch(error){this.emit('diagnostic',error.message);}
   finally{this.aborting=false;if(generation===this.generation){this.finishing=false;this.cooldown=this.now()+700;this.cooldownMessage=message;this.update();}}
