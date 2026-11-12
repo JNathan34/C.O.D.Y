@@ -77,8 +77,8 @@ class Attachments{
       if(!this.encodeImage||!(bytes instanceof Uint8Array)||!bytes.length||bytes.length>MAX_PASTED_BYTES)throw Error('Paste an image up to 25 MB.');
       const png=this.encodeImage(Buffer.from(bytes));
       if(!png?.length||png.length>MAX_PASTED_BYTES)throw Error('C.O.D.Y. could not read this clipboard image.');
-      const fileId=randomUUID(),file=path.join(this.pasteDirectory,'pasted-image-'+fileId+'.png');
       await fs.mkdir(this.pasteDirectory,{recursive:true});
+      const fileId=randomUUID(),file=path.join(await fs.realpath(this.pasteDirectory),'pasted-image-'+fileId+'.png');
       await fs.writeFile(file,png,{flag:'wx'});
       try{
         chat.attachments=[...(previous||[]),{id:fileId,path:file,name:'Pasted image.png'}];this.store.save();
@@ -91,13 +91,17 @@ class Attachments{
   remove(id,fileId){const operation=this.queue.catch(()=>{}).then(async()=>{const chat=this.chat(id);chat.attachments=(chat.attachments||[]).filter(file=>file.id!==fileId);this.store.save();await this.removeUnusedPastes();return this.publish(id);});this.queue=operation;return operation;}
   async removeUnusedPastes(){
     if(!this.pasteDirectory)return;
-    const files=await fs.readdir(this.pasteDirectory,{withFileTypes:true}).catch(()=>[]);
+    const directory=await fs.realpath(this.pasteDirectory).catch(()=>null);
+    if(!directory)return;
+    const files=await fs.readdir(directory,{withFileTypes:true}).catch(()=>[]);
     const pathKey=value=>process.platform==='win32'?value.toLowerCase():value;
     const referenced=new Set(this.store.data.chats.flatMap(chat=>[...(chat.attachments||[]),...(chat.messages||[]).flatMap(message=>message.attachments||[])])
       .filter(file=>typeof file.path==='string').map(file=>pathKey(file.path)));
     await Promise.all(files.filter(file=>file.isFile()&&PASTED_FILE.test(file.name)).map(async file=>{
-      const fullPath=path.join(this.pasteDirectory,file.name);
-      if(!referenced.has(pathKey(fullPath)))await fs.unlink(fullPath).catch(()=>{});
+      const fullPath=path.join(directory,file.name);
+      // Older drafts may have saved the profile path before Windows resolved an alias.
+      const originalPath=path.join(this.pasteDirectory,file.name);
+      if(!referenced.has(pathKey(fullPath))&&!referenced.has(pathKey(originalPath)))await fs.unlink(fullPath).catch(()=>{});
     }));
   }
   prunePastes(){

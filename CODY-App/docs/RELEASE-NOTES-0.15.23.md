@@ -1,4 +1,4 @@
-# C.O.D.Y. 0.15.22
+# C.O.D.Y. 0.15.23
 
 - **Follow C.O.D.Y. with the sound off.** Turn on **On-screen subtitles** under **Settings → Accessibility** to read spoken replies in a click-through overlay above the taskbar.
 - **See what C.O.D.Y. is doing.** The Island shows live progress, requests for approval or input, and task results. Select an update to open the relevant chat, task or approval. Turn these updates off under **Settings → Accessibility → Island task updates**.

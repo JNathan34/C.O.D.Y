@@ -15,7 +15,7 @@
 
 C.O.D.Y. brings chat, voice controls and background tasks into an animated desktop island. It combines an Electron interface with a bundled Windows engine for computer controls, screen capture, browser connections and visual tools.
 
-**Current release: 0.15.22 · Windows x64 and ARM64 · Early development**
+**Current release: 0.15.23 · Windows x64 and ARM64 · Early development**
 
 <p align="center">
   <img src="docs/screenshots/showcase-jet-engine.png" width="650" alt="C.O.D.Y.-generated 3D turbofan cutaway with a silver intake, amber compressor stages and a blue casing">
@@ -25,7 +25,7 @@ C.O.D.Y. brings chat, voice controls and background tasks into an animated deskt
 ## Install
 
 1. Open the [latest release](https://github.com/JNathan34/C.O.D.Y/releases/latest).
-2. Choose **C.O.D.Y-Setup-0.15.22-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.22-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
+2. Choose **C.O.D.Y-Setup-0.15.23-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.23-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
 3. Open C.O.D.Y., connect your preferred AI service and review the app permissions.
 
 The installer is currently unsigned. Windows may show its publisher as unknown. AI providers require their own accounts; provider subscriptions and paid usage are not included.

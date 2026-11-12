@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.15.22 — 12 November 2026
+## 0.15.23 — 12 November 2026
 
 - Add **Settings → Accessibility** with click-through subtitles for spoken replies and a switch for visual task updates in the Island.
 - Show live progress, approval requests and task results in the Island. Select an update to open the relevant chat, task or approval.
