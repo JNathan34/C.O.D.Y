@@ -61,11 +61,9 @@ C.O.D.Y. drew the airflow diagram on screen in a follow-up. The illustration giv
 
 ### Circle and explain what’s on screen
 
-Ask C.O.D.Y. **“Mark where the CPU goes over budget, point out what the GPU is doing, and tell me what to check next.”** On this demo performance trace, it circled the jump in CPU frame time and pointed to the GPU line, which stayed below the 60 FPS frame budget.
+In this demo checkout review, C.O.D.Y. circled the **Continue** button, pointed an arrow at the deferred booking fees, and left a yellow sticky note beside the page. The note recommends showing the full price upfront and naming the next step on the button.
 
-![C.O.D.Y. circles the orange CPU frame-time jump above the 16.7 ms budget and points a blue arrow at the steady cyan GPU line](docs/screenshots/showcase-screen-annotation.png)
-
-> The likely bottleneck is CPU work: it jumps to about 23 milliseconds. That exceeds the 16.7 millisecond budget; GPU time stays around 9 milliseconds. Verify by profiling CPU threads during the jump to identify the longest-running work.
+![Live C.O.D.Y. annotations on a demo checkout with a circle around Continue, an arrow pointing at booking fees, and a yellow Checkout fixes sticky note](docs/screenshots/showcase-screen-annotation.png)
 
 ### Chat, background tasks and voice
 
