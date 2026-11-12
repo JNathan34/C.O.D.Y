@@ -4,7 +4,11 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
+using HeyClicky.Core.Documents;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
@@ -13,11 +17,16 @@ namespace HeyClicky.Core.Voice;
 
 public static class Attachments
 {
-	public const string FilesOnlyWords = "Please review and act on the attached files.";
+	public const string FilesOnlyWords = "Please review the attached files.";
 
 	private const int ImageLaneMaxFileCount = 2;
 
 	private const long ImageLaneMaxTotalBytes = 5000000L;
+	private const long MaxImageSourceBytes = 25 * 1024 * 1024;
+	private static readonly JsonSerializerOptions AttachmentJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+	public sealed record ChatContent(string Context, IReadOnlyList<byte[]> Images);
+	private sealed record ChatFile(string Name, string Status, string? Text = null);
 
 	private static readonly HashSet<string> ImageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 	{
@@ -57,22 +66,6 @@ public static class Attachments
 		return ImageExtensions.Contains(Path.GetExtension(path).TrimStart('.'));
 	}
 
-	public static bool RequiresAgent(IReadOnlyList<string> paths)
-	{
-		IReadOnlyList<string> readOnlyList = NormalizedPaths(paths);
-		if (readOnlyList.Count == 0)
-		{
-			return true;
-		}
-		bool flag = readOnlyList.All(IsImage);
-		long num = ((IEnumerable<string>)readOnlyList).Sum((Func<string, long>)FileSize);
-		if (flag && readOnlyList.Count <= 2)
-		{
-			return num > 5000000;
-		}
-		return true;
-	}
-
 	public static string SummaryLine(IReadOnlyList<string> paths)
 	{
 		return string.Join(", ", NormalizedPaths(paths).Select((string path) =>
@@ -83,35 +76,40 @@ public static class Attachments
 		}));
 	}
 
-	public static string WordsWithSummary(string words, IReadOnlyList<string> paths, bool imagesRideAlong)
+	public static async Task<ChatContent> ReadForChatAsync(IReadOnlyList<string> paths, CancellationToken ct = default, bool includeImages = true, int maximumCharacters = DocumentText.MaximumCharacters)
 	{
-		IReadOnlyList<string> readOnlyList = NormalizedPaths(paths);
-		if (readOnlyList.Count == 0)
+		var files = new List<ChatFile>();
+		var images = new List<byte[]>();
+		long imageBytes = 0;
+		int textLimit = maximumCharacters / Math.Max(1, paths.Count(path => !IsImage(path)));
+		foreach (string path in paths)
 		{
-			return words;
-		}
-		string value = (imagesRideAlong ? "The images are attached for you to look at; for work with them (editing, saving, sending) start a job for it with sessions_spawn." : "You can't open these files yourself: for anything with them, start a job for it with sessions_spawn (it gets the files).");
-		string value2 = (string.IsNullOrWhiteSpace(words) ? "[They attached files with no message." : "[They attached files.");
-		return $"{words}\n\n{value2} Files: {SummaryLine(readOnlyList)}. {value}]";
-	}
-
-	public static async Task<IReadOnlyList<byte[]>> AttachedImagesAsync(IReadOnlyList<string> paths)
-	{
-		IReadOnlyList<string> readOnlyList = NormalizedPaths(paths);
-		if (readOnlyList.Count == 0 || RequiresAgent(readOnlyList))
-		{
-			return Array.Empty<byte[]>();
-		}
-		List<byte[]> images = new List<byte[]>();
-		foreach (string item in readOnlyList.Where(IsImage).Take(2))
-		{
-			byte[] array = await JpegAsync(item).ConfigureAwait(continueOnCapturedContext: false);
-			if (array != null)
+			ct.ThrowIfCancellationRequested();
+			string name = Path.GetFileName(path);
+			if (!IsImage(path))
 			{
-				images.Add(array);
+				var document = await Task.Run(() => DocumentText.Extract(path, textLimit), ct).ConfigureAwait(false);
+				files.Add(new ChatFile(name, string.IsNullOrWhiteSpace(document.Text) ? "No readable text was extracted" :
+					document.IsTruncated ? "Text excerpt, truncated" : "Extracted text", document.Text));
+				continue;
 			}
+			if (!includeImages) continue;
+			if (images.Count >= ImageLaneMaxFileCount || FileSize(path) > MaxImageSourceBytes)
+			{
+				files.Add(new ChatFile(name, "Image exceeds the per-message count or size limit"));
+				continue;
+			}
+			byte[]? jpeg = await JpegAsync(path, maxDimension: 2048).ConfigureAwait(false);
+			if (jpeg == null || imageBytes + jpeg.Length > ImageLaneMaxTotalBytes)
+			{
+				files.Add(new ChatFile(name, "Image could not be included"));
+				continue;
+			}
+			images.Add(jpeg);
+			imageBytes += jpeg.Length;
+			files.Add(new ChatFile(name, $"Attached image {images.Count}"));
 		}
-		return images;
+		return new ChatContent(JsonSerializer.Serialize(files, AttachmentJson), images);
 	}
 
 	public static async Task<byte[]?> JpegAsync(string path, double quality = 0.85, int maxDimension = 4096)

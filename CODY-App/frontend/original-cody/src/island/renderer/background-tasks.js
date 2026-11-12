@@ -95,6 +95,6 @@
  $('task-message-form').addEventListener('submit',event=>{event.preventDefault();const text=$('task-message').value.trim();if(text)void actFor(selected,'message',text);});
  document.addEventListener('cody:view-changed',event=>{$('panel-tasks').setAttribute('aria-pressed',String(event.detail==='tasks'));if(event.detail==='tasks'){expand(detailOpen);void loadDetail();for(const id of visible)void loadPreview(id);}else expand(false);});
  document.addEventListener('click',event=>{if(!event.target.closest('.task-card-heading'))closeMenus();});
- api.on('tasks-changed',value=>{state=value;render();void loadDetail();});api.on('tasks-open',open);window.CODYTasks={open,snapshot:()=>state};
+ api.on('tasks-changed',value=>{state=value;render();void loadDetail();});api.on('tasks-open',open);window.CODYTasks={open,openTask(id){open();if(state.tasks.some(task=>task.id===id))openDetail(id);},snapshot:()=>state};
  setInterval(()=>{void loadDetail();if(document.body.classList.contains('tasks-open')&&document.body.classList.contains('panel-open'))for(const id of visible)if(loading.size<2)void loadPreview(id);},2500);showGrid();void refresh();
 })();

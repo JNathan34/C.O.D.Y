@@ -15,7 +15,7 @@
 
 C.O.D.Y. brings chat, voice controls and background tasks into an animated desktop island. It combines an Electron interface with a bundled Windows engine for computer controls, screen capture, browser connections and visual tools.
 
-**Current release: 0.15.21 · Windows x64 and ARM64 · Early development**
+**Current release: 0.15.22 · Windows x64 and ARM64 · Early development**
 
 <p align="center">
   <img src="docs/screenshots/showcase-jet-engine.png" width="650" alt="C.O.D.Y.-generated 3D turbofan cutaway with a silver intake, amber compressor stages and a blue casing">
@@ -25,7 +25,7 @@ C.O.D.Y. brings chat, voice controls and background tasks into an animated deskt
 ## Install
 
 1. Open the [latest release](https://github.com/JNathan34/C.O.D.Y/releases/latest).
-2. Choose **C.O.D.Y-Setup-0.15.21-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.21-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
+2. Choose **C.O.D.Y-Setup-0.15.22-x64.exe** for Intel/AMD PCs or **C.O.D.Y-Setup-0.15.22-arm64.exe** for ARM/Snapdragon PCs. Each installer contains one application architecture.
 3. Open C.O.D.Y., connect your preferred AI service and review the app permissions.
 
 The installer is currently unsigned. Windows may show its publisher as unknown. AI providers require their own accounts; provider subscriptions and paid usage are not included.
@@ -35,7 +35,8 @@ Once this version is installed, **Settings → Updates** can check GitHub, downl
 ## What you can do
 
 - **Talk or type.** Use voice input, spoken responses and the desktop island, with local wake-word support.
-- **Choose an assistant.** Connect Claude, ChatGPT Codex or ChatGPT. Some background tasks and attached-file requests still use the native Claude connection.
+- **Choose an assistant.** Connect Claude, ChatGPT Codex or ChatGPT. Background tasks use the native Claude connection.
+- **Ask about files in chat.** Paste a picture, drop a file, or use the attachment button to ask about documents, slides, text files and images.
 - **Work in the background.** Start tasks, inspect their progress and open their outputs.
 - **Control Windows.** Use permission-controlled app, audio, window, clipboard, file and computer actions. Press **Esc** to stop computer control.
 - **Change Windows settings.** Turn Bluetooth or Wi-Fi on/off, choose a power mode, set supported display brightness and open Settings pages. See the [commands and limits](docs/GETTING-STARTED.md#windows-settings-commands-in-the-current-source).

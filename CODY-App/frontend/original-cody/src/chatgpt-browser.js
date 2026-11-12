@@ -6,8 +6,10 @@ const {modelFamilyMatches}=require('./chatgpt-dom');
  * The bridge relies on an unofficial UI and can stop working when ChatGPT changes.
  */
 const {EventEmitter}=require('node:events');
+const path=require('node:path');
 const branding=require('./branding');
-const {attachImage,composerImagesScript,cleanupUploads}=require('./visuals/image-attachment');
+const {attachImage,uploadFiles,composerImagesScript,cleanupUploads}=require('./visuals/image-attachment');
+const {isImageAttachment}=require('./attachments');
 const {CHATGPT_URL,approvedUrl,safeChatUrl,snapshotScript,clearComposerScript,emptyComposerScript,composeScript,verifyComposerScript,sendScript,diffResponse,openModelMenuScript,currentModelLabelScript,currentModelMatches,modelMenuSnapshotScript,expandModelFamilyScript,chooseModelFamilyScript,focusEffortSliderScript}=require('./chatgpt-dom');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 class ChatGPTBrowser extends EventEmitter{
@@ -184,7 +186,7 @@ class ChatGPTBrowser extends EventEmitter{
     // Close only the currently-open menu; never click controls outside the composer.
     await wc.executeJavaScript(`(() => {const m=document.querySelector('[role="menu"]');if(m){const trigger=document.querySelector('[aria-expanded="true"][aria-haspopup="menu"]');trigger?.click();}return true})()`,true);
   }
-  async send({text,chatUrl,onUrl,onText,signal,webModel='website',image,onImageDelivered}){
+  async send({text,chatUrl,onUrl,onText,signal,webModel='website',image,onImageDelivered,files=[],onAccepted}){
     if(this.active)throw Error('A ChatGPT response is already being generated');
     if(typeof text!=='string'||!text.trim()||text.length>25000)throw Error('Enter a message under 25,000 characters');
     const task={cancelled:false};this.active=task;let attachment;
@@ -242,7 +244,14 @@ class ChatGPTBrowser extends EventEmitter{
       }
       if(!verified.ok)throw Error(verified.why);
       if(image)attachment=await attachImage(wc,image,{signal,cancelled:()=>task.cancelled,root:this.screenshotDirectory});
-      else if(this.screenshotDirectory){const pending=await wc.executeJavaScript(composerImagesScript(),true);if(pending.images?.length)throw Error('An unsent image is still in ChatGPT. Review the session before sending another message.');}
+      else if(files.length){
+        if(new URL(wc.getURL()).origin!=='https://chatgpt.com')throw Error('Open the ChatGPT session before uploading files.');
+        const filenames=files.filter(file=>!isImageAttachment(file)).map(file=>path.basename(file));
+        await uploadFiles(wc,files,{filenames,imageCount:files.length-filenames.length,signal,cancelled:()=>task.cancelled});
+        const afterUpload=await wc.executeJavaScript(verifyComposerScript(text),true);
+        if(!afterUpload.ok)throw Error('The ChatGPT draft changed during upload. Review it before retrying.');
+      }
+      else if(this.screenshotDirectory){const pending=await wc.executeJavaScript(composerImagesScript(),true);if(pending.images?.length||pending.hasAttachments)throw Error('Review the unsent attachments in ChatGPT before sending another message.');}
       // Refresh after navigation/model selection/composer updates have settled.
       // The initial page snapshot can contain only part of the saved history.
       before=await wc.executeJavaScript(snapshotScript(),true);
@@ -277,6 +286,7 @@ class ChatGPTBrowser extends EventEmitter{
       }
       if(!accepted)throw Error('ChatGPT did not confirm the message was sent. Review the ChatGPT session; C.O.D.Y will not click twice.');
       if(image){await onImageDelivered?.(image.captureId,{accepted:true,userKey:acceptedState.lastUserKey||null,imageCount:acceptedState.lastUserImageCount});await attachment.cleanup();attachment=null;}
+      await onAccepted?.();
       const start=Date.now();let current='',seenResponse=false,lastChange=Date.now();let previousUrl=null;
       const observe=(state)=>{
         const newUrl=safeChatUrl(state.url);

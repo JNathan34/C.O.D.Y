@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.22 — 12 November 2026
+
+- Add **Settings → Accessibility** with click-through subtitles for spoken replies and a switch for visual task updates in the Island.
+- Show live progress, approval requests and task results in the Island. Select an update to open the relevant chat, task or approval.
+- Paste pictures into chat and ask about attached documents, slides, text files and images directly in the conversation.
+- Show images inline and give supported files a preview in sent messages and conversation history.
+- Add new showcase screenshots and link to GitHub release notes from the README.
+
 ## 0.15.21 — 11 November 2026
 
 - Keep the microphone open after **“Hey Cody”** and buffer the start of your request while speech recognition starts.

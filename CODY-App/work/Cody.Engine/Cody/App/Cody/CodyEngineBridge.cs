@@ -45,6 +45,7 @@ public static class CodyEngineBridge
     private static CancellationTokenSource speechCancellation;
     private static bool customSpeech;
     private static bool cachedSpeaking;
+    private static volatile bool speechSubtitlesEnabled;
     private static int cachedPlaybacks;
     private static bool zoomFixture;
     private static bool voiceEnding;
@@ -96,7 +97,11 @@ public static class CodyEngineBridge
         host.NotchUi.EnterEngineMode();
         host.Services.Shortcuts.Stop();
         try{dictationShortcuts=new CodyDictationShortcuts(host.Real.Dictation);}catch(Exception error){Log.Warn("cody-dictation",error.Message); }
-        var session = host.Services.Companion;
+        var session = (CompanionSession)host.Services.Companion;
+        session.UseSubtitlesWithoutAudio = UseSubtitlesWithoutAudio;
+        session.SpeechSubtitle += PublishSpeechSubtitle;
+        session.SpeechInterrupted += ClearSpeechSubtitles;
+        session.TurnProgress += label => Emit("turn-progress", new { label, turn });
         session.StateChanged += (_, _) => {if(session.State!=VoiceState.Listening)CodyVoiceActivity.End();Emit("phase", new { state = session.State.ToString(), turn });};
         session.UserTranscriptUpdated += (_, text) => { lastTranscript = text; Emit("transcript", new { text, turn }); };
         session.ResponseTextUpdated += (_, text) => Emit("response", new { text, turn });
@@ -264,6 +269,14 @@ public static class CodyEngineBridge
                         if(customSpeech || cachedSpeaking)throw new InvalidOperationException("Finish the current voice session before changing memory mode.");
                         CodyMemoryPolicy.Configure(host,request.GetProperty("localOnly").GetBoolean());
                         return new { localOnly = CodyMemoryPolicy.LocalOnly };
+                    case "speech-subtitles-configure":
+                        speechSubtitlesEnabled = request.GetProperty("enabled").GetBoolean();
+                        return new { enabled = speechSubtitlesEnabled };
+                    case "attachments-text":
+                        bool previewAttachment = request.TryGetProperty("preview", out var previewValue) && previewValue.ValueKind == JsonValueKind.True;
+                        var content = await Attachments.ReadForChatAsync(CodyAttachments.Paths(request), includeImages: false,
+                            maximumCharacters: previewAttachment ? 1600 : HeyClicky.Core.Documents.DocumentText.MaximumCharacters);
+                        return new { context = content.Context };
                     case "submit":
                         if(CodyMemoryPolicy.LocalOnly)throw new InvalidOperationException(CodyMemoryPolicy.BlockedMessage);
                         StopSpeech();
@@ -273,7 +286,7 @@ public static class CodyEngineBridge
                         if (text.Length == 0 || text.Length > 25000) throw new ArgumentException("Enter a message under 25,000 characters.");
                         turn = Text("turn", id);
                         bool speak = request.TryGetProperty("speak", out var speakValue) ? speakValue.GetBoolean() : host.Services.Settings.LibraryModeEnabled;
-                        await CodyAttachments.Submit(host,session,text,speak,CodyAttachments.Paths(request));
+                        await session.SubmitTextAsync(text,speak,CodyAttachments.Paths(request));
                         return new { text = session.ResponseText, audioPlaybackStarts = session.AudioPlaybackBeganCount };
                     case "speak":
                         turn = Text("turn", id);
@@ -437,6 +450,7 @@ public static class CodyEngineBridge
         speechCancellation?.Cancel();
         if(customSpeech)
         {
+            ClearSpeechSubtitles();
             ((CompanionSession)host.Services.Companion).InterruptForDrive();
             host.Services.Audio.Flush();
             customSpeech = cachedSpeaking = false;
@@ -458,11 +472,12 @@ public static class CodyEngineBridge
         double speed = host.Real.Core.Settings.Read(s => s.SpeechSpeed);
         string path = CodyCachedAudio.CachePath(text, voice, speed, host.Services.Audio.SampleRate);
         bool hit = path != null && File.Exists(path) && new FileInfo(path).Length > host.Services.Audio.SampleRate / 2 && new FileInfo(path).Length <= host.Services.Audio.SampleRate * 2 * 15;
+        bool playCached = hit && !UseSubtitlesWithoutAudio();
         int recording = 0;
         bool spoken = false;
         try
         {
-            if(hit)
+            if(playCached)
             {
                 byte[] pcm = await File.ReadAllBytesAsync(path, token);
                 token.ThrowIfCancellationRequested();
@@ -470,16 +485,17 @@ public static class CodyEngineBridge
                 host.Services.Audio.Enqueue(pcm);
                 cachedSpeaking = true; cachedPlaybacks++;
                 Emit("phase", new { state = "Responding", turn });
+                PublishSpeechSubtitle(text, pcm.Length / (2.0 * host.Services.Audio.SampleRate));
                 Log.Info("cody-speed", $"cached confirmation queued in {clock.ElapsedMilliseconds} ms ({pcm.Length} bytes)");
                 while(host.Services.Audio.Buffered > TimeSpan.Zero) await Task.Delay(15, token);
                 spoken = true;
             }
             else
             {
-                if(path != null) recording = CodyCachedAudio.Current.BeginRecording();
+                if(path != null && !hit) recording = CodyCachedAudio.Current.BeginRecording();
                 spoken = await session.AnnounceAsync(text, showAtCursor: false, ct: token);
             }
-            return new { spoken, cached = hit, elapsedMs = clock.ElapsedMilliseconds };
+            return new { spoken, cached = playCached, elapsedMs = clock.ElapsedMilliseconds };
         }
         finally
         {
@@ -491,6 +507,16 @@ public static class CodyEngineBridge
                 Emit("phase", new { state = "Idle", turn });
             }
         }
+    }
+
+    private static bool UseSubtitlesWithoutAudio() => speechSubtitlesEnabled && !NativeAudioControl.HasDefaultOutput();
+    private static void PublishSpeechSubtitle(string text, double seconds)
+    {
+        if(speechSubtitlesEnabled && !string.IsNullOrWhiteSpace(text)) Emit("speech-subtitle", new { text, seconds });
+    }
+    private static void ClearSpeechSubtitles()
+    {
+        if(speechSubtitlesEnabled) Emit("speech-subtitle-clear", new { });
     }
 
     private static Task<object> OnUi(Func<Task<object>> action)

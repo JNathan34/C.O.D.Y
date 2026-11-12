@@ -36,6 +36,8 @@ const DEFAULTS = Object.freeze({
   controlInputMode: 'system',
   hideFloatingCursor: false, screenHighlight: true, shakeToDetach: true,
   wakeWordEnabled: false, wakeHeyCody: true, wakeOkayCody: true, wakeCody: true,
+  speechSubtitles: false,
+  islandTaskUpdates: true,
   voiceId: '',
   voiceRate: 1, voicePitch: 1, voiceVolume: 1,
   micDeviceId: '', micSensitivity: 1,

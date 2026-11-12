@@ -16,7 +16,7 @@ const ISLAND_KEYS=[
   'idleReactions','blinkEnabled','reactiveExpressions','funReactions',
   'sunglassesEnabled','pretendSleepEnabled','wifiReactions',
   'enableHotkey','startListeningOnHotkey','quickMessageEnabled','quickMessagePhrase',
-  'wakeHeyCody','wakeOkayCody','wakeCody','voiceRate','voicePitch','voiceVolume','micSensitivity'
+  'wakeHeyCody','wakeOkayCody','wakeCody','voiceRate','voicePitch','voiceVolume','micSensitivity','speechSubtitles','islandTaskUpdates'
 ];
 const APP_KEYS=['voiceAutoSpeak','runInBackground','startMinimized'];
 const VOICE_KEYS=['voice','recognitionLanguage'];

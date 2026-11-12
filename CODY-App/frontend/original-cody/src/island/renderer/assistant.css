@@ -89,6 +89,12 @@ body.timer-finished .island-timer{color:#ffca85;animation:timer-alert 1200ms eas
 .island-info{position:absolute;z-index:5;display:flex;align-items:center;gap:5px;left:calc(50% - 53px);top:calc(var(--island-height) / 2);transform:translateY(-50%);width:76px;color:#c5eff7;font:600 11.5px/1.2 'Segoe UI',sans-serif}
 .island-info[hidden],.island-media-controls[hidden]{display:none}
 .island-info[data-update="true"]{cursor:pointer;min-height:28px}
+.island-info[data-task-status]:not([data-task-status=""]){cursor:pointer;min-height:28px}
+body.utility-layout:not(.panel-open) .island-info[data-task-status]:not([data-task-status=""]){left:24px;right:59px}
+.island-info[data-task-status="attention"] #island-info-icon,.island-info[data-task-status="attention"] #island-info-text{color:#ffd089}
+.island-info[data-task-status="reply"] #island-info-icon,.island-info[data-task-status="outcome"] #island-info-icon[data-icon="check"]{color:#a9e8bc}
+.island-info[data-task-status="outcome"] #island-info-icon[data-icon="circle-alert"]{color:#ffa1aa}
+.island-info[data-task-status]:not([data-task-status=""]):focus-visible{outline:2px solid var(--ui-accent,#9d9dff);outline-offset:2px;border-radius:4px}
 body.utility-layout:not(.panel-open) .island-info[data-update="true"]{left:26px;right:67px}
 .island-info[data-update="true"] #island-info-text{font-size:10.5px;font-variant-numeric:tabular-nums}
 .island-info[data-update="true"] #island-info-detail{font-size:8px}

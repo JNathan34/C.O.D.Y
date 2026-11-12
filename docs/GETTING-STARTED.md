@@ -4,7 +4,9 @@
 
 Download the setup executable from [GitHub Releases](https://github.com/JNathan34/C.O.D.Y/releases/latest). Use the executable for a normal installation; the build-input archive is for developers.
 
-Open the app from Start or its desktop shortcut. Open Settings → Agents to choose and connect an assistant. Claude uses the native account connection. ChatGPT Codex uses a ChatGPT account sign-in. The ChatGPT option uses a separate browser session. Background tasks and attached-file requests currently use the native Claude connection.
+Open the app from Start or its desktop shortcut. Open Settings → Agents to choose and connect an assistant. Claude uses the native account connection. ChatGPT Codex uses a ChatGPT account sign-in. The ChatGPT option uses a separate browser session. Background tasks use the native Claude connection.
+
+Paste a picture into the chat composer, drop a file, or use the attachment button. Add a question or send the file by itself. Claude and ChatGPT Codex read text from Word documents, PowerPoint slides, PDFs with selectable text, spreadsheets and plain-text files. ChatGPT uploads the original files through its browser session.
 
 Provider accounts, subscriptions and usage allowances are separate from C.O.D.Y. A successful app installation does not create those accounts.
 

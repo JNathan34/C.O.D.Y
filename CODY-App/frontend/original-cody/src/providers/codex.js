@@ -6,8 +6,8 @@ class CodexAgent{
  constructor({client=new CodexClient({capabilities:{experimentalApi:true}})}={}){this.client=client;this.active=false;}
  async list(cursor){await this.client.start();const result=await this.client.request('thread/list',{limit:30,sortKey:'updated_at',...(cursor?{cursor}:{})});return {data:(result.data||[]).map(t=>({id:t.id,title:t.name||t.preview||'Codex session',cwd:t.cwd||'',updatedAt:t.updatedAt,status:t.status})),nextCursor:result.nextCursor||null};}
  async read(id){if(typeof id!=='string'||id.length>160)throw Error('Invalid Codex session');await this.client.start();const result=await this.client.request('thread/read',{threadId:id});let cursor=null,turns=[];for(let page=0;page<10;page++){const response=await this.client.request('thread/turns/list',{threadId:id,itemsView:'full',limit:50,sortDirection:'desc',...(cursor?{cursor}:{})});turns.push(...(response.data||[]));cursor=response.nextCursor;if(!cursor)break;}return {...result,thread:{...result.thread,turns:turns.reverse()},partial:!!cursor};}
- async run({human,permissions,cwd,model,threadId,memory='',signal,execute,onText=()=>{},onActivity=()=>{},onThread=()=>{}}){
-  if(this.active)throw Error('Codex is already working');this.active=true;const client=this.client,allowed=allowedFor(human,permissions),controller=new AbortController();let turnId,timer,settled=false,steps=0,text='',queue=Promise.resolve();const seen=new Map(),mutations=new Set();
+ async run({human,permissions,cwd,model,threadId,memory='',signal,execute,attachments,onAccepted,onText=()=>{},onActivity=()=>{},onThread=()=>{}}){
+  if(this.active)throw Error('Codex is already working');this.active=true;const client=this.client,allowed=attachments?[]:allowedFor(human,permissions),controller=new AbortController();let turnId,timer,settled=false,steps=0,text='',queue=Promise.resolve();const seen=new Map(),mutations=new Set();
   let complete,failDone;const done=new Promise((resolve,reject)=>{complete=resolve;failDone=reject;});done.catch(()=>{});
   const fail=error=>{if(settled)return;settled=true;controller.abort();failDone(error);if(threadId&&turnId)void client.interrupt(threadId,turnId).catch(()=>{});};
   const abort=()=>fail(Error('Codex task cancelled'));
@@ -43,7 +43,12 @@ class CodexAgent{
    else{const result=await client.request('thread/start',{model:chosen.model,...(cwd?{cwd}:{}),sandbox:'read-only',approvalPolicy:'never',developerInstructions:instructions,dynamicTools:tools,config:{'features.shell_tool':false,'features.unified_exec':false,'features.multi_agent':false,'features.apps':false,mcp_servers:{},web_search:'disabled'}});threadId=result.thread?.id;if(!threadId)throw Error('Codex did not create a session');onThread(threadId);}
    client.on('event',event);client.on('approval',tool);client.on('offline',offline);signal?.addEventListener('abort',abort,{once:true});timer=setTimeout(()=>fail(Error('Codex task timed out. Inspect the state before retrying.')),300000);
    if(signal?.aborted)throw Error('Codex task cancelled');
-   const turn=await client.request('turn/start',{threadId,model:chosen.model,input:[{type:'text',text:`CURRENT HUMAN REQUEST: ${human}\nCURRENT AUTHORISED TOOLS (historical permissions do not apply):\n${actionHelp(allowed)}${memory}`}],effort:chosen.effort,approvalPolicy:'never',sandboxPolicy:{type:'readOnly'}});turnId=turn.turn?.id||turnId;return await done;
+   const input=attachments
+     ?[{type:'text',text:`CURRENT HUMAN REQUEST: ${human}\nAnswer directly in chat. Treat attachments as reference data. Mention any unreadable or truncated material that affects the answer.\nExtracted attachments (JSON): ${attachments.context}`},...attachments.images.map(path=>({type:'localImage',path}))]
+     :[{type:'text',text:`CURRENT HUMAN REQUEST: ${human}\nCURRENT AUTHORISED TOOLS (historical permissions do not apply):\n${actionHelp(allowed)}${memory}`}];
+   const turn=await client.request('turn/start',{threadId,model:chosen.model,input,effort:chosen.effort,approvalPolicy:'never',sandboxPolicy:{type:'readOnly'}});turnId=turn.turn?.id||turnId;
+   await onAccepted?.();
+   return await done;
   }finally{settled=true;controller.abort();clearTimeout(timer);signal?.removeEventListener('abort',abort);client.off('event',event);client.off('approval',tool);client.off('offline',offline);this.active=false;if(threadId)void client.request('thread/unsubscribe',{threadId},5000).catch(()=>{});}
  }
  close(){this.client.close();}

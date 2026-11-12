@@ -1,7 +1,27 @@
 .attachment-list{display:flex;gap:6px;overflow-x:auto;padding:1px 0 8px;scrollbar-width:thin;max-height:65px}.attachment-list[hidden]{display:none}
 .attachment-chip{display:flex;align-items:center;gap:6px;flex:none;max-width:190px;padding:5px;border:1px solid #464b58;background:#242731;border-radius:9px;color:#e3e8f0;font:11px/1.3 'Segoe UI',sans-serif}
 .attachment-chip img{width:32px;height:32px;object-fit:cover;border-radius:5px}.attachment-type{display:grid;place-items:center;width:32px;height:32px;border-radius:5px;background:#343a48;color:#bdeaf5;font-size:9px;flex:none}.attachment-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:115px}.attachment-remove{flex:none;display:grid;place-items:center;width:20px;height:24px;border:0;background:none;color:#aeb9c8;border-radius:5px;font-size:17px;cursor:pointer}.attachment-remove:hover{background:#414756;color:white}.attachment-remove:focus-visible{outline:2px solid #bdeaf5}.attachment-chip.missing{border-color:#bd775b}
-.message-file-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}.message-file-list span{padding:3px 6px;border:1px solid #49505d;border-radius:5px;font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#b9d9e5}
+.message-file-list{display:grid;gap:8px;max-width:100%;margin-top:4px}
+.message-attachment-slot{min-width:0}
+.message-attachment{display:flex;align-items:flex-start;gap:10px;max-width:100%;min-width:0;padding:9px 10px;border:1px solid #414652;border-radius:9px;background:#1a1d24;color:#eef1f6;font:inherit;text-align:left;white-space:normal}
+button.message-attachment{cursor:pointer}
+button.message-attachment:hover{border-color:#838aa1;background:#222631}
+button.message-attachment:focus-visible{outline:2px solid var(--ui-accent,#9d9dff);outline-offset:2px}
+.message-attachment-icon{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:6px;background:#2c3445;color:#d2e2ff;font-size:9px;font-weight:700}
+.message-attachment-summary{display:grid;gap:2px;min-width:0;max-width:270px}
+.message-attachment-summary strong,.message-attachment-excerpt{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.message-attachment-summary strong{-webkit-line-clamp:2;font-size:12px;line-height:1.35}
+.message-attachment-meta{color:#acb5c5;font-size:10px}
+.message-attachment-excerpt{-webkit-line-clamp:3;margin-top:4px;color:#d0d6e2;font-size:11px;line-height:1.45;white-space:pre-line}
+.message-attachment-photo{display:block;padding:0;overflow:hidden;max-width:min(100%,340px);background:#15171c}
+.message-attachment-photo img{display:block;width:auto;height:auto;max-width:100%;max-height:154px;object-fit:contain}
+.chat-expanded .message-attachment-photo img{max-height:240px}
+.attachment-preview-dialog{position:fixed;inset:auto;left:var(--preview-x);top:var(--preview-y);transform:translate(-50%,-50%);width:max-content;max-width:min(var(--preview-width),680px);max-height:var(--preview-height);margin:0;padding:12px;border:1px solid #525767;border-radius:14px;background:#191b22;color:#eef1f6;box-sizing:border-box;overflow:auto}
+.attachment-preview-dialog::backdrop{background:transparent}
+.attachment-preview-dialog header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:10px}
+.attachment-preview-dialog h2{margin:0;font-size:14px;overflow-wrap:anywhere}
+.attachment-preview-dialog img{display:block;margin:auto;max-width:100%;max-height:calc(var(--preview-height) - 66px);object-fit:contain}
+.attachment-preview-dialog pre{margin:0;max-width:65ch;font:13px/1.55 'Segoe UI',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
 #file-drop-hint{position:absolute;z-index:25;top:0;left:34px;right:80px;height:var(--island-height);display:flex;align-items:center;justify-content:center;font:600 11px/1.3 'Segoe UI',sans-serif;color:var(--ui-accent,#9d9dff);pointer-events:none;white-space:nowrap}#file-drop-hint[hidden]{display:none!important}#file-drop-hint small{display:none}
 body.file-dragging:not(.panel-open) .island-info{visibility:hidden}body.file-dragging:not(.panel-open) .mascot{left:calc(100% - 52px)}body.file-dragging #island-path{stroke:var(--ui-accent,#9d9dff);stroke-width:1.5}
 body.panel-open #file-drop-hint{top:76px;left:44px;right:44px;bottom:20px;height:auto;display:flex;flex-direction:column;gap:10px;font-size:19px;text-align:center;border:1px dashed var(--ui-accent,#9d9dff);border-radius:14px;background:#171a23;white-space:normal}body.panel-open #file-drop-hint small{display:block;font-size:12px;font-weight:400;color:#aebaca}

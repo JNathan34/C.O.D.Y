@@ -4,6 +4,34 @@ const {selection,providerPatch,exactCodexModel}=require('../src/agent-provider')
 const {currentModelMatches,modelFamilyMatches}=require('../src/chatgpt-dom');
 const policy=require('../src/usage-policy');
 const {installNativeIpc}=require('../src/native-ipc');
+
+test('Codex receives the files in its chat turn and rejects Windows tool calls',async()=>{
+ const {CodexAgent}=require('../src/providers/codex');
+ const client=new EventEmitter(),requests=[],responses=[];
+ client.start=async()=>{};client.account=async()=>({account:{type:'chatgpt'}});
+ client.models=async()=>[{model:'gpt-6.1-sol',supportedReasoningEfforts:[{reasoningEffort:'medium'}]}];
+ client.send=value=>responses.push(value);
+ client.request=async(method,params)=>{
+   requests.push({method,params});
+   if(method==='thread/start')return {thread:{id:'chat'}};
+   if(method==='turn/start'){
+     setImmediate(()=>{
+       client.emit('approval',{id:42,method:'item/tool/call',params:{threadId:'chat',tool:'cody_windows',arguments:{action:'files.read'}}});
+       client.emit('event',{method:'turn/completed',params:{threadId:'chat',turn:{status:'completed'}}});
+     });
+     return {turn:{id:'turn'}};
+   }
+   return {};
+ };
+ const agent=new CodexAgent({client}),image='C:\\fixtures\\pasted.png';
+ let accepted=false;
+ await agent.run({human:'Summarise the files.',attachments:{context:'[{"Text":"Quarterly notes"}]',images:[image]},onAccepted:()=>{accepted=true;},execute:()=>assert.fail('Attachment chat must not execute Windows tools.')});
+ const input=requests.find(request=>request.method==='turn/start').params.input;
+ assert.match(input[0].text,/Quarterly notes/);
+ assert.deepEqual(input[1],{type:'localImage',path:image});
+ assert.equal(responses[0].result.success,false);
+ assert.equal(accepted,true);
+});
 function fixture(provider='heyclicky'){
  const handlers=new Map(),calls=[],external=[],events=[],engine=new EventEmitter(),chat={id:'chat',messages:[]},wc={mainFrame:{}};let remoteBusy=false,sequence=0;
  engine.status={state:'Idle'};engine.connected=true;engine.refresh=async()=>({signedIn:true});engine.request=async(command,args)=>{calls.push({command,args});return command==='end'?{utilityText:'Explain gravity'}:command==='submit'?{text:'done'}:{};};

@@ -11,7 +11,7 @@
   let game=app.data.rps||{active:false};
   let capture=app.data.capture||{status:'idle'},capturePending=false;
   let monitors=app.data.monitors||{active:false,items:[]};
-  let tasks=app.data.tasks||{connected:false,tasks:[],activeCount:0};
+  let taskStatus=app.data.taskStatus||null,visibleTaskStatus=null;
   let quickCard=app.data.quickCard||null,media=app.data.spotify||{available:false};
   let artKey='',artCandidates=[],artIndex=0;
   const art=$('island-media-art');
@@ -20,16 +20,20 @@
   window.CODYIcons.set($('island-media-previous'),'skip-back');window.CODYIcons.set($('island-media-next'),'skip-forward');
   function renderTimer(){
     const infoUpdate=$('island-info');
-    const activeCard=quickCard&&quickCard.expiresAt>Date.now()?quickCard:null;
-    const discord=activeCard?.source==='discord'?activeCard:null;
+    const utilityCard=quickCard&&quickCard.expiresAt>Date.now()?quickCard:null;
+    const discord=utilityCard?.source==='discord'?utilityCard:null;
     const recording=['starting','recording','paused','stopping'].includes(capture.status);
-    infoUpdate.dataset.discord=String(Boolean(discord&&!recording&&!game.active));
+    visibleTaskStatus=!recording&&!game.active&&taskStatus&&(taskStatus.kind==='attention'||(!wakeListening()&&!utilityCard&&timer?.status!=='finished'))?taskStatus:null;
+    const activeCard=visibleTaskStatus||utilityCard;
+    const announcement=$('island-task-announcement'),description=visibleTaskStatus?[visibleTaskStatus.text,visibleTaskStatus.detail].filter(Boolean).join('. '):'';
+    if(announcement.textContent!==description)announcement.textContent=description;
+    infoUpdate.dataset.discord=String(Boolean(discord&&!visibleTaskStatus&&!recording&&!game.active));
     const discordMic=infoUpdate.dataset.discord==='true'&&typeof discord?.micMuted==='boolean';
     infoUpdate.dataset.discordMic=discordMic?(discord.micMuted?'muted':'unmuted'):'';
     infoUpdate.dataset.discordMicChanged=String(Boolean(discordMic&&discord.micChanged));
-    infoUpdate.dataset.update='false';infoUpdate.removeAttribute('role');infoUpdate.removeAttribute('tabindex');infoUpdate.removeAttribute('aria-label');
+    infoUpdate.dataset.update='false';infoUpdate.dataset.taskStatus=visibleTaskStatus?.kind||'';infoUpdate.removeAttribute('role');infoUpdate.removeAttribute('tabindex');infoUpdate.removeAttribute('aria-label');infoUpdate.removeAttribute('title');
     $('island-update-progress').hidden=true;
-    if(wakeListening()&&!discord&&!recording){
+    if(wakeListening()&&!visibleTaskStatus&&!discord&&!recording){
       for(const name of ['task-layout','recording-layout','media-layout','weather-layout','timer-active','timer-finished'])document.body.classList.remove(name);
       document.body.classList.add('utility-layout','island-content-active');
       for(const id of ['island-timer','island-recording-dot','island-recording-controls','island-media-controls','island-rps-controls'])$(id).hidden=true;
@@ -38,19 +42,19 @@
       $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),'mic');art.hidden=true;
       return;
     }
-    const activeTasks=tasks.connected?tasks.tasks.filter(task=>['Starting','Running','WaitingForUser'].includes(task.status)):[];
-    if(activeTasks.length)island.wakeUp();
+    if(visibleTaskStatus?.kind==='progress')island.wakeUp();
     island.setMediaPlaying(Boolean(media.available&&media.playing));
-    const quick=Boolean(!recording&&!game.active&&activeCard&&(discord||timer?.status!=='finished'));
+    const quick=Boolean(!recording&&!game.active&&activeCard&&(visibleTaskStatus||discord||timer?.status!=='finished'));
     const updateCard=window.CODYUpdateStatus?.card();
     const showUpdate=Boolean(updateCard&&!recording&&!game.active&&!quick&&timer?.status!=='finished');
     const showMonitors=monitors.items.length>0&&!recording&&!game.active&&!quick&&!showUpdate&&timer?.status!=='finished';
-    const showGame=game.active&&!recording,showTimer=Boolean(timer)&&!showMonitors&&!quick&&!showGame&&!recording&&!showUpdate,showTasks=activeTasks.length>0&&!showUpdate&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame,showMedia=!showUpdate&&!showTasks&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame&&media.available&&Boolean(media.title);
-    document.body.classList.toggle('task-layout',Boolean(showTasks));
+    const showGame=game.active&&!recording,showTimer=Boolean(timer)&&!showMonitors&&!quick&&!showGame&&!recording&&!showUpdate,showMedia=!showUpdate&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame&&media.available&&Boolean(media.title);
+    const showTasks=visibleTaskStatus?.target==='tasks';
+    document.body.classList.toggle('task-layout',Boolean(showTasks&&visibleTaskStatus.kind==='progress'));
     document.body.classList.toggle('recording-layout',recording);document.body.dataset.recording=capture.status;
     document.body.classList.toggle('media-layout',Boolean(showMedia));
-    document.body.classList.toggle('weather-layout',Boolean(quick&&quickCard.kind==='weather'));
-    document.body.classList.toggle('utility-layout',Boolean(showUpdate||showTasks||showMonitors||recording||showGame||(quick&&['time','date','utility'].includes(quickCard.kind))));
+    document.body.classList.toggle('weather-layout',Boolean(quick&&activeCard.kind==='weather'));
+    document.body.classList.toggle('utility-layout',Boolean(showUpdate||visibleTaskStatus||showMonitors||recording||showGame||(quick&&['time','date','utility'].includes(activeCard.kind))));
     const button=$('island-timer');button.hidden=!showTimer;document.body.classList.toggle('timer-active',showTimer);
     document.body.classList.toggle('island-content-active',Boolean(showUpdate||showTasks||showMonitors||recording||showTimer||quick||showMedia||showGame));
     const info=$('island-info');info.hidden=!showUpdate&&!showTasks&&!showMonitors&&!recording&&!quick&&!showMedia&&!showGame;info.dataset.tasks=String(Boolean(showTasks));info.dataset.rps=String(Boolean(showGame));info.classList.toggle('showing-media',Boolean(showMedia));
@@ -82,11 +86,11 @@
     }
     if(discord&&(recording||showGame))$('island-info-detail').textContent='Discord · '+discord.text;
     if(quick||showMedia){
-      $('island-info-text').textContent=quick?quickCard.text:media.title;
-      $('island-info-detail').textContent=quick?(quickCard.detail||''):`${media.playing?'':'Paused · '}${media.artist||media.app||'Media'}`;
+      $('island-info-text').textContent=quick?activeCard.text:media.title;
+      $('island-info-detail').textContent=quick?(activeCard.detail||''):`${media.playing?'':'Paused · '}${media.artist||media.app||'Media'}`;
       $('island-info-icon').hidden=Boolean(showMedia);art.hidden=!showMedia;
       if(quick){
-        const icon=$('island-info-icon'),name=discordMic?'discord-mic':quickCard.icon||'calculator';
+        const icon=$('island-info-icon'),name=discordMic?'discord-mic':activeCard.icon||'calculator';
         if(icon.dataset.icon!==name)window.CODYIcons.set(icon,name);
       }
       else{const candidates=window.CODYMediaArt.candidates(media),key=JSON.stringify(candidates);if(key!==artKey){artKey=key;artCandidates=candidates;artIndex=0;art.src=candidates[0];}}
@@ -94,11 +98,11 @@
       window.CODYIcons.set($('island-media-toggle'),media.playing?'pause':'play');
       $('island-media-toggle').setAttribute('aria-label',media.playing?'Pause media':'Resume media');
     }
-    if(showTasks){
-      const task=activeTasks.find(task=>task.status==='WaitingForUser')||activeTasks[Math.floor(Date.now()/5000)%activeTasks.length];
-      $('island-info-text').textContent=task.status==='WaitingForUser'?'Needs you':activeTasks.length>1?`${activeTasks.length} tasks working`:task.title;
-      $('island-info-detail').textContent=task.progress||(task.status==='Starting'?'Starting…':'Working in background');
-      $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),'clock');art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
+    if(visibleTaskStatus){
+      info.setAttribute('role','button');info.tabIndex=0;
+      info.setAttribute('aria-label',description);
+      info.title=description;
+      $('island-rps-controls').hidden=true;
     }
     if(showUpdate){
       info.dataset.update='true';info.dataset.tasks='false';info.dataset.rps='false';
@@ -123,8 +127,8 @@
   api.on('monitor-state',state=>{monitors=state;renderTimer();});
   api.on('timer-changed',value=>{timer=value;renderTimer();});
   api.on('island-card',value=>{quickCard=value;renderTimer();});
+  api.on('island-task-status',value=>{taskStatus=value;renderTimer();});
   api.on('spotify-changed',value=>{media=value;renderTimer();});
-  document.addEventListener('cody:tasks-state',event=>{tasks=event.detail;renderTimer();});
   let mediaCommandPending=false;
   for(const [id,command] of [['island-media-previous','previous'],['island-media-toggle','toggle'],['island-media-next','next']])$(id).addEventListener('click',async event=>{
     event.stopPropagation();if(mediaCommandPending)return;mediaCommandPending=true;
@@ -139,7 +143,13 @@
     catch(error){note(error.message);}
     finally{capturePending=false;renderTimer();}
   });
-  $('island-info').addEventListener('click',event=>{event.stopPropagation();if($('island-info').dataset.tasks==='true'){window.CODYTasks?.open();return;}if(quickCard?.captureKind&&!['starting','recording','paused','stopping'].includes(capture.status))void api.capture.reveal(quickCard.captureKind);});
+  function openTaskStatus(){
+    if(visibleTaskStatus.target==='tasks'){window.CODYTasks?.openTask(visibleTaskStatus.taskId);return;}
+    island.togglePanel(true);island.setActiveView('chat');
+    if(visibleTaskStatus.target==='approval'&&approval)$('core-approval-deny').focus();
+  }
+  $('island-info').addEventListener('click',event=>{event.stopPropagation();if(visibleTaskStatus){openTaskStatus();return;}if(quickCard?.captureKind&&!['starting','recording','paused','stopping'].includes(capture.status))void api.capture.reveal(quickCard.captureKind);});
+  $('island-info').addEventListener('keydown',event=>{if(visibleTaskStatus&&['Enter',' '].includes(event.key)){event.preventDefault();openTaskStatus();}});
   $('island-timer').addEventListener('click',event=>{event.stopPropagation();if(timer?.status==='finished')void api.dismissTimer();else{island.setActiveView('chat');island.togglePanel(true);}});
   renderTimer();setInterval(renderTimer,250);
   // The native picker can occupy transparent host space beyond the Island.
@@ -179,10 +189,11 @@
     $('history-new').disabled=app.busy;
   }
   function renderMessages(){
+    window.CODYAttachments?.resetPreviews();
     $('chat-messages').replaceChildren();$('empty-state').hidden=Boolean(current()?.messages?.length);
     for(const message of current()?.messages||[]){
       const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…');node.dataset.messageId=message.id;
-      window.CODYAttachments?.decorateMessage(node,message);
+      window.CODYAttachments?.decorateMessage(node,message,current().id);
     }
     renderHistory();
   }
@@ -195,7 +206,7 @@
     if(message)message.text=delta?(message.text||'')+text:text;
     if(chatId!==app.data.activeChatId)return;
     const node=[...$('chat-messages').children].find(node=>node.dataset.messageId===messageId);
-    if(node){island.renderMessage(node,displayText(message?.text||text)||'Thinking…',message?.role||'assistant');window.CODYAttachments?.decorateMessage(node,message||{});}
+    if(node){island.renderMessage(node,displayText(message?.text||text)||'Thinking…',message?.role||'assistant');window.CODYAttachments?.decorateMessage(node,message||{},chatId);}
     if(follow)log.scrollTop=log.scrollHeight;
   }
   function busy(value){
@@ -240,8 +251,9 @@
   }
   async function sendRequest({voice:voiceRequest=false,quickMessage}={}){
     if(app.busy)return;
-    const text=(quickMessage??$('quick-input').value).trim();if(!text)return;
+    const text=(quickMessage??$('quick-input').value).trim();
     await window.CODYAttachments?.ready();if(app.busy)return;
+    if(!text&&!window.CODYAttachments?.state().items.length)return;
     voice?.stopSpeech(); // a new request owns a new utterance and visual timeline
     if(!app.data.activeChatId){
       const chat=await api.newChat();if(!app.data.chats.some(item=>item.id===chat.id))app.data.chats.unshift(chat);app.data.activeChatId=chat.id;
@@ -268,7 +280,7 @@
   api.on('message-added',({chatId,message})=>{
     const chat=app.data.chats.find(item=>item.id===chatId);
     if(chat&&!chat.messages.some(item=>item.id===message.id))chat.messages.push(message);
-    if(chatId===app.data.activeChatId){const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…');node.dataset.messageId=message.id;window.CODYAttachments?.decorateMessage(node,message);}
+    if(chatId===app.data.activeChatId){const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…');node.dataset.messageId=message.id;window.CODYAttachments?.decorateMessage(node,message,chatId);}
   });
   api.on('message-delta',({chatId,messageId,delta})=>updateMessage(chatId,messageId,delta,true));
   api.on('message-replace',({chatId,messageId,text})=>updateMessage(chatId,messageId,text));

@@ -107,6 +107,7 @@
       <div id="island-rps-controls" class="island-rps-controls" role="group" aria-label="Choose rock, paper or scissors" hidden><button type="button" data-rps-move="rock" aria-label="Rock">🪨</button><button type="button" data-rps-move="paper" aria-label="Paper">📃</button><button type="button" data-rps-move="scissors" aria-label="Scissors">✂️</button></div>
       <div id="island-media-controls" class="island-media-controls" hidden><button id="island-media-previous" type="button" aria-label="Previous media item"></button><button id="island-media-toggle" type="button" aria-label="Play or pause media"></button><button id="island-media-next" type="button" aria-label="Next media item"></button></div>
     </div>
+    <div id="island-task-announcement" class="sr-only" role="status" aria-atomic="true"></div>
     <div id="file-drop-hint" hidden>Drop files here<small>Then ask C.O.D.Y. about them</small></div>
     <section class="quick-panel" id="quick-panel" aria-label="C.O.D.Y. assistant" aria-hidden="true" inert>
       <header class="panel-header">
@@ -167,6 +168,7 @@
             <button class="nav-item" data-tab="voice" type="button"><span class="nav-glyph">◖))</span>Voice</button>
             <button class="nav-item" data-tab="microphone" type="button"><span class="nav-glyph">♩</span>Microphone</button>
             <button class="nav-item" data-tab="appearance" type="button"><span class="nav-glyph">◈</span>Appearance</button>
+            <button class="nav-item" data-tab="accessibility" type="button"><span class="nav-glyph" aria-hidden="true">▤</span>Accessibility</button>
             <button class="nav-item" data-tab="shortcuts" type="button"><span class="nav-glyph">⌘</span>Shortcuts</button>
             <button class="nav-item" data-tab="cursor" type="button"><span class="nav-glyph">➤</span>Cursor</button>
             <button class="nav-item" data-tab="behaviour" type="button"><span class="nav-glyph"></span>Behaviour</button>
@@ -196,6 +198,13 @@
               <h3 class="group-title">CONVERSATIONS</h3><div class="settings-group"><div class="setting-row"><span><strong>Conversation history</strong><small>Browse previous chats and continue a conversation.</small></span><button id="core-history" class="light-action" type="button">Open history</button></div></div><h3 class="group-title">ABOUT</h3>
               <div class="settings-group"><div class="setting-row"><span><strong>C.O.D.Y. Dynamic Island</strong><small>Dynamic Island 1.8.0 · Integrated Windows assistant</small></span><span class="subtle-value">Up to date locally</span></div></div>
               <p class="setting-help">Your preferences are saved automatically.</p>
+            </div>
+            <div class="settings-tab" data-content="accessibility" hidden>
+              <h2>Accessibility</h2>
+              <div class="settings-group">
+                <label class="setting-row"><span><strong>On-screen subtitles</strong><small>Show C.O.D.Y.’s spoken replies above the taskbar, even when your sound is off.</small></span><input type="checkbox" data-pref="speechSubtitles"></label>
+                <label class="setting-row"><span><strong>Island task updates</strong><small>Show progress, approval requests and results in the Island.</small></span><input type="checkbox" data-pref="islandTaskUpdates"></label>
+              </div>
             </div>
             <div class="settings-tab" data-content="memory" hidden>
               <h2>Memory</h2>

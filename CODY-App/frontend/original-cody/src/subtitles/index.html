@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'">
+  <title>C.O.D.Y. subtitles</title>
+  <style>
+    body {
+      margin: 0;
+      box-sizing: border-box;
+      height: 100vh;
+      display: flex;
+      align-items: end;
+      justify-content: center;
+      padding: 0 12px;
+      overflow: hidden;
+      font: 600 clamp(16px, 4.5vw, 21px)/1.35 "Segoe UI", sans-serif;
+      color: #fff;
+    }
+
+    #caption {
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: 10px 18px;
+      border-radius: 12px;
+      background: #111217f5;
+      text-align: center;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      text-wrap: pretty;
+    }
+
+    #caption:empty {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="caption" aria-live="polite" aria-atomic="true" dir="auto"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>

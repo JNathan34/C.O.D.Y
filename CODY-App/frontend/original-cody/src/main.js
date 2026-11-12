@@ -30,6 +30,8 @@ const {CodexVisualPlanner,visualOnly}=require('./visuals/codex-planner');
 let visualPlanner;
 const {StateStore}=require('./store');
 const {registerSettingsBackupIpc}=require('./settings-backup');
+const {SubtitleOverlay}=require('./subtitles/overlay');
+const {IslandTaskUpdates}=require('./island-task-updates');
 const {ChatGPTBrowser}=require('./chatgpt-browser');
 const {formatWebPrompt}=require('./cody-persona');
 const {inspectQuota,quotaMessage}=require('./quota');
@@ -56,7 +58,7 @@ const {IslandUtilities}=require('./island-utilities');
 const {RockPaperScissors}=require('./rock-paper-scissors');
 const {ScreenCapture}=require('./screen-capture');
 const {IslandMonitors}=require('./island-monitors');
-const {Attachments}=require('./attachments');
+const {Attachments,attachmentNames,isImageAttachment}=require('./attachments');
 let attachments;
 const {ControlOverlay}=require('./control-overlay');
 const {KeywordWakeListener}=require('./voice/keyword-wake-listener');
@@ -71,7 +73,7 @@ const {SpotifyMedia}=require('./spotify');
 const {Weather}=require('./weather');
 const weather=new Weather({fetcher:(url,options)=>require('electron').net.fetch(url,options)});
 const timerAlarm=new TimerAlarm();let spotify,quickCard=null,quickCardExpiry=null;
-function refreshIslandCards(reveal=false){const media=spotify?.snapshot();island.setGameActive(Boolean(rps?.snapshot().active));island.setRecordingActive(Boolean(screenCapture?.active));island.setTimerVisible(Boolean(nativeTasks.activeCount)||Boolean(monitors?.snapshot().active)||Boolean(desktopTimer?.snapshot())||Boolean(media?.available&&media.title)||Boolean(quickCard&&quickCard.expiresAt>Date.now()),reveal);}
+function refreshIslandCards(reveal=false){const media=spotify?.snapshot();island.setGameActive(Boolean(rps?.snapshot().active));island.setRecordingActive(Boolean(screenCapture?.active));island.setTimerVisible(Boolean(taskUpdates.current)||Boolean(monitors?.snapshot().active)||Boolean(desktopTimer?.snapshot())||Boolean(media?.available&&media.title)||Boolean(quickCard&&quickCard.expiresAt>Date.now()),reveal);}
 function clearQuickCard(){clearTimeout(quickCardExpiry);quickCard=null;sendUI("island-card",null);refreshIslandCards();}
 function showQuickCard(card,duration=10000){quickCard={...card,expiresAt:Date.now()+duration};sendUI('island-card',quickCard);refreshIslandCards(card.source==='discord');clearTimeout(quickCardExpiry);quickCardExpiry=setTimeout(clearQuickCard,duration);quickCardExpiry.unref();}
 let nativeTasks={connected:false,tasks:[],activeCount:0};
@@ -96,7 +98,21 @@ if((process.platform==='win32' && process.env.CODY_ENABLE_GPU!=='1') || process.
 }
 let speech,firefoxBridge,win,store,codex,webBrowser,tray,controller,quitting=false,activeTurn=null,activeAgentMessage=null,starting=false;
 const pendingApprovals=new Map();
-const sendUI=(event,payload)=>{if(win&&!win.isDestroyed())win.webContents.send(event,payload);};
+const sendUI=(event,payload)=>{
+  if(event==='native-turn-status'){
+    if(payload.finished)taskUpdates.finish(payload.id,payload);
+    else taskUpdates.progress(payload.id,payload.text,payload.detail||'Open chat');
+    return;
+  }
+  if(event==='tasks-changed')taskUpdates.updateTasks(payload);
+  if(event==='computer-approvals')taskUpdates.approval('native',payload||[]);
+  if(event==='approval')taskUpdates.approval('local:'+payload.id,[payload]);
+  if(event==='approval-resolved')taskUpdates.approval('local:'+payload,[]);
+  if(event==='activity'&&activeTurn)taskUpdates.progress(activeTurn.messageId,payload.text,'Open chat');
+  if(event==='busy'&&payload.busy&&activeTurn&&taskUpdates.foreground?.id!==activeTurn.messageId)taskUpdates.progress(activeTurn.messageId,'Working…','Open chat');
+  if(win&&!win.isDestroyed())win.webContents.send(event,payload);
+};
+const taskUpdates=new IslandTaskUpdates(card=>{sendUI('island-task-status',card);refreshIslandCards(Boolean(card));});
 function createWindow(){
   win=island.mount();
   win.webContents.session.setPermissionRequestHandler((wc,permission,callback,details)=>{
@@ -111,11 +127,11 @@ function createWindow(){
   win.webContents.setWindowOpenHandler(({url})=>{try{const link=new URL(url);if(['https:','http:'].includes(link.protocol))void shell.openExternal(link.href).catch(()=>{});}catch{}return {action:'deny'};});
   win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('file://'))event.preventDefault();});
 }
-function getState(){return {...store.publicState(),tasks:nativeTasks,rps:rps?.snapshot(),monitors:monitors?.snapshot(),capture:screenCapture?.snapshot(),timer:desktopTimer?.snapshot(),quickCard,spotify:spotify?.snapshot(),controlCapabilities:controller?.catalog(),firefoxConnection:firefoxBridge?.status(),connected:Boolean(codex?.ready),busy:Boolean(activeTurn||starting),webConnected:Boolean(webBrowser?.lastState?.signedIn)};}
+function getState(){return {...store.publicState(),tasks:nativeTasks,rps:rps?.snapshot(),monitors:monitors?.snapshot(),capture:screenCapture?.snapshot(),timer:desktopTimer?.snapshot(),quickCard,taskStatus:taskUpdates.current,spotify:spotify?.snapshot(),controlCapabilities:controller?.catalog(),firefoxConnection:firefoxBridge?.status(),connected:Boolean(codex?.ready),busy:Boolean(activeTurn||starting),webConnected:Boolean(webBrowser?.lastState?.signedIn)};}
 function initCodex(){
   if(codex)return codex;codex=new CodexClient();
   codex.on('online',()=>sendUI('status',{connected:true,detail:'Codex connected'}));
-  codex.on('offline',reason=>{sendUI('status',{connected:false,detail:reason});if(activeTurn?.engine==='agent')finishTurn('Codex stopped before the task completed');});
+  codex.on('offline',reason=>{for(const [id,request] of pendingApprovals){if(!request.resolve){pendingApprovals.delete(id);sendUI('approval-resolved',id);}}sendUI('status',{connected:false,detail:reason});if(activeTurn?.engine==='agent')finishTurn('Codex stopped before the task completed');});
   codex.on('diagnostic',detail=>sendUI('diagnostic',detail));
   codex.on('approval',req=>{
     const allowed=['item/commandExecution/requestApproval','item/fileChange/requestApproval'];
@@ -178,6 +194,7 @@ function finishTurn(error=''){
   if(error){const chat=store.chat(activeTurn.chatId);const msg=chat?.messages.find(m=>m.id===activeTurn.messageId);if(msg){const message=(msg.text?msg.text+'\n\n⚠ '+error:'Could not finish: '+error);store.updateMessage(activeTurn.chatId,activeTurn.messageId,message);sendUI('message-replace',{chatId:activeTurn.chatId,messageId:activeTurn.messageId,text:message});}sendUI('activity',{text:error});}
   if(['web','codex-bridge'].includes(activeTurn.engine))store.save(); // flush any batched streaming changes
   const spoken=!error&&activeTurn.speak?store.chat(activeTurn.chatId)?.messages.find(m=>m.id===activeTurn.messageId)?.text:null;
+  taskUpdates.finish(activeTurn.messageId,{error,cancelled:activeTurn.cancelled,answered:!error});
   activeTurn=null;activeAgentMessage=false;sendUI('busy',{busy:false});
   if(spoken)void nativeEngine.request('speak',{text:spoken}).catch(error=>sendUI('diagnostic',error.message));
 }
@@ -233,7 +250,7 @@ function registerIpc(){
   ipcMain.handle('window-action',(_,action)=>{if(action==='minimize')island.showCompact();else if(action==='maximize'){win.isMaximized()?win.unmaximize():win.maximize();}else if(action==='close')win.close();else if(action==='quit'){quitting=true;app.quit();}});
   ipcMain.handle('new-chat',()=>{if(activeTurn)throw Error('Finish your current reply first');const c=store.newChat();sendUI('chats-changed',store.publicState());return c;});
   ipcMain.handle('select-chat',(_,id)=>{store.select(id);sendUI('chats-changed',store.publicState());return store.chat(id);});
-  ipcMain.handle('delete-chat',(_,id)=>{if(activeTurn?.chatId===id)throw Error('Stop the active task first');store.deleteChat(id);sendUI('chats-changed',store.publicState());});
+  ipcMain.handle('delete-chat',(_,id)=>{if(activeTurn?.chatId===id)throw Error('Stop the active task first');store.deleteChat(id);void attachments?.prunePastes();sendUI('chats-changed',store.publicState());});
   ipcMain.handle('save-settings',(_,settings)=>{if(!settings||typeof settings!=='object')throw Error('Invalid settings');const allowedEfforts=['low','medium','high','xhigh'];if(settings.defaultReasoning&&!allowedEfforts.includes(settings.defaultReasoning))throw Error('Invalid effort');if(settings.webModel&&!/^(website|(6|6\.1-sol|5\.6):(low|medium|high|xhigh))$/.test(settings.webModel))throw Error('Invalid ChatGPT Web model');if(settings.workingFolder&&!validateFolder(settings.workingFolder))throw Error('Invalid working folder');const saved=store.settings(settings);if(settings.annotations)annotations.configure(saved.annotations);if(settings.visuals)scene.configure(saved.visuals);updateTrayMenu();sendUI('settings-changed',saved);return saved;});
   ipcMain.handle('browse-folder',async()=>{const r=await dialog.showOpenDialog(win,{properties:['openDirectory','createDirectory'],title:'Choose the folder the agent can edit'});if(r.canceled)return null;store.settings({workingFolder:r.filePaths[0]});sendUI('settings-changed',store.data.settings);return r.filePaths[0];});
   ipcMain.handle('connect',async()=>{await initCodex().start();const account=await codex.account();const models=await codex.models().catch(()=>[]);return {account:account.account,models};});
@@ -244,14 +261,42 @@ function registerIpc(){
   ipcMain.handle('web-status',async()=>initWebBrowser().status({create:true}));
   ipcMain.handle('web-sign-in',async()=>{await initWebBrowser().show();return {started:true};});
   ipcMain.handle('approval-decision',(event,id,decision)=>{
-    fromCody(event);const req=pendingApprovals.get(id);if(!req)throw Error('Approval request has expired');if(!['accept','decline'].includes(decision))throw Error('Invalid decision');pendingApprovals.delete(id);if(req.resolve)req.resolve(decision==='accept');else codex.respond(id,decision);return true;
+    fromCody(event);const req=pendingApprovals.get(id);if(!req)throw Error('Approval request has expired');if(!['accept','decline'].includes(decision))throw Error('Invalid decision');if(req.resolve)req.resolve(decision==='accept');else codex.respond(id,decision);pendingApprovals.delete(id);sendUI('approval-resolved',id);return true;
   });
-  sendProviderMessage=async({chatId,text,mode,voice=false})=>{
+  sendProviderMessage=async({chatId,text,mode,voice=false,attachmentBatch})=>{
     text=String(text||'').trim();if(!text||text.length>25000)throw Error('Enter a message under 25,000 characters');
     const route=routeRequest(text,mode==='agent'?'agent':'chatgpt');
     if(activeTurn||starting)throw Error('Another reply is in progress');const chat=store.chat(chatId);if(!chat)throw Error('Select a conversation');
     const settings=store.data.settings;
     const selected=['heyclicky','codex','chatgpt','agent'].includes(mode)?mode:(settings.assistantProvider||'heyclicky');
+    if(attachmentBatch?.paths.length){
+      const files=attachmentBatch.paths;
+      const user=store.addMessage(chatId,'user',text,selected,{persist:false});
+      user.attachments=attachmentBatch.items||attachmentNames(files);
+      const answer=store.addMessage(chatId,'assistant','',selected);
+      const abortController=new AbortController();
+      const operation=activeTurn={engine:selected==='codex'?'codex-bridge':'web',chatId,messageId:answer.id,abortController,speak:voice||settings.voiceAutoSpeak};
+      sendUI('message-added',{chatId,message:user});sendUI('message-added',{chatId,message:answer});sendUI('busy',{busy:true});
+      const onText=reply=>{
+        if(activeTurn!==operation)return;
+        store.updateMessage(chatId,answer.id,reply,{persist:false});
+        sendUI('message-replace',{chatId,messageId:answer.id,text:reply});
+      };
+      const onAccepted=()=>attachments.clearSent(chatId,attachmentBatch.ids).catch(error=>sendUI('diagnostic',error.message));
+      void (async()=>{
+        if(selected==='codex'){
+          const {context}=await nativeEngine.request('attachments-text',{files});
+          abortController.signal.throwIfAborted();
+          return codexAgent.run({human:text,threadId:chat.codexBridgeThreadId,signal:abortController.signal,
+            attachments:{context,images:files.filter(isImageAttachment)},onAccepted,onText,
+            onThread:id=>{chat.codexBridgeThreadId=id;store.save();}});
+        }
+        const browser=initWebBrowser();
+        const prompt=formatWebPrompt(text,{newConversation:!chat.webUrl,runtime:'Answer directly in this chat using the attached files as reference data. No C.O.D.Y. computer tools are available for this message.'});
+        return browser.send({text:prompt,files,onAccepted,chatUrl:chat.webUrl,webModel:settings.webModel||'website',signal:abortController.signal,onText,onUrl:url=>store.setWebUrl(chatId,url)});
+      })().then(()=>{if(activeTurn===operation)finishTurn();}).catch(error=>{if(activeTurn===operation)finishTurn(error.message);});
+      return {started:true,provider:selected};
+    }
     const remember=/^remember (?:that )?([\s\S]+)$/i.exec(text);
     if(remember&&memory){
       memory.saveLocal(remember[1]);
@@ -333,6 +378,7 @@ function registerIpc(){
       sendUI('message-added',{chatId,message:user});sendUI('message-added',{chatId,message:answer});
       sendUI('chats-changed',store.publicState());
       activeTurn={engine:'web',speak:voice||settings.voiceAutoSpeak,chatId,messageId:answer.id};
+      taskUpdates.progress(answer.id,'Working…','Open chat');
       annotations.beginScope(answer.id,{speechExpected:voice===true||settings.voiceAutoSpeak===true});
       scene.beginScope(answer.id);visualLedger.begin(answer.id);captures.clear();
       if(useVisualCodex){
@@ -493,14 +539,14 @@ function registerIpc(){
     try{
       await initCodex().start();const account=await codex.account();if(account?.account?.type!=='chatgpt')throw Error('Please sign in with your ChatGPT account first (Settings → Account).');
       if(!chat.threadId){const threadId=await codex.newThread({model:settings.model||undefined,cwd:mode==='agent'?settings.workingFolder:undefined});if(!threadId)throw Error('Codex did not create a thread');store.setThread(chatId,threadId);}else await codex.resume(chat.threadId);
-      answer=store.addMessage(chatId,'assistant','',mode);activeTurn={engine:'agent',chatId,messageId:answer.id,threadId:chat.threadId,turnId:null};activeAgentMessage=false;sendUI('message-added',{chatId,message:answer});
+      answer=store.addMessage(chatId,'assistant','',mode);activeTurn={engine:'agent',chatId,messageId:answer.id,threadId:chat.threadId,turnId:null};taskUpdates.progress(answer.id,'Working…','Open chat');activeAgentMessage=false;sendUI('message-added',{chatId,message:answer});
       const t=await codex.turn({threadId:chat.threadId,text,mode:route.mode,effort:settings.defaultReasoning,model:settings.model||undefined,cwd:mode==='agent'?settings.workingFolder:undefined});if(activeTurn)activeTurn.turnId=t.turn?.id||null;
       return {started:true};
     }catch(e){if(activeTurn)finishTurn(e.message);else{const msg=store.addMessage(chatId,'assistant','Could not connect: '+e.message,'system');sendUI('message-added',{chatId,message:msg});sendUI('busy',{busy:false});}return {error:e.message};}
     finally{starting=false;}
   };
   ipcMain.handle('send-message',(_,value)=>sendProviderMessage(value));
-  cancelProviderTurn=async()=>{annotations?.clearImmediate('task cancelled');scene?.cancelAnimations();visualLedger?.begin('gui');captures?.clear();if(activeTurn?.engine==='codex-bridge'){activeTurn.abortController.abort();return true;}if(activeTurn?.engine==='web'){activeTurn.abortController?.abort();return initWebBrowser().stop();}if(!activeTurn?.turnId)return false;await codex.interrupt(activeTurn.threadId,activeTurn.turnId);return true;};
+  cancelProviderTurn=async()=>{annotations?.clearImmediate('task cancelled');scene?.cancelAnimations();visualLedger?.begin('gui');captures?.clear();if(activeTurn?.engine==='codex-bridge'){activeTurn.cancelled=true;activeTurn.abortController.abort();return true;}if(activeTurn?.engine==='web'){activeTurn.cancelled=true;activeTurn.abortController?.abort();return initWebBrowser().stop();}if(!activeTurn?.turnId)return false;activeTurn.cancelled=true;await codex.interrupt(activeTurn.threadId,activeTurn.turnId);return true;};
   ipcMain.handle('stop-turn',()=>cancelProviderTurn());
 }
 function showMain(){if(!win||win.isDestroyed())createWindow();island.show();}
@@ -591,7 +637,29 @@ else app.whenReady().then(()=>{
   monitors=new IslandMonitors({settingsFile:path.join(app.getPath('userData'),'island-monitors.json'),weather,readDesktopFrames:()=>nativeEngine.request('desktop-frames'),fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact();lastMonitorActive=state.active;});
   const islandUtilities=new IslandUtilities({tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,showCompact:()=>{island.showCompact();if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
-  attachments=new Attachments({store,onChange:state=>sendUI('attachments-state',state),thumbnail:async file=>{const image=await nativeImage.createThumbnailFromPath(file,{width:64,height:64});return image.isEmpty()?null:image.toDataURL();}});
+  attachments=new Attachments({store,onChange:state=>sendUI('attachments-state',state),encodeImage:bytes=>{
+    const image=nativeImage.createFromBuffer(bytes);
+    if(image.isEmpty())return null;
+    const {width,height}=image.getSize();
+    const resized=Math.max(width,height)<=2400?image:image.resize(width>=height?{width:2400}:{height:2400});
+    return resized.toPNG();
+  },thumbnail:async file=>{const image=await nativeImage.createThumbnailFromPath(file,{width:64,height:64});return image.isEmpty()?null:image.toDataURL();},
+  largeThumbnail:async file=>{
+    let image=await nativeImage.createThumbnailFromPath(file,{width:900,height:700}).catch(()=>null);
+    if(!image||image.isEmpty()){
+      image=nativeImage.createFromPath(file);
+      if(image.isEmpty())return null;
+      const {width,height}=image.getSize();
+      const scale=Math.min(1,900/width,700/height);
+      if(scale<1)image=image.resize({width:Math.max(1,Math.round(width*scale))});
+    }
+    const png=image.toDataURL();
+    return png.length<=400000?png:'data:image/jpeg;base64,'+image.toJPEG(86).toString('base64');
+  },excerpt:async file=>{
+    const {context}=await nativeEngine.request('attachments-text',{files:[file],preview:true});
+    return JSON.parse(context)[0]?.Text||null;
+  }});
+  void attachments.prunePastes();
   const nativeBindings=installNativeIpc({
     localMemoryOnly,saveLocalMemory:text=>{
       if(!memory)throw Error(memoryError||'Local memory is unavailable.');
@@ -605,8 +673,25 @@ else app.whenReady().then(()=>{
   if(!store.data.settings.nativeHeyClickyGui){store.data.settings.nativeHeyClickyGui=true;store.settings({voiceAutoSpeak:true,assistantProvider:"heyclicky"});}
   setPersonalCodexEnabled(store.data.settings.assistantProvider==='codex');
   createWindow();createTray();
+  const syncTaskUpdates=prefs=>taskUpdates.setEnabled(prefs.islandTaskUpdates);
+  island.onPreferencesChanged(syncTaskUpdates);syncTaskUpdates(island.preferences());
+  app.once('will-quit',()=>taskUpdates.close());
+  const subtitles=new SubtitleOverlay({BrowserWindow,screen,onError:error=>sendUI('diagnostic','Subtitles: '+error.message)});
+  const syncSubtitles=({speechSubtitles:enabled})=>{
+    if(enabled===subtitles.enabled)return;
+    subtitles.setEnabled(enabled);
+    void nativeEngine.request('speech-subtitles-configure',{enabled}).catch(error=>sendUI('diagnostic','Subtitles: '+error.message));
+  };
+  nativeEngine.on('speech-subtitle',line=>subtitles.show(line));
+  for(const event of ['speech-subtitle-clear','offline'])nativeEngine.on(event,()=>subtitles.clear());
+  for(const event of ['lock-screen','suspend'])powerMonitor.on(event,()=>subtitles.setSuspended(true));
+  for(const event of ['unlock-screen','resume'])powerMonitor.on(event,()=>subtitles.setSuspended(false));
+  island.onPreferencesChanged(syncSubtitles);
+  syncSubtitles(island.preferences());
+  app.once('will-quit',()=>subtitles.close());
   controlOverlay=new ControlOverlay({BrowserWindow,screen,engine:nativeEngine,getAccent:()=>island.preferences().accentColor,getCursorColor:()=>island.preferences().cursorColor,getCursorOptions:()=>island.preferences(),getIslandWindow:()=>island.window(),getDockPoint:()=>{const bounds=island.window()?.getBounds();return bounds?{x:bounds.x+bounds.width/2,y:bounds.y+16}:null;}});
   controlOverlay.on('diagnostic',message=>sendUI('diagnostic',message));
+  controlOverlay.on('change',state=>taskUpdates.drive(state));
   const syncCursorPreferences=()=>{controlOverlay.preferencesChanged();const prefs=island.preferences();void nativeEngine.request('configure',{screenHighlight:prefs.screenHighlight,cursorColor:controlOverlay.cursorColor(),cursorSize:prefs.cursorSize,systemInput:prefs.controlInputMode==='system'}).catch(error=>sendUI('diagnostic',error.message));};
   let dictationActive=false,sessionLocked=false;
   nativeEngine.on('meter',value=>{dictationActive=value.dictationActive===true;});

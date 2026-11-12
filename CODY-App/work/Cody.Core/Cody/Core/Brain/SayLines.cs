@@ -6,13 +6,15 @@ namespace HeyClicky.Core.Brain;
 
 public static class SayLines
 {
-	public static List<string> InOrder(string code)
+	public static List<string> InOrder(string code) => InOrder(code, completeOnly: false);
+
+	public static List<string> InOrder(string code, bool completeOnly)
 	{
 		List<string> lines = new List<string>();
 		Scan(code, (int? _, string line) =>
 		{
 			lines.Add(line);
-		});
+		}, completeOnly);
 		return lines;
 	}
 
@@ -39,7 +41,7 @@ public static class SayLines
 		return byStep;
 	}
 
-	private static void Scan(string code, Action<int?, string> onLine)
+	private static void Scan(string code, Action<int?, string> onLine, bool completeOnly = false)
 	{
 		int index = 0;
 		int? arg = null;
@@ -90,6 +92,7 @@ public static class SayLines
 						stringBuilder.Append(code[index++]);
 					}
 				}
+				if (completeOnly && index >= code.Length) break;
 				index++;
 				string text = stringBuilder.ToString().Trim();
 				if (text.Length > 0)

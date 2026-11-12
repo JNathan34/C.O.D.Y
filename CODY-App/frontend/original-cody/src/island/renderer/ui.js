@@ -147,7 +147,7 @@
     input.focus();
   }
   function updateInput(){
-    sendButton.disabled=!input.value.trim()||Boolean(window.CODYIsland?.backendBusy);
+    sendButton.disabled=(!input.value.trim()&&!window.CODYAttachments?.state().items.length)||Boolean(window.CODYIsland?.backendBusy);
     input.style.height='24px';input.style.height=Math.min(input.scrollHeight,82)+'px';
   }
   function clearTransition() {
@@ -503,7 +503,7 @@
   function togglePanel(value=!panelOpen){setPanelOpen(value);}
   async function sendPrompt(){
     const prompt=input.value.trim();
-    if(!prompt || sendButton.disabled)return;
+    if(sendButton.disabled)return;
     if(typeof window.CODYIsland.onPrompt!=='function'&&!window.CODYIsland.backendConnected){
       note.textContent="Connect your main C.O.D.Y. backend to enable chat.";
       return;

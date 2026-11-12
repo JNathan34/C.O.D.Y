@@ -5,6 +5,10 @@ namespace HeyClicky.App.Cody;
 
 public static class NativeAudioControl
 {
+    private const int EndpointNotFound = unchecked((int)0x80070490);
+    private const int AudioServiceNotRunning = unchecked((int)0x88890010);
+    [DllImport("ole32.dll", ExactSpelling=true)] private static extern int CoInitializeEx(nint reserved, uint mode);
+    [DllImport("ole32.dll", ExactSpelling=true)] private static extern void CoUninitialize();
     [DllImport("ole32.dll", ExactSpelling=true)] private static extern int CoCreateInstance(ref Guid clsid, nint outer, uint context, ref Guid iid, out nint result);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int DefaultDevice(nint self,int flow,int role,out nint device);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Activate(nint self,ref Guid iid,uint context,nint args,out nint result);
@@ -33,6 +37,15 @@ public static class NativeAudioControl
         Marshal.ThrowExceptionForHR(Slot<GetMuted>(volume,15)(volume,out int muted));
         return JsonSerializer.Serialize(new { level=(int)Math.Round(level*100),muted=muted!=0 });
     });
+    public static bool HasDefaultOutput()
+    {
+        // Narration can call this from a background thread with no COM apartment.
+        int initialization = CoInitializeEx(0, 0);
+        try { return WithEndpoint(_ => true); }
+        catch (Exception error) when (error.HResult is EndpointNotFound or AudioServiceNotRunning) { return false; }
+        catch (COMException) { return true; }
+        finally { if (initialization >= 0) CoUninitialize(); }
+    }
     public static void SetVolume(int level) => WithEndpoint(volume=>MarshalResult(Slot<SetScalar>(volume,7)(volume,Math.Clamp(level,0,100)/100f,0)));
     public static void SetMute(bool muted) => WithEndpoint(volume=>MarshalResult(Slot<SetMuted>(volume,14)(volume,muted?1:0,0)));
     private static int MarshalResult(int result) { Marshal.ThrowExceptionForHR(result);return result; }
