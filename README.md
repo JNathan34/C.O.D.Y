@@ -6,6 +6,7 @@
 <p align="center">A Windows desktop assistant for voice, conversation and getting things done.</p>
 <p align="center">
   <a href="https://github.com/JNathan34/C.O.D.Y/releases/latest">Download for Windows</a> ·
+  <a href="#cody-in-action">See it in action</a> ·
   <a href="docs/GETTING-STARTED.md">Getting started</a> ·
   <a href="CODY-App/docs/GITHUB-UPDATES.md">Updates and releases</a> ·
   <a href="https://github.com/JNathan34/C.O.D.Y/issues">Report an issue</a>
@@ -14,6 +15,11 @@
 C.O.D.Y. brings chat, voice controls and background tasks into an animated desktop island. It combines an Electron interface with a bundled Windows engine for computer controls, screen capture, browser connections and visual tools.
 
 **Current release: 0.15.21 · Windows x64 and ARM64 · Early development**
+
+<p align="center">
+  <img src="docs/screenshots/showcase-jet-engine.png" width="650" alt="C.O.D.Y.-generated 3D turbofan cutaway with a silver intake, amber compressor stages and a blue casing">
+</p>
+<p align="center">An interactive turbofan cutaway generated and rendered by C.O.D.Y.</p>
 
 ## Install
 
@@ -41,31 +47,41 @@ Features depend on Windows permissions, account access and connected services. T
 
 <a id="pictures-of-the-current-development-build"></a>
 
-## Pictures of C.O.D.Y. 0.15.6
+## C.O.D.Y. in action
 
-These pictures show the interface included in **0.15.6**, including the microphone shortcut, pinned clock/weather and Windows settings commands. The weather picture uses an example reading.
+### Interactive 3D and on-screen drawing
 
-![Expanded chat with centred suggestions and message box](docs/screenshots/expanded-chat.png)
+C.O.D.Y. generated the model from **“Generate an interactive 3D turbofan jet engine”** and showed the compressor stages from the side after a follow-up. The intake view and cutaway are captures from its interactive viewer. Drag to explore the model and scroll to resize it.
 
-The expanded chat adjusts its suggestions and message box to the available space. Touchscreen input opens the island on the first tap and collapses it when you tap outside.
-
-| Pinned clock and date | Pinned weather example |
+| 3D intake view | On-screen drawing |
 | --- | --- |
-| ![Persistent local clock and date](docs/screenshots/pinned-clock.png) | ![Persistent weather showing an example Derby reading](docs/screenshots/pinned-weather.png) |
+| ![Front three-quarter view of the turbofan intake and fan blades](docs/screenshots/showcase-jet-engine-intake.png) | ![C.O.D.Y.’s on-screen airflow drawing with intake, compression, turbine and exhaust stages](docs/screenshots/showcase-airflow-drawing.png) |
 
-Say **“show clock”**, **“show weather”** or **“show weather in Derby”** to keep an item in the island. Pins survive restarts and rotate alongside RAM and other monitors. Use **“hide clock”** or **“hide weather”** to remove them.
+C.O.D.Y. drew the airflow diagram on screen in a follow-up. The illustration gives a simplified overview of how air moves through the engine.
 
-| Microphone muted | Brief unmute indicator |
+### Chat, background tasks and voice
+
+| Expanded chat | Background tasks |
 | --- | --- |
-| ![Coral crossed-out microphone while CODY is muted](docs/screenshots/microphone-muted.png) | ![Blue microphone and sound waves during unmute animation](docs/screenshots/microphone-unmuted.png) |
+| ![Expanded C.O.D.Y. chat with a message composer and example requests](docs/screenshots/showcase-chat.png) | ![Sample background tasks with a finished website preview and a project brief in progress](docs/screenshots/showcase-background-tasks.png) |
 
-**Ctrl + Alt + M** toggles C.O.D.Y. voice input, wake detection and dictation. The crossed-out microphone stays visible while muted; unmuting briefly shows blue sound waves. Other apps retain microphone access, and typed requests remain available.
+Ask by typing or saying **“Hey Cody.”** The task cards show progress and let you open finished outputs. C.O.D.Y. can also [connect to your browser and control Windows with permission](docs/GETTING-STARTED.md).
 
-| Updated Shortcuts page | Windows settings permission |
+| Hands-free listening | Discord voice controls |
 | --- | --- |
-| ![Shortcuts settings including Ctrl Alt M and microphone mute](docs/screenshots/settings-shortcuts.png) | ![Custom permissions including Windows settings](docs/screenshots/settings-windows-permissions.png) |
+| ![The Island listening for a hands-free request](docs/screenshots/showcase-listening.png) | ![The Island showing confirmation that a Discord call was disconnected](docs/screenshots/showcase-discord.png) |
 
-The new Windows settings permission covers Bluetooth and Wi-Fi on/off, power mode and supported display brightness. See the [command examples and limitations](docs/GETTING-STARTED.md#windows-settings-commands-in-the-current-source).
+### The compact Island
+
+| Media playback | Screen recording | Pinned weather |
+| --- | --- | --- |
+| ![An example Spotify track playing in the Island](docs/screenshots/showcase-media.png) | ![Paused screen recording with resume and stop controls](docs/screenshots/showcase-screen-recording.png) | ![Example pinned weather reading for Derby](docs/screenshots/pinned-weather.png) |
+
+The Island also keeps timers, clocks and performance monitors in view. You can even play rock, paper, scissors using your voice.
+
+<p align="center">
+  <img src="docs/screenshots/showcase-voice-game.png" width="520" alt="C.O.D.Y. listening for a move in a game of rock, paper, scissors">
+</p>
 
 ## Word guide
 
