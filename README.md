@@ -8,6 +8,7 @@
   <a href="https://github.com/JNathan34/C.O.D.Y/releases/latest">Download for Windows</a> ·
   <a href="#cody-in-action">See it in action</a> ·
   <a href="docs/GETTING-STARTED.md">Getting started</a> ·
+  <a href="https://github.com/JNathan34/C.O.D.Y/releases">Release notes</a> ·
   <a href="CODY-App/docs/GITHUB-UPDATES.md">Updates and releases</a> ·
   <a href="https://github.com/JNathan34/C.O.D.Y/issues">Report an issue</a>
 </p>
@@ -96,102 +97,6 @@ The Island also keeps timers, clocks and performance monitors in view. You can e
 The handbook covers capabilities, voice commands, settings and setup, with screenshots and examples. The repository copy covers 0.15.13, including Discord commands, desktop FPS, the agent usage switch, local memory and recent settings changes. Older screenshots are labelled with their version where relevant.
 
 The repository guide now includes refreshed Shortcuts and Permissions pictures plus current expanded-chat, clock, weather and microphone-status pictures. Weather is labelled as an example reading. Screenshot assets are in `docs/screenshots`; `CODY-App/tools/capture-guide-screenshots.cjs` captures the current renderer, and `CODY-App/tools/update-guide-pictures.py` embeds them using the document Python runtime.
-
-## What changed in 0.15.21
-
-- Say **“Hey Cody, pause the music”** in one breath. C.O.D.Y. buffers your first words while speech recognition starts.
-- Leave Discord calls with more natural phrasing. C.O.D.Y. asks when the app name is unclear.
-- Play, pause, skip and seek with less delay. More playback and volume phrases run locally.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.21.md).
-
-## What changed in 0.15.20
-
-- Discord share commands open the call you’re connected to. Say **“Stop screen share”** to end your stream and stay in the call.
-- Clicking outside the expanded Island collapses it, including clicks in the transparent area around the panel.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.20.md).
-
-## What changed in 0.15.19
-
-- Discord gives shorter replies such as **“Muted”** and **“Unmuted.”** The Island animates a red slash on the microphone when Discord confirms mute and removes it when you unmute.
-- Say **“Leave Discord”** or **“Disconnect from Discord”** to leave the current call or voice channel.
-- Say **“Share screen”** for Discord’s Screen 1 or **“Share screen two”** for Screen 2. C.O.D.Y. now switches to **Entire Screen** in Discord’s source picker.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.19.md).
-
-## What changed in 0.15.18
-
-- Discord commands show progress and results in the Island while your active window keeps focus.
-- Say **“Discord screenshare”** to open the source picker.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.18.md).
-
-## What changed in 0.15.17
-
-- FPS uses the same widget as weather, clock and RAM in the compact island and expanded chat.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.17.md).
-
-## What changed in 0.15.16
-
-- Back up and restore local notes from **Settings → Memory → Memory Backup**.
-- Improve quieter multi-word wake detection and the handoff into voice recognition.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.16.md).
-
-## What changed in 0.15.15
-
-- The island folds smoothly into the top edge when hidden and fades panel controls before returning to the compact view.
-- Find Island visibility under **Settings → Appearance → Island**.
-- The pinned FPS counter sits inside the island alongside other status cards.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.15.md).
-
-## What changed in 0.15.14
-
-- The island unfolds from the center of the top edge, rebounds, and fades in the mascot and any active details.
-- Preview the motion from **Test all animations → Unfold / hide**.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.14.md).
-
-## What changed in 0.15.13
-
-- Pause agent usage from Settings → Agents.
-- Pin desktop FPS even when the current application has no frame-rate source.
-- Mute, deafen and share a selected screen or window in Discord using typed or spoken commands.
-- Save and manage encrypted notes on this PC under Settings → Memory.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.13.md).
-
-## What changed in 0.15.8
-
-- Show update status and download progress in the island, with a shortcut to Settings → Updates.
-- Restore normal chat size and pointer bounds when the expanded panel minimises, while preserving the conversation and draft.
-- Keep the legacy native task dock hidden; background tasks remain available through C.O.D.Y.’s Tasks page.
-- Include 3D window containment, aligned close controls and 10× scroll zoom.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.8.md).
-
-## What changed in 0.15.6
-
-- Toggle C.O.D.Y.-only microphone mute with **Ctrl + Alt + M**, with persistent mute and brief unmute indicators.
-- Pin a live clock and current weather alongside RAM and other island monitors.
-- Control Bluetooth, Wi-Fi, power mode and supported display brightness through permission-checked commands.
-- Improve touchscreen first-tap opening, outside-tap dismissal and expanded chat layout.
-- Keep the drawing Clear button hidden when there is no visible content to clear.
-- Refresh the illustrated Word guide and screenshots.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.6.md) and the [changelog](CHANGELOG.md).
-
-## What changed in 0.15.5
-
-- Hold **Ctrl + left-drag** to move 3D models, including models with transparent backgrounds.
-- Normal dragging still rotates models, and scrolling still zooms them.
-- Moved models retain their placement and stay reachable at screen edges.
-- The chat panel stays above 3D models without flickering between the two.
-
-See [release notes](CODY-App/docs/RELEASE-NOTES-0.15.5.md) and the [changelog](CHANGELOG.md).
 
 ## Develop
 
