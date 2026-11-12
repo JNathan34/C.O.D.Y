@@ -61,11 +61,11 @@ C.O.D.Y. drew the airflow diagram on screen in a follow-up. The illustration giv
 
 ### Circle and explain what’s on screen
 
-Ask C.O.D.Y. to **“Circle the noise suppression switch and explain what it does.”** In this demo, it drew the blue ring over the switch and explained what it controls.
+Ask C.O.D.Y. **“Mark where the CPU goes over budget, point out what the GPU is doing, and tell me what to check next.”** On this demo performance trace, it circled the jump in CPU frame time and pointed to the GPU line, which stayed below the 60 FPS frame budget.
 
-![C.O.D.Y.’s blue circle around the Noise suppression toggle on a demo microphone settings screen](docs/screenshots/showcase-screen-annotation.png)
+![C.O.D.Y. circles the orange CPU frame-time jump above the 16.7 ms budget and points a blue arrow at the steady cyan GPU line](docs/screenshots/showcase-screen-annotation.png)
 
-> This switch reduces background noise during calls.
+> The likely bottleneck is CPU work: it jumps to about 23 milliseconds. That exceeds the 16.7 millisecond budget; GPU time stays around 9 milliseconds. Verify by profiling CPU threads during the jump to identify the longest-running work.
 
 ### Chat, background tasks and voice
 
