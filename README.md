@@ -59,6 +59,14 @@ C.O.D.Y. generated the model from **“Generate an interactive 3D turbofan jet e
 
 C.O.D.Y. drew the airflow diagram on screen in a follow-up. The illustration gives a simplified overview of how air moves through the engine.
 
+### Circle and explain what’s on screen
+
+Ask C.O.D.Y. to **“Circle the noise suppression switch and explain what it does.”** In this demo, it drew the blue ring over the switch and explained what it controls.
+
+![C.O.D.Y.’s blue circle around the Noise suppression toggle on a demo microphone settings screen](docs/screenshots/showcase-screen-annotation.png)
+
+> This switch reduces background noise during calls.
+
 ### Chat, background tasks and voice
 
 | Expanded chat | Background tasks |
