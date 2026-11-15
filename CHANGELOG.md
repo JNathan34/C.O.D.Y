@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.24 — 15 November 2026
+
+- Add independent **Font size** and **GUI size** controls under **Settings → Accessibility**. Changes apply immediately and save automatically.
+- Give Accessibility a blue figure icon in the Settings sidebar.
+- Move reply and task banners farther right in the compact Island and add 15 previews under **Developer settings → Animation studio → Island task updates**.
+
 ## 0.15.23 — 12 November 2026
 
 - Add **Settings → Accessibility** with click-through subtitles for spoken replies and a switch for visual task updates in the Island.
