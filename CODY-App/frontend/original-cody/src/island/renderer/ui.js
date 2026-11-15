@@ -45,6 +45,7 @@
     funReactions:true,sunglassesEnabled:true,pretendSleepEnabled:true,wifiReactions:true,
     startListeningOnHotkey:true,hotkeyMode:'hold',activityHideDelay:1600,
     quickMessageEnabled:true,quickMessagePhrase:'done',
+    fontScale:100,guiScale:100,
     enableHotkey:true,wakeWordEnabled:false,wakeHeyCody:true,wakeOkayCody:true,wakeCody:true,controlInputMode:'system',mascotLook:'blue',accentColor:window.CODYLooks.blue.color,cursorColor:'accent',cursorSize:100,hideFloatingCursor:false,screenHighlight:true,shakeToDetach:true,voiceId:'',voiceRate:1,voicePitch:1,voiceVolume:1,micDeviceId:'',micSensitivity:1,visibility:'always'
   };
   let settings = {...DEFAULTS};
@@ -227,6 +228,8 @@
     body.dataset.motion=settings.animationSpeed;
     body.dataset.style=settings.revealStyle;
     body.style.setProperty('--ui-accent',settings.accentColor||DEFAULTS.accentColor);
+    body.style.setProperty('--font-scale',settings.fontScale/100);
+    body.style.setProperty('--gui-scale',settings.guiScale/100);
     refreshPreferences();
     if(settings.idleReactions==='off'){
       gazeTarget={x:0,y:0};
@@ -596,7 +599,7 @@
   document.querySelectorAll('[data-pref]').forEach(control=>{
     const callback=()=>{
       const key=control.dataset.pref;
-      const value=control.type==='checkbox'?control.checked:control.type==='range'?Number(control.value):control.value;
+      const value=control.type==='checkbox'?control.checked:typeof settings[key]==='number'?Number(control.value):control.value;
       void savePreference(key,value);
     };
     control.addEventListener(control.type==='range'?'input':'change',callback);
@@ -721,7 +724,8 @@
     if(panelOpen){
       // The little mascot at the top is also a collapse target.
       const rect=island.getBoundingClientRect();
-      if(Math.abs(event.clientX-(rect.left+rect.width/2))<40 && event.clientY<rect.top+42)togglePanel(false);
+      const scale=settings.guiScale/100;
+      if(Math.abs(event.clientX-(rect.left+rect.width/2))<40*scale && event.clientY<rect.top+42*scale)togglePanel(false);
       return;
     }
     if(state==='idle'&&settings.reactiveExpressions)setExpression('surprised',350);
@@ -772,6 +776,22 @@
       applyCursor({x:(event.clientX-mx)/210,y:(event.clientY-my)/130,near:distance<100,hovered:distance<18,speed:0});
     });
   }
+  function renderTaskStatus(card) {
+    document.getElementById('island-info-text').textContent=card.text;
+    document.getElementById('island-info-detail').textContent=card.detail||'';
+    const icon=document.getElementById('island-info-icon');
+    icon.hidden=false;
+    if(icon.dataset.icon!==card.icon)window.CODYIcons.set(icon,card.icon);
+  }
+  function previewTaskStatus(card) {
+    const info=document.getElementById('island-info');
+    info.hidden=!card;
+    info.dataset.taskStatus=card?.kind||'';
+    body.classList.toggle('utility-layout',Boolean(card));
+    body.classList.toggle('island-content-active',Boolean(card));
+    body.classList.toggle('task-layout',card?.kind==='progress'&&card.target==='tasks');
+    if(card)renderTaskStatus(card);
+  }
   // Cross-frame animation studio protocol. postMessage works reliably even
   // when file:// pages have different/opaque origins in Chromium or Electron.
   // Only accepted in the explicitly marked demo renderer.
@@ -781,6 +801,7 @@
       const {action, args=[]} = event.data;
       const test = window.CODYIsland;
       if (!test || !Array.isArray(args)) return;
+      if(action==='previewTaskStatus'){previewTaskStatus(args[0]);return;}
       const safe = new Set(['showIsland','setState','setAudioLevel','applySettings','applyCursor','previewExpression','previewBlink','togglePanel','setActiveView']);
       if (safe.has(action) && typeof test[action] === 'function') {
         try { test[action](...args); } catch(err) { console.warn('[C.O.D.Y. demo]',err); }
@@ -792,7 +813,7 @@
     startListening:()=>void startMicrophone(),stopListening:()=>stopMicrophone(),
     togglePanel,getState:()=>state,onPrompt:null,onNewChat:null,backendConnected:false,
     appendMessage,renderMessage:window.CODYChatFormat.render,newConversation,setActiveView,
-    applySettings,showIsland,applyCursor,
+    applySettings,showIsland,applyCursor,renderTaskStatus,
     playExpression:(name,duration)=>setExpression(name,duration),
     previewExpression:(name,duration=2100)=>{setState('idle');setExpression(name,duration,true);},
     previewBlink:(double=false)=>{setState('idle');setExpression('normal',0,true);blink(double,true);},

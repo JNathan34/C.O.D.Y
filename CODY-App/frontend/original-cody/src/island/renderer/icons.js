@@ -36,6 +36,8 @@
     <path d="M6.004 5.125a4 4 0 00-2.526 5.77"/>`;
   paths.camera='<path d="M14 4h-4L8 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z"/><circle cx="12" cy="13" r="4"/>';
   paths.activity='<path d="M2 12h4l3-9 6 18 3-9h4"/>';
+  paths['circle-alert']='<circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>';
+  paths.accessibility='<circle cx="12" cy="4" r="2.3" fill="currentColor" stroke="none"/><path d="m5 7 7 2.5L19 7M12 9.5V15m0 0-4 7m4-7 4 7" stroke-width="3.4"/>';
   paths.users='<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/><circle cx="9" cy="7" r="4"/>';
   paths.globe='<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a18 18 0 0 1 0 20 18 18 0 0 1 0-20"/>';
   paths.image='<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>';
@@ -57,7 +59,7 @@
   window.CODYIcons={set};
   const controls={'new-chat':'square-pen','panel-settings':'settings','panel-mic':'mic','panel-send':'arrow-up','core-speaker':'volume-x','core-stop':'square'};
   for(const [id,icon]of Object.entries(controls))set(document.getElementById(id),icon);
-  const navigation={general:'settings',memory:'brain',voice:'audio-lines',microphone:'mic',appearance:'palette',shortcuts:'keyboard',cursor:'mouse-pointer-2',behaviour:'activity',integrations:'plug',agents:'users',permissions:'shield-check',developer:'code-xml'};
+  const navigation={general:'settings',memory:'brain',voice:'audio-lines',microphone:'mic',appearance:'palette',accessibility:'accessibility',shortcuts:'keyboard',cursor:'mouse-pointer-2',behaviour:'activity',integrations:'plug',agents:'users',permissions:'shield-check',developer:'code-xml'};
   for(const button of document.querySelectorAll('.nav-item[data-tab]'))set(button.querySelector('.nav-glyph'),navigation[button.dataset.tab]);
   for(const marker of document.querySelectorAll('.nav-external'))set(marker,'external-link');
   for(const marker of document.querySelectorAll("[data-access-icon]"))set(marker,marker.dataset.accessIcon);

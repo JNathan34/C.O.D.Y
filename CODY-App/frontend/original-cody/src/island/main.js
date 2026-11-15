@@ -25,6 +25,7 @@ const CHAT_WIDTH = 520;
 const CHAT_HEIGHT = 352;
 const TASKS_WIDTH = CHAT_WIDTH;
 const TASKS_HEIGHT = 420;
+const TASK_DETAIL_HEIGHT = 650;
 const SETTINGS_WIDTH = 900;
 const SETTINGS_HEIGHT = 716;
 const DEFAULTS = Object.freeze({
@@ -38,6 +39,8 @@ const DEFAULTS = Object.freeze({
   wakeWordEnabled: false, wakeHeyCody: true, wakeOkayCody: true, wakeCody: true,
   speechSubtitles: false,
   islandTaskUpdates: true,
+  fontScale: 100,
+  guiScale: 100,
   voiceId: '',
   voiceRate: 1, voicePitch: 1, voiceVolume: 1,
   micDeviceId: '', micSensitivity: 1,
@@ -133,6 +136,8 @@ function validateSettings(patch, old = settings) {
   if(!Object.hasOwn(mascotLooks,next.mascotLook))next.mascotLook='blue';
   if(next.cursorColor!=='accent'&&!Object.values(mascotLooks).some(look=>look.color===next.cursorColor))next.cursorColor='accent';
   next.cursorSize = Number.isFinite(next.cursorSize)?Math.min(200,Math.max(50,Math.round(next.cursorSize/25)*25)):100;
+  if (![90,100,115,130,150].includes(next.fontScale)) next.fontScale = DEFAULTS.fontScale;
+  if (![90,100,110,125].includes(next.guiScale)) next.guiScale = DEFAULTS.guiScale;
   next.voiceRate = Number.isFinite(next.voiceRate)?Math.min(1.4,Math.max(.7,next.voiceRate)):1;
   next.voicePitch = Number.isFinite(next.voicePitch)?Math.min(1.2,Math.max(.8,next.voicePitch)):1;
   next.voiceVolume = Number.isFinite(next.voiceVolume)?Math.min(1,Math.max(0,next.voiceVolume)):1;
@@ -186,8 +191,9 @@ function windowBounds() {
   const bounds = screen.getPrimaryDisplay().bounds;
   // Transparent host stays the same size in BOTH modes; only the SVG/CSS morphs.
   // Repositioning a native transparent window while it animates caused flashing.
-  const width = Math.min(PANEL_WIDTH,bounds.width);
-  const height = Math.min(PANEL_HEIGHT,bounds.height);
+  const scale = settings.guiScale/100;
+  const width = Math.min(Math.ceil(PANEL_WIDTH*scale),bounds.width);
+  const height = Math.min(Math.ceil(PANEL_HEIGHT*scale),bounds.height);
   return { x: Math.round(bounds.x + (bounds.width - width) / 2), y: bounds.y, width, height };
 }
 function positionWindow() {
@@ -327,11 +333,13 @@ function pollCursor(clickedPoint=null) {
   const nearIsland = point.x >= bounds.x + left && point.x < bounds.x + left+size.width && point.y >= bounds.y && point.y < bounds.y + size.height;
   // All visible expanded content remains interactive; outside is click-through.
   const wide=['settings','history'].includes(currentPanelView)||currentPanelView==='tasks'&&taskDetailExpanded||currentPanelView==='chat'&&chatExpanded;
-  const width = Math.min(wide?SETTINGS_WIDTH:currentPanelView==='tasks'?TASKS_WIDTH:CHAT_WIDTH,bounds.width);
-  const height = Math.min(wide?SETTINGS_HEIGHT:currentPanelView==='tasks'?TASKS_HEIGHT:CHAT_HEIGHT,bounds.height);
+  const scale = settings.guiScale/100;
+  const width = Math.min((wide?SETTINGS_WIDTH:currentPanelView==='tasks'?TASKS_WIDTH:CHAT_WIDTH)*scale,bounds.width);
+  const baseHeight = currentPanelView==='tasks'?(taskDetailExpanded?TASK_DETAIL_HEIGHT:TASKS_HEIGHT):wide?SETTINGS_HEIGHT:CHAT_HEIGHT;
+  const height = Math.min(baseHeight*scale,bounds.height);
   const panelX = bounds.x+(bounds.width-width)/2;
   // Leave transparent shoulders click-through; avoid swallowing clicks on other applications.
-  const onPanel = expanded && point.x>=panelX+28 && point.x<panelX+width-28 && point.y>=bounds.y+18 && point.y<bounds.y+height-10;
+  const onPanel = expanded && point.x>=panelX+28*scale && point.x<panelX+width-28*scale && point.y>=bounds.y+18*scale && point.y<bounds.y+height-10*scale;
   const y = point.y-bounds.y;
   const centerX = bounds.x + bounds.width/2;
   const dist = Math.hypot(point.x-centerX, point.y-(bounds.y+size.height/2));
@@ -397,7 +405,7 @@ function onModifierEvent(event) {
 function createIsland() {
   islandWindow = new BrowserWindow({
     title:branding.name,icon:branding.icon,
-    width:Math.min(PANEL_WIDTH,screen.getPrimaryDisplay().bounds.width),height:Math.min(PANEL_HEIGHT,screen.getPrimaryDisplay().bounds.height),
+    ...windowBounds(),
     frame:false,transparent:true,backgroundColor:'#00000000',
     resizable:false,movable:false,maximizable:false,minimizable:false,
     hasShadow:false,skipTaskbar:true,alwaysOnTop:true,autoHideMenuBar:true,show:false,

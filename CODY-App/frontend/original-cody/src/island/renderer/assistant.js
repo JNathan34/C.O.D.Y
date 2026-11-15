@@ -86,14 +86,20 @@
     }
     if(discord&&(recording||showGame))$('island-info-detail').textContent='Discord · '+discord.text;
     if(quick||showMedia){
-      $('island-info-text').textContent=quick?activeCard.text:media.title;
-      $('island-info-detail').textContent=quick?(activeCard.detail||''):`${media.playing?'':'Paused · '}${media.artist||media.app||'Media'}`;
-      $('island-info-icon').hidden=Boolean(showMedia);art.hidden=!showMedia;
-      if(quick){
+      art.hidden=!showMedia;
+      if(visibleTaskStatus)island.renderTaskStatus(visibleTaskStatus);
+      else if(quick){
         const icon=$('island-info-icon'),name=discordMic?'discord-mic':activeCard.icon||'calculator';
+        $('island-info-text').textContent=activeCard.text;
+        $('island-info-detail').textContent=activeCard.detail||'';
+        icon.hidden=false;
         if(icon.dataset.icon!==name)window.CODYIcons.set(icon,name);
+      }else{
+        $('island-info-text').textContent=media.title;
+        $('island-info-detail').textContent=`${media.playing?'':'Paused · '}${media.artist||media.app||'Media'}`;
+        $('island-info-icon').hidden=true;
+        const candidates=window.CODYMediaArt.candidates(media),key=JSON.stringify(candidates);if(key!==artKey){artKey=key;artCandidates=candidates;artIndex=0;art.src=candidates[0];}
       }
-      else{const candidates=window.CODYMediaArt.candidates(media),key=JSON.stringify(candidates);if(key!==artKey){artKey=key;artCandidates=candidates;artIndex=0;art.src=candidates[0];}}
       $('island-media-controls').hidden=!showMedia;
       window.CODYIcons.set($('island-media-toggle'),media.playing?'pause':'play');
       $('island-media-toggle').setAttribute('aria-label',media.playing?'Pause media':'Resume media');

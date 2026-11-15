@@ -67,9 +67,27 @@
     restored:'Blue arcs fill one by one, stay visible briefly, then C.O.D.Y. returns to idle.',
     error:'A short error reaction inside the original signature ring.'
   };
+  const TASK_STATUSES=[
+    {kind:'progress',text:'Working…',detail:'Open chat',icon:'clock',target:'chat'},
+    {kind:'progress',text:'Controlling your PC',detail:'Opening an app',icon:'mouse-pointer-2',target:'chat'},
+    {kind:'reply',text:'Reply ready',detail:'Open chat',icon:'check',target:'chat'},
+    {kind:'outcome',text:'Request stopped',detail:'Open chat',icon:'square',target:'chat'},
+    {kind:'outcome',text:'Request failed',detail:'Open chat',icon:'circle-alert',target:'chat'},
+    {kind:'attention',text:'Approval needed',detail:'Review request',icon:'shield-check',target:'approval'},
+    {label:'Task needs approval',kind:'attention',text:'Approval needed',detail:'Review task',icon:'circle-help',target:'tasks'},
+    {kind:'attention',text:'Needs your input',detail:'Choose a name',icon:'circle-help',target:'tasks'},
+    {label:'Task starting',kind:'progress',text:'Drafting notes',detail:'Starting…',icon:'clock',target:'tasks'},
+    {label:'Task working',kind:'progress',text:'Drafting notes',detail:'Working in background',icon:'clock',target:'tasks'},
+    {kind:'progress',text:'2 tasks working',detail:'Drafting notes',icon:'clock',target:'tasks'},
+    {kind:'outcome',text:'Task finished',detail:'Drafting notes',icon:'check',target:'tasks'},
+    {kind:'outcome',text:'Task stopped',detail:'Drafting notes',icon:'square',target:'tasks'},
+    {kind:'outcome',text:'Task failed',detail:'Drafting notes',icon:'circle-alert',target:'tasks'},
+    {kind:'outcome',text:'2 tasks ended',detail:'Drafting notes',icon:'check',target:'tasks'}
+  ];
   function clearDemo(){
     if(demoTimer){clearInterval(demoTimer);demoTimer=null;}
     demoTimers.forEach(clearTimeout);demoTimers=[];
+    demo()?.previewTaskStatus(null);
   }
   function later(fn,delay){demoTimers.push(setTimeout(fn,delay));}
   // Communicate with the isolated preview via postMessage. This also works
@@ -77,7 +95,7 @@
   function demo(){
     if(!frame.contentWindow)return null;
     const send=(action,...args)=>frame.contentWindow.postMessage({namespace:'CODY-ANIMATION-TEST',action,args},'*');
-    return Object.fromEntries(['showIsland','setState','setAudioLevel','applySettings','applyCursor','previewExpression','previewBlink']
+    return Object.fromEntries(['showIsland','setState','setAudioLevel','applySettings','applyCursor','previewExpression','previewBlink','previewTaskStatus']
       .map(action=>[action,(...args)=>send(action,...args)]));
   }
   function showLabel(name,text){title.textContent=name;description.textContent=text;}
@@ -135,31 +153,49 @@
       sequence.forEach((x,i)=>later(()=>c.applyCursor({x,y:.25*Math.sin(i),speed:200,near:false,hovered:false}),i*500+300));
     }else later(()=>c.previewExpression(name,2400),230);
   }
+  function auditionTaskStatus(card){
+    clearDemo();const c=demo();if(!c)return;
+    c.applySettings({...current,microphoneMuted:false});
+    c.showIsland(true);c.previewExpression('normal',0);
+    c.previewTaskStatus(card);
+    showLabel(card.label||card.text,card.detail);
+  }
   function stopPlayAll(){if(playbackTimer)clearInterval(playbackTimer);playbackTimer=null;}
   document.querySelectorAll('[data-state-test]').forEach(button=>button.addEventListener('click',()=>{stopPlayAll();auditionState(button.dataset.stateTest);}));
   document.querySelectorAll('[data-expression-test]').forEach(button=>button.addEventListener('click',()=>{stopPlayAll();auditionExpression(button.dataset.expressionTest);}));
-  document.getElementById('stop-preview').addEventListener('click',()=>{if(playbackTimer)clearInterval(playbackTimer);playbackTimer=null;resetPreview();});
+  const statusTests=document.getElementById('task-status-tests');
+  for(const card of TASK_STATUSES){
+    const button=document.createElement('button');
+    button.type='button';button.textContent=card.label||card.text;
+    button.addEventListener('click',()=>{
+      stopPlayAll();auditionTaskStatus(card);
+      frame.scrollIntoView({block:'nearest'});
+    });
+    statusTests.append(button);
+  }
+  document.getElementById('stop-preview').addEventListener('click',()=>{stopPlayAll();resetPreview();});
   frame.addEventListener('load',()=>{
     const c=demo();if(c){previewApi=c; c.applySettings({...current,visibility:'always',idleReactions:'subtle'});c.showIsland(true);}
   });
   // The preview is isolated from the real overlay; this sequential test never
   // activates the microphone, changes settings, or disconnects Wi-Fi.
   document.getElementById('play-all').addEventListener('click',()=>{
-    clearDemo();if(playbackTimer)clearInterval(playbackTimer);playbackTimer=null;
+    stopPlayAll();
     const steps=[
       ['idle'],['blink','expression'],['wink','expression'],['squint','expression'],
       ['sleepy','expression'],['mouse','expression'],['listening'],['thinking'],['speaking'],
-      ['offline'],['wifi-restored'],['mic-muted'],['mic-restored'],['error'],['reveal']
+      ['offline'],['wifi-restored'],['mic-muted'],['mic-restored'],['error'],['reveal'],
+      ...TASK_STATUSES.map(card=>[card,'task-status'])
     ];
     let index=0;
     const next=()=>{
-      if(index>=steps.length){clearInterval(playbackTimer);playbackTimer=null;return;}
+      if(index>=steps.length){stopPlayAll();resetPreview();return;}
       const [value,type]=steps[index++];
       if(type==='expression')auditionExpression(value);
+      else if(type==='task-status')auditionTaskStatus(value);
       else auditionState(value);
     };
     // Each audition resets its own simulated waveform; this interval is independent.
-    if(playbackTimer)clearInterval(playbackTimer);
     next();playbackTimer=setInterval(next,2700);
   });
 })();

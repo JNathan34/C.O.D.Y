@@ -168,7 +168,7 @@
             <button class="nav-item" data-tab="voice" type="button"><span class="nav-glyph">◖))</span>Voice</button>
             <button class="nav-item" data-tab="microphone" type="button"><span class="nav-glyph">♩</span>Microphone</button>
             <button class="nav-item" data-tab="appearance" type="button"><span class="nav-glyph">◈</span>Appearance</button>
-            <button class="nav-item" data-tab="accessibility" type="button"><span class="nav-glyph" aria-hidden="true">▤</span>Accessibility</button>
+            <button class="nav-item" data-tab="accessibility" type="button"><span class="nav-glyph" aria-hidden="true"></span>Accessibility</button>
             <button class="nav-item" data-tab="shortcuts" type="button"><span class="nav-glyph">⌘</span>Shortcuts</button>
             <button class="nav-item" data-tab="cursor" type="button"><span class="nav-glyph">➤</span>Cursor</button>
             <button class="nav-item" data-tab="behaviour" type="button"><span class="nav-glyph"></span>Behaviour</button>
@@ -202,6 +202,8 @@
             <div class="settings-tab" data-content="accessibility" hidden>
               <h2>Accessibility</h2>
               <div class="settings-group">
+                <label class="setting-row"><span><strong>Font size</strong><small>Adjust chat text and interface labels.</small></span><select class="scale-select" data-pref="fontScale" aria-label="Font size"><option value="90">90%</option><option value="100">100% (Default)</option><option value="115">115%</option><option value="130">130%</option><option value="150">150%</option></select></label>
+                <label class="setting-row"><span><strong>GUI size</strong><small>Scale the chat, Settings and task panels.</small></span><select class="scale-select" data-pref="guiScale" aria-label="GUI size"><option value="90">90%</option><option value="100">100% (Default)</option><option value="110">110%</option><option value="125">125%</option></select></label>
                 <label class="setting-row"><span><strong>On-screen subtitles</strong><small>Show C.O.D.Y.’s spoken replies above the taskbar, even when your sound is off.</small></span><input type="checkbox" data-pref="speechSubtitles"></label>
                 <label class="setting-row"><span><strong>Island task updates</strong><small>Show progress, approval requests and results in the Island.</small></span><input type="checkbox" data-pref="islandTaskUpdates"></label>
               </div>
