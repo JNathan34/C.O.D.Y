@@ -9,7 +9,7 @@ const profiles={
 };
 const validName=name=>typeof name==='string'&&/^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u.test(name.trim());
 function cleanProfile(value){
- if(!value||typeof value!=='object'||Array.isArray(value)||!validName(value.name)||typeof value.voiceAutoSpeak!=='boolean')return null;
+ if(!value||typeof value!=='object'||Array.isArray(value)||!validName(value.name)||typeof value.voiceAutoSpeak!=='boolean'||value.allowLocalControl!==undefined&&typeof value.allowLocalControl!=='boolean')return null;
  const island={};
  for(const key of PROFILE_KEYS)if(Object.hasOwn(value.island||{},key)){
   const val=value.island[key];
