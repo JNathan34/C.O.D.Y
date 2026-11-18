@@ -4,6 +4,7 @@ const {execFile}=require('node:child_process');
 const {commandText}=require('./command-text');
 const {Weather,parseWeatherRequest}=require('./weather');
 const METRICS=['cpu','ram','gpu','fps','wifi','wifiDetails','wifiSpeed','speedtest','clock','weather'];
+const SPEED_RESULT_MS=5000;
 const canonicalMetric=id=>({cpuTemp:'cpu',gpuTemp:'gpu'})[id]||id;
 const aliases={cpu:'cpu','cpu usage':'cpu',processor:'cpu','processor usage':'cpu',temp:'cpuTemp',temperature:'cpuTemp','cpu temp':'cpuTemp','cpu temperature':'cpuTemp',ram:'ram',memory:'ram','ram usage':'ram','memory usage':'ram',gpu:'gpu','gpu usage':'gpu','gpu temp':'gpuTemp','gpu temperature':'gpuTemp',fps:'fps','fps counter':'fps','desktop fps':'fps','frame rate':'fps',wifi:'wifi','wi fi':'wifi','wifi details':'wifiDetails','wi fi details':'wifiDetails','wifi speed':'wifiSpeed','wi fi speed':'wifiSpeed','network speed':'wifiSpeed','speed test':'speedtest'};
 function diagnoseConnection({wifi,stale=false,rx=null,tx=null,latency=null}={}){
@@ -52,12 +53,16 @@ class IslandMonitors extends EventEmitter{
     this.weather=weather||new Weather({fetcher,now});this.weatherLocation='';this.weatherGeneration=0;this.weatherNextUpdate=0;
     this.clockFormat=new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
     this.clockDateFormat=new Intl.DateTimeFormat('en-GB',{weekday:'short',day:'numeric',month:'short'});
-    if(settingsFile){try{const saved=JSON.parse(fs.readFileSync(settingsFile,'utf8'));if(typeof saved.weatherLocation==='string'&&saved.weatherLocation.length<=100)this.weatherLocation=saved.weatherLocation;for(const metric of saved.metrics||[]){const id=canonicalMetric(metric);if(METRICS.includes(id))this.selected.add(id);}if(saved.speedtest&&typeof saved.speedtest.text==='string'&&typeof saved.speedtest.detail==='string'){this.values.speedtest={text:saved.speedtest.text.slice(0,100),detail:saved.speedtest.detail.slice(0,300),tooltip:saved.speedtest.tooltip?.slice(0,500)};if(/Testing|Measuring/.test(this.values.speedtest.detail))this.values.speedtest.detail='Previous test was interrupted; run it again.';}if(saved.metrics?.some(id=>id!==canonicalMetric(id)))this.save();}catch{}}
+    if(settingsFile){try{const saved=JSON.parse(fs.readFileSync(settingsFile,'utf8'));if(typeof saved.weatherLocation==='string'&&saved.weatherLocation.length<=100)this.weatherLocation=saved.weatherLocation;for(const metric of saved.metrics||[]){const id=canonicalMetric(metric);if(METRICS.includes(id)&&(id!=='speedtest'||saved.speedTestPinned===true))this.selected.add(id);}if(saved.speedtest&&typeof saved.speedtest.text==='string'&&typeof saved.speedtest.detail==='string'){this.values.speedtest={text:saved.speedtest.text.slice(0,100),detail:saved.speedtest.detail.slice(0,300),tooltip:saved.speedtest.tooltip?.slice(0,500)};if(/Testing|Measuring/.test(this.values.speedtest.detail))this.values.speedtest.detail='Previous test was interrupted; run it again.';}if(saved.metrics?.some(id=>id!==canonicalMetric(id)||!this.selected.has(id)))this.save();}catch{}}
     this.timer=setInterval(()=>this.sample(),1000);this.timer.unref();this.sample();
   }
   match(input){return monitorCommand(input);}
-  save(){if(this.settingsFile){fs.mkdirSync(path.dirname(this.settingsFile),{recursive:true});fs.writeFileSync(this.settingsFile+'.tmp',JSON.stringify({metrics:[...this.selected],speedtest:this.values.speedtest,weatherLocation:this.weatherLocation}));fs.renameSync(this.settingsFile+'.tmp',this.settingsFile);}}
-  snapshot(){return {active:this.selected.size>0,metrics:[...this.selected],items:[...this.selected].map(id=>({id,...(this.values[id]||{text:id,detail:'Loading…'})})),updatedAt:this.now()};}
+  save(){if(this.settingsFile){fs.mkdirSync(path.dirname(this.settingsFile),{recursive:true});fs.writeFileSync(this.settingsFile+'.tmp',JSON.stringify({metrics:[...this.selected],speedTestPinned:this.selected.has('speedtest'),speedtest:this.values.speedtest,weatherLocation:this.weatherLocation}));fs.renameSync(this.settingsFile+'.tmp',this.settingsFile);}}
+  snapshot(){
+    const metrics=[...this.selected];
+    const items=this.speedCard?[{id:'speedtest',...this.speedCard}]:metrics.map(id=>({id,...(this.values[id]||{text:id,detail:'Loading…'})}));
+    return {active:items.length>0,metrics,items,updatedAt:this.now()};
+  }
   publish(){this.emit('change',this.snapshot());}
   async execute(route){
     if(route.metrics){route={...route,metrics:[...new Set(route.metrics.map(canonicalMetric))]};if(route.metrics.some(id=>!METRICS.includes(id)))throw Error('Unknown Island monitor.');}
@@ -67,11 +72,11 @@ class IslandMonitors extends EventEmitter{
       const stale=!this.windowsUpdatedAt||this.now()-this.windowsUpdatedAt>20000;
       return {reply:diagnoseConnection({wifi:this.data.wifi,stale,rx:this.rx,tx:this.tx,latency:this.lastLatency}),confirmation:'Connection checked.'};
     }
-    if(route.action==='clear'){this.selected.clear();this.resetFps();this.weatherGeneration++;this.weatherPending=null;this.speedAbort?.abort();this.save();this.publish();return {reply:'Island monitors cleared.',confirmation:'Done.'};}
-    if(route.action==='hide'){for(const metric of route.metrics)this.selected.delete(metric);if(route.metrics.includes('fps'))this.resetFps();if(route.metrics.includes('weather')){this.weatherGeneration++;this.weatherPending=null;}if(!this.selected.has('speedtest'))this.speedAbort?.abort();this.save();this.publish();return {reply:'Stopped showing '+route.metrics.map(id=>id.replace(/([A-Z])/g,' $1').toLowerCase()).join(' and ')+'.',confirmation:'Done.'};}
+    if(route.action==='clear'){this.selected.clear();this.resetFps();this.weatherGeneration++;this.weatherPending=null;this.cancelSpeedTest();this.save();this.publish();return {reply:'Island monitors cleared.',confirmation:'Done.'};}
+    if(route.action==='hide'){for(const metric of route.metrics)this.selected.delete(metric);if(route.metrics.includes('fps'))this.resetFps();if(route.metrics.includes('weather')){this.weatherGeneration++;this.weatherPending=null;}if(route.metrics.includes('speedtest'))this.cancelSpeedTest();this.save();this.publish();return {reply:'Stopped showing '+route.metrics.map(id=>id.replace(/([A-Z])/g,' $1').toLowerCase()).join(' and ')+'.',confirmation:'Done.'};}
     if(route.action==='speedtest'){
       if(this.speedRunning)return {reply:'The Wi-Fi speed test is already running.'};
-      this.selected.add('speedtest');this.save();this.values.speedtest={text:'Speed test',detail:'Testing…'};this.publish();void this.speedTest();return {reply:'Wi-Fi speed test started. Results will stay in the Island.',confirmation:'Done.'};
+      void this.speedTest();return {reply:'Wi-Fi speed test started. The results will show in the Island for five seconds.',confirmation:'Done.'};
     }
     if(route.metrics.includes('weather')){
       const location=route.weatherLocation??this.weatherLocation;
@@ -172,19 +177,36 @@ class IslandMonitors extends EventEmitter{
     }catch(error){if(current()){this.values.weather={text:'Weather unavailable',detail:request.location||'Try a named city',icon:'cloud-off',tooltip:error.message||'Current weather data is unavailable.'};this.weatherNextUpdate=this.now()+60*1000;this.publish();}}
     finally{if(this.weatherPending===request)this.weatherPending=null;}
   }
-  async speedTest(){
-    this.speedRunning=true;const controller=this.speedAbort=new AbortController();const timer=setTimeout(()=>controller.abort(),45000);
-    const request=async(url,options={})=>{const response=await this.fetcher(url,{...options,cache:'no-store',signal:controller.signal});if(!response.ok)throw Error('Speed test service unavailable');return response;};
-    try{
-      const pingStart=performance.now();await (await request('https://speed.cloudflare.com/__down?bytes=0')).arrayBuffer();const latency=performance.now()-pingStart;
-      this.values.speedtest={text:'Speed test',detail:'Measuring download…'};this.publish();
-      let start=performance.now();const down=await request('https://speed.cloudflare.com/__down?bytes=20000000');let bytes=0;for await(const chunk of down.body)bytes+=chunk.byteLength;const download=bytes*8/(performance.now()-start)/1000;
-      this.values.speedtest={text:'Speed test',detail:'Measuring upload…'};this.publish();
-      const uploadBytes=4000000;start=performance.now();await (await request('https://speed.cloudflare.com/__up',{method:'POST',body:new Uint8Array(uploadBytes),headers:{'Content-Type':'application/octet-stream'}})).arrayBuffer();const upload=uploadBytes*8/(performance.now()-start)/1000;
-      this.lastLatency=latency;this.values.speedtest={text:'↓'+download.toFixed(1)+' Mbps',detail:'↑'+upload.toFixed(1)+' Mbps',tooltip:`${Math.round(latency)} ms latency · approximate Internet speed via Cloudflare`};
-    }catch(error){this.values.speedtest={text:'Speed test',detail:controller.signal.aborted?'Stopped or timed out':error.message};}
-    finally{clearTimeout(timer);this.speedRunning=false;this.speedAbort=null;this.save();this.publish();}
+  get speedRunning(){return Boolean(this.speedAbort);}
+  cancelSpeedTest(){
+    clearTimeout(this.speedCardExpiry);
+    this.speedCard=null;
+    const controller=this.speedAbort;this.speedAbort=null;controller?.abort();
   }
-  close(){this.closed=true;this.resetFps();this.weatherGeneration++;clearInterval(this.timer);this.speedAbort?.abort();this.child?.kill();}
+  async speedTest(){
+    clearTimeout(this.speedCardExpiry);
+    const controller=this.speedAbort=new AbortController();const timer=setTimeout(()=>controller.abort(),45000);
+    const progress=detail=>{controller.signal.throwIfAborted();this.speedCard={text:'Speed test',detail};this.publish();};
+    const request=async(url,options={})=>{const response=await this.fetcher(url,{...options,cache:'no-store',signal:controller.signal});if(!response.ok)throw Error('Speed test service unavailable');return response;};
+    let result;
+    try{
+      progress('Testing…');
+      const pingStart=performance.now();await (await request('https://speed.cloudflare.com/__down?bytes=0')).arrayBuffer();const latency=performance.now()-pingStart;
+      progress('Measuring download…');
+      let start=performance.now();const down=await request('https://speed.cloudflare.com/__down?bytes=20000000');let bytes=0;for await(const chunk of down.body)bytes+=chunk.byteLength;const download=bytes*8/(performance.now()-start)/1000;
+      progress('Measuring upload…');
+      const uploadBytes=4000000;start=performance.now();await (await request('https://speed.cloudflare.com/__up',{method:'POST',body:new Uint8Array(uploadBytes),headers:{'Content-Type':'application/octet-stream'}})).arrayBuffer();const upload=uploadBytes*8/(performance.now()-start)/1000;
+      controller.signal.throwIfAborted();
+      this.lastLatency=latency;result={text:'↓'+download.toFixed(1)+' Mbps',detail:'↑'+upload.toFixed(1)+' Mbps',tooltip:`${Math.round(latency)} ms latency · approximate Internet speed via Cloudflare`};
+    }catch(error){result={text:'Speed test',detail:controller.signal.aborted?'Stopped or timed out':error.message};}
+    finally{clearTimeout(timer);}
+    if(this.speedAbort!==controller)return;
+    this.speedAbort=null;
+    this.speedCard=this.values.speedtest=result;
+    this.speedCardExpiry=setTimeout(()=>{this.speedCard=null;this.publish();},SPEED_RESULT_MS);
+    this.speedCardExpiry.unref();
+    this.save();this.publish();
+  }
+  close(){this.closed=true;this.resetFps();this.weatherGeneration++;clearInterval(this.timer);this.cancelSpeedTest();this.child?.kill();}
 }
 module.exports={IslandMonitors,monitorCommand,diagnoseConnection};

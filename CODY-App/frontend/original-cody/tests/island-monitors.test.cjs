@@ -110,11 +110,46 @@ test('monitor values persist through sampling, remove individually, and never in
     await monitors.execute(monitorCommand('clear the island'));assert.equal(monitors.snapshot().active,false);
   }finally{monitors.close();}
 });
-test('speed test sends generated test bytes and stores measured results until cleared',async()=>{
+test('speed test temporarily replaces pinned RAM and restores it five seconds after completion',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
   const requests=[];const monitors=new IslandMonitors({fetcher:async(url,options)=>{requests.push({url,options});return {ok:true,arrayBuffer:async()=>new ArrayBuffer(0),body:(async function*(){yield new Uint8Array(100000);})()};}});
   try{
-    await monitors.execute({action:'speedtest'});while(monitors.speedRunning)await new Promise(resolve=>setImmediate(resolve));
-    assert.equal(monitors.snapshot().metrics[0],'speedtest');assert.match(monitors.values.speedtest.detail,/Mbps/);assert.equal(requests.length,3);assert.equal(requests[2].options.body.byteLength,4000000);
+    await monitors.execute(monitorCommand('pin RAM'));
+    const started=monitors.execute(monitorCommand('do a speed test'));
+    assert.deepEqual(monitors.snapshot().items.map(item=>item.id),['speedtest']);
+    await started;while(monitors.speedRunning)await flush();
+    assert.deepEqual(monitors.snapshot().metrics,['ram']);
+    assert.match(monitors.snapshot().items[0].detail,/Mbps/);
+    assert.equal(requests.length,3);assert.equal(requests[2].options.body.byteLength,4000000);
+    t.mock.timers.tick(4999);
+    assert.equal(monitors.snapshot().items[0].id,'speedtest');
+    t.mock.timers.tick(1);
+    assert.deepEqual(monitors.snapshot().items.map(item=>item.id),['ram']);
     await monitors.execute({action:'clear'});assert.equal(monitors.snapshot().active,false);
+  }finally{monitors.close();}
+});
+test('legacy saved speed tests stop rotating with pinned monitors and keep the last result',async()=>{
+  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'cody-speed-test-')),settingsFile=path.join(folder,'monitors.json');
+  fs.writeFileSync(settingsFile,JSON.stringify({metrics:['ram','speedtest'],speedtest:{text:'↓450 Mbps',detail:'↑80 Mbps'}}));
+  const monitors=new IslandMonitors({settingsFile});
+  try{
+    assert.deepEqual(monitors.snapshot().items.map(item=>item.id),['ram']);
+    assert.equal(monitors.values.speedtest.detail,'↑80 Mbps');
+    await monitors.execute(monitorCommand('pin speed test'));
+    assert.equal(JSON.parse(fs.readFileSync(settingsFile,'utf8')).speedTestPinned,true);
+  }finally{monitors.close();fs.rmSync(folder,{recursive:true,force:true});}
+});
+test('hiding speed test progress cancels it without resurfacing a card',async()=>{
+  let respond;
+  const monitors=new IslandMonitors({fetcher:()=>new Promise(resolve=>{respond=resolve;})});
+  try{
+    await monitors.execute(monitorCommand('show RAM'));
+    await monitors.execute(monitorCommand('run a speed test'));
+    await monitors.execute(monitorCommand('hide speed test'));
+    respond({ok:true,arrayBuffer:async()=>new ArrayBuffer(0)});
+    await flush();
+    assert.equal(monitors.speedRunning,false);
+    assert.deepEqual(monitors.snapshot().items.map(item=>item.id),['ram']);
   }finally{monitors.close();}
 });

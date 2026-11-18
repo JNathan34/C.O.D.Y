@@ -14,6 +14,8 @@ Copy-Item -LiteralPath .\work\Cody.Engine\bin\Debug\net9.0-windows10.0.22621.0\H
 Copy-Item -LiteralPath .\work\Cody.Core\bin\Debug\net9.0-windows10.0.22621.0\HeyClicky.Core.dll -Destination (Join-Path $runtime 'HeyClicky.Core.dll') -Force
 node (Join-Path $PSScriptRoot 'sync-wake-runtime.cjs')
 if ($LASTEXITCODE -ne 0) { throw 'Wake runtime synchronization failed.' }
+node (Join-Path $PSScriptRoot 'patch-drawing-tracking.cjs')
+if ($LASTEXITCODE -ne 0) { throw 'Drawing runtime patch failed.' }
 New-Item -ItemType Directory -Path (Join-Path $runtime 'Assets\Cody') -Force | Out-Null
 Copy-Item -LiteralPath .\frontend\original-cody\assets\brand\cody-64.png -Destination (Join-Path $runtime 'Assets\Cody\cody-64.png') -Force
 New-Item -ItemType Directory -Path (Join-Path $runtime 'Assets\Cody\Cursors') -Force | Out-Null
