@@ -51,7 +51,7 @@ internal static class CodyDrawingControls
     {
         if(!HasDrawingContent(canvas))return false;
         // Hidden/minimised or background app windows must not retain the top Clear HUD.
-        if(Field(canvas,"staleWatch") is DrawingScreenWatch watch&&watch.IsBoundToBackgroundWindow)return false;
+        if(Field(canvas,"staleWatch") is DrawingScreenWatch watch&&(watch.Hidden||watch.IsBoundToBackgroundWindow))return false;
         return true;
     }
     private static bool HasDrawingContent(ScreenDrawingCanvas canvas)
