@@ -54,7 +54,7 @@
    const size=shape.fontSize||16;
    ink.setAttribute('x',shape.x);ink.setAttribute('y',shape.y+size);
    ink.setAttribute('font-size',size);ink.setAttribute('fill',shape.color);
-   ink.replaceChildren(...shape.text.split('\\n').slice(0,12).map((line,index)=>{
+   ink.replaceChildren(...shape.text.split('\n').slice(0,12).map((line,index)=>{
     const row=element('tspan',{x:shape.x,dy:index?'1.3em':0});
     row.textContent=line;
     return row;
