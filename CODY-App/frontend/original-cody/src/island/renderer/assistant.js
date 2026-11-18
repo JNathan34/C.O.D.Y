@@ -43,7 +43,7 @@
       return;
     }
     if(visibleTaskStatus?.kind==='progress')island.wakeUp();
-    island.setMediaPlaying(Boolean(preferences.showMediaWidget!==false&&media.available&&media.playing));
+    island.setMediaPlaying(Boolean((typeof preferences==='undefined'||(typeof preferences==='undefined'||preferences.showMediaWidget!==false))&&media.available&&media.playing));
     const quick=Boolean(!recording&&!game.active&&activeCard&&(visibleTaskStatus||discord||timer?.status!=='finished'));
     const updateCard=window.CODYUpdateStatus?.card();
     const showUpdate=Boolean(updateCard&&!recording&&!game.active&&!quick&&timer?.status!=='finished');
