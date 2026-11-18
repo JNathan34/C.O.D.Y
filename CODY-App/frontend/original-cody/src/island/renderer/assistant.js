@@ -206,7 +206,7 @@
     window.CODYAttachments?.resetPreviews();
     $('chat-messages').replaceChildren();$('empty-state').hidden=Boolean(current()?.messages?.length);
     for(const message of current()?.messages||[]){
-      const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…');node.dataset.messageId=message.id;
+      const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…',message.mention);node.dataset.messageId=message.id;
       window.CODYAttachments?.decorateMessage(node,message,current().id);
     }
     renderHistory();
@@ -220,7 +220,7 @@
     if(message)message.text=delta?(message.text||'')+text:text;
     if(chatId!==app.data.activeChatId)return;
     const node=[...$('chat-messages').children].find(node=>node.dataset.messageId===messageId);
-    if(node){island.renderMessage(node,displayText(message?.text||text)||'Thinking…',message?.role||'assistant');window.CODYAttachments?.decorateMessage(node,message||{},chatId);}
+    if(node){island.renderMessage(node,displayText(message?.text||text)||'Thinking…',message?.role||'assistant',message?.mention);window.CODYAttachments?.decorateMessage(node,message||{},chatId);}
     if(follow)log.scrollTop=log.scrollHeight;
   }
   function busy(value){
@@ -263,17 +263,18 @@
     sendingMessage=true;
     try{return await sendRequest(options);}finally{sendingMessage=false;}
   }
-  async function sendRequest({voice:voiceRequest=false,quickMessage}={}){
+  async function sendRequest({voice:voiceRequest=false,quickMessage,mention}={}){
     if(app.busy)return;
     const text=(quickMessage??$('quick-input').value).trim();
-    const capabilityId=quickMessage===undefined?window.CODYMentions?.selected():undefined;
+    const selectedMention=mention||(quickMessage===undefined?window.CODYMentions?.snapshot():null);
+    const capabilityId=selectedMention?.id;
     await window.CODYAttachments?.ready();if(app.busy)return;
     if(!text&&!window.CODYAttachments?.state().items.length)return;
     voice?.stopSpeech(); // a new request owns a new utterance and visual timeline
     if(!app.data.activeChatId){
       const chat=await api.newChat();if(!app.data.chats.some(item=>item.id===chat.id))app.data.chats.unshift(chat);app.data.activeChatId=chat.id;
     }
-    const result=await api.sendMessage({chatId:app.data.activeChatId,text,mode:app.mode,voice:voiceRequest,...(capabilityId?{capabilityId}:{})});
+    const result=await api.sendMessage({chatId:app.data.activeChatId,text,mode:app.mode,voice:voiceRequest,...(capabilityId?{capabilityId,mention:selectedMention}:{})});
     if(result?.error||result?.blocked){note(result.error||'Request blocked');return result;}
     if(!result?.cancelled&&quickMessage===undefined){$('quick-input').value='';window.CODYMentions?.clear();island.updateInput();}
     return result;
@@ -282,9 +283,13 @@
     if(app.busy||sendingMessage){note('C.O.D.Y. is busy. Tap AltGr again when ready.');return;}
     try{await send({quickMessage:text});}catch(error){note(error.message);}
   };
-  island.onPrompt=async text=>{
-    $('quick-input').value=text;
-    await send();
+  island.onPrompt=async(text,mention)=>{
+    const result=await send({quickMessage:text,mention});
+    if(result?.error){
+      window.CODYInlineComposer?.restore({text,mention});
+      island.updateInput();
+    }
+    return result;
   };
   island.onNewChat=async()=>{
     try{await voice?.cancel();const chat=await api.newChat();app.data.activeChatId=chat.id;if(!app.data.chats.some(item=>item.id===chat.id))app.data.chats.unshift(chat);renderMessages();}
@@ -298,7 +303,7 @@
   api.on('message-added',({chatId,message})=>{
     const chat=app.data.chats.find(item=>item.id===chatId);
     if(chat&&!chat.messages.some(item=>item.id===message.id))chat.messages.push(message);
-    if(chatId===app.data.activeChatId){const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…');node.dataset.messageId=message.id;window.CODYAttachments?.decorateMessage(node,message,chatId);}
+    if(chatId===app.data.activeChatId){const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…',message.mention);node.dataset.messageId=message.id;window.CODYAttachments?.decorateMessage(node,message,chatId);}
   });
   api.on('message-delta',({chatId,messageId,delta})=>updateMessage(chatId,messageId,delta,true));
   api.on('message-replace',({chatId,messageId,text})=>updateMessage(chatId,messageId,text));
