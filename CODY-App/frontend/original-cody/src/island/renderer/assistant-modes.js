@@ -27,7 +27,7 @@
  save.addEventListener('click',()=>{
   const value=name.value.trim();
   if(!value){status.textContent='Enter a mode name first.';return;}
-  void run(()=>api.save(value),'Mode saved on this computer.');
+  void run(()=>api.save(value,{allowLocalControl:document.getElementById('assistant-mode-local-tools').checked}),'Mode saved on this computer.');
  });
  remove.addEventListener('click',()=>{const id=select.value;void run(()=>api.remove(id),'Custom mode removed.');});
  document.querySelector('[data-tab="behaviour"]')?.addEventListener('click',()=>void refresh());
