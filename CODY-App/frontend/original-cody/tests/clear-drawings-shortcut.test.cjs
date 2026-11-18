@@ -34,3 +34,12 @@ test('global clear destroys CODY annotation windows on both displays and calls t
   assert.deepEqual(nativeCalls,['clear-2d-drawings']);
   overlay.close();
 });
+
+test('Ctrl+Alt+X is registered as a true global hotkey, independent of focus',()=>{
+  // The existing integration test exercises the complete clear command above;
+  // guard its global registration and cleanup so it cannot regress to a
+  // C.O.D.Y.-focused keyboard listener.
+  assert.match(island,/globalShortcut\.register\('Control\+Alt\+X',\(\)=>handleHotkey\('clear-drawings'\)\)/);
+  assert.match(island,/globalShortcut\.unregister\('Control\+Alt\+X'\)/);
+  assert.match(island,/clearDrawingsShortcutRegistered=globalShortcut\.register/);
+});
