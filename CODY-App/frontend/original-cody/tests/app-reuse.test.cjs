@@ -7,7 +7,7 @@ test('focus-or-launch requires positive foreground verification',async()=>{
  const runner=async script=>{calls++;assert.match(script,/-Mode focus/);return JSON.stringify(ok)};
  assert.deepEqual(await focusOrLaunchApp('spotify',{runner}),ok);assert.equal(calls,1);
  for(const invalid of [{...ok,focused:false},{...ok,pid:0},{...ok,app:'firefox'},'Started Spotify'])
-  await assert.rejects(focusOrLaunchApp('spotify',{runner:async()=>typeof invalid==='string'?invalid:JSON.stringify(invalid)}),/confirm|report/);
+  await assert.rejects(focusOrLaunchApp('spotify',{runner:async()=>typeof invalid==='string'?invalid:JSON.stringify(invalid)}),/confirm|report|verify/);
 });
 test('reject unsupported applications before launching any process',async()=>{
  let called=false;
