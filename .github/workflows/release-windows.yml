@@ -56,7 +56,7 @@ jobs:
           $version = node -p "require('./frontend/original-cody/package.json').version"
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Stable release version required" }
           "version=$version" >> $env:GITHUB_OUTPUT
-          gh release view "v$version" --json id 2>$null | Out-Null
+          gh release view "v$version" --json tagName *> $null
           if ($LASTEXITCODE -eq 0) { throw "Release v$version already exists; bump the package version for a new release." }
 
       - name: Restore Node and Electron dependencies
