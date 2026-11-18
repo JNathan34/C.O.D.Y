@@ -351,7 +351,13 @@
             </div>
             <div class="settings-tab" data-content="behaviour" hidden>
               <h2>Behaviour</h2>
-              <h3 class="group-title">BEHAVIOUR</h3><div class="settings-group">
+              <h3 class="group-title">ASSISTANT MODES</h3>
+<div class="settings-group">
+ <div class="setting-row"><span><strong>Active mode</strong><small>Focus, Work and Gaming change voice reply and Island presentation. Computer permissions remain managed separately.</small></span><select id="assistant-modes-select" aria-label="Assistant mode"><option value="normal">Normal</option><option value="focus">Focus</option><option value="work">Work</option><option value="gaming">Gaming</option></select></div>
+ <div class="setting-row"><span><strong>Save your own mode</strong><small>Store your current Island and voice-reply preferences locally.</small></span><input id="assistant-mode-name" placeholder="My mode" aria-label="New mode name" maxlength="40" autocomplete="off"><button type="button" class="light-action" id="assistant-mode-save">Save</button></div>
+ <div class="setting-row"><span><strong>Remove custom mode</strong><small>Built-in modes cannot be deleted.</small></span><button type="button" class="light-action" id="assistant-mode-remove" disabled>Remove</button></div>
+</div><p id="assistant-mode-status" class="setting-help" role="status"></p>
+<h3 class="group-title">BEHAVIOUR</h3><div class="settings-group">
                 <label class="setting-row"><span><strong>Occasionally follow mouse</strong><small>He can watch your cursor as one of his random moods.</small></span><input type="checkbox" data-pref="cursorTracking"></label>
                 <label class="setting-row"><span><strong>Facial reactions</strong><small>Smiles or looks curious when you hover.</small></span><input type="checkbox" data-pref="reactiveExpressions"></label>
                 <label class="setting-row"><span><strong>Playful emotions</strong><small>Pretend sleep, squinting, winks and curious reactions.</small></span><input type="checkbox" data-pref="funReactions"></label>
@@ -443,7 +449,7 @@
     </div>
   </div>
 </main>
-<script src="icons.js"></script><script src="media-art.js"></script><script src="idle-presence.js"></script><script src="../../../ui/voice-client.js"></script><script src="../../../ui/push-to-talk.js"></script><script src="../../../ui/native-voice-ui.js"></script><script src="mascot-looks.js"></script><script src="chat-format.js"></script><script src="ui.js"></script><script src="mentions.js"></script><script src="attachments.js"></script><script src="update-island.js"></script><script src="assistant.js"></script><script src="task-format.js"></script><script src="action-history.js"></script><script src="task-appearance.js"></script><script src="task-card-state.js"></script><script src="background-tasks.js"></script><script src="browser-setup.js"></script><script src="browser-preference.js"></script><script src="plugins.js"></script><script src="agents.js"></script><script src="updates.js"></script><script src="agent-usage.js"></script><script src="rock-paper-scissors.js"></script>
+<script src="icons.js"></script><script src="media-art.js"></script><script src="idle-presence.js"></script><script src="../../../ui/voice-client.js"></script><script src="../../../ui/push-to-talk.js"></script><script src="../../../ui/native-voice-ui.js"></script><script src="mascot-looks.js"></script><script src="chat-format.js"></script><script src="ui.js"></script><script src="mentions.js"></script><script src="attachments.js"></script><script src="update-island.js"></script><script src="assistant.js"></script><script src="task-format.js"></script><script src="action-history.js"></script><script src="assistant-modes.js"></script><script src="task-appearance.js"></script><script src="task-card-state.js"></script><script src="background-tasks.js"></script><script src="browser-setup.js"></script><script src="browser-preference.js"></script><script src="plugins.js"></script><script src="agents.js"></script><script src="updates.js"></script><script src="agent-usage.js"></script><script src="rock-paper-scissors.js"></script>
 <script src="memory-settings.js"></script>
 </body>
 </html>
