@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - CODY-App/frontend/original-cody/package.json
+      - .github/workflows/release-windows.yml
   workflow_dispatch:
 
 permissions:
@@ -56,8 +57,13 @@ jobs:
           $version = node -p "require('./frontend/original-cody/package.json').version"
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Stable release version required" }
           "version=$version" >> $env:GITHUB_OUTPUT
-          gh release view "v$version" --json tagName *> $null
-          if ($LASTEXITCODE -eq 0) { throw "Release v$version already exists; bump the package version for a new release." }
+          # Listing releases succeeds even when a version does not yet exist.
+          # Avoid treating an expected 'release not found' exit code as a pwsh error.
+          $releases = @(gh release list --limit 100 --json tagName | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) { throw "Could not check existing GitHub releases." }
+          if ($releases | Where-Object { $_.tagName -eq "v$version" }) {
+            throw "Release v$version already exists; bump the package version for a new release."
+          }
 
       - name: Restore Node and Electron dependencies
         shell: pwsh
