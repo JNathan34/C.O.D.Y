@@ -43,12 +43,12 @@
       return;
     }
     if(visibleTaskStatus?.kind==='progress')island.wakeUp();
-    island.setMediaPlaying(Boolean((typeof preferences==='undefined'||(typeof preferences==='undefined'||preferences.showMediaWidget!==false))&&media.available&&media.playing));
+    island.setMediaPlaying(Boolean((typeof preferences==='undefined'||preferences.showMediaWidget!==false)&&media.available&&media.playing));
     const quick=Boolean(!recording&&!game.active&&activeCard&&(visibleTaskStatus||discord||timer?.status!=='finished'));
     const updateCard=window.CODYUpdateStatus?.card();
     const showUpdate=Boolean(updateCard&&!recording&&!game.active&&!quick&&timer?.status!=='finished');
     const showMonitors=monitors.items.length>0&&!recording&&!game.active&&!quick&&!showUpdate&&timer?.status!=='finished';
-    const showGame=game.active&&!recording,showTimer=Boolean(timer)&&!showMonitors&&!quick&&!showGame&&!recording&&!showUpdate,showMedia=!showUpdate&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame&&preferences.showMediaWidget!==false&&media.available&&Boolean(media.title);
+    const showGame=game.active&&!recording,showTimer=Boolean(timer)&&!showMonitors&&!quick&&!showGame&&!recording&&!showUpdate,showMedia=!showUpdate&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame&&(typeof preferences==='undefined'||preferences.showMediaWidget!==false)&&media.available&&Boolean(media.title);
     const showTasks=visibleTaskStatus?.target==='tasks';
     document.body.classList.toggle('task-layout',Boolean(showTasks&&visibleTaskStatus.kind==='progress'));
     document.body.classList.toggle('recording-layout',recording);document.body.dataset.recording=capture.status;
