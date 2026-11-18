@@ -14,7 +14,7 @@ const ISLAND_KEYS=[
   'accentColor','mascotLook','cursorColor','cursorSize',
   'hideFloatingCursor','screenHighlight','shakeToDetach','cursorTracking',
   'idleReactions','blinkEnabled','reactiveExpressions','funReactions',
-  'sunglassesEnabled','pretendSleepEnabled','wifiReactions',
+  'sunglassesEnabled','pretendSleepEnabled','wifiReactions','weatherUnit','weatherCity',
   'enableHotkey','startListeningOnHotkey','quickMessageEnabled','quickMessagePhrase',
   'wakeHeyCody','wakeOkayCody','wakeCody','voiceRate','voicePitch','voiceVolume','micSensitivity','speechSubtitles'
 ];
