@@ -8,6 +8,13 @@ Check(CodyDrawingControlState.HasContent(true,false,0,1,0),true,"a visible 3D mo
 Check(CodyDrawingControlState.HasContent(false,false,5,1,1),false,"cleared or hidden canvases ignore stale content counts");
 Check(CodyDrawingControlState.HasContent(true,true,5,1,1),false,"faded drawings do not leave controls on screen");
 Check(CodyDrawingControlState.HasContent(true,false,0,0,0),false,"returning to an empty stream hides old controls");
+Check(CodyDrawingControlState.KeepClearDuringStream(true,true,false,true,true,false),true,"an active drawing keeps Clear through one empty composition frame");
+Check(CodyDrawingControlState.KeepClearDuringStream(false,true,false,true,true,false),false,"a completed frame does not retain stale controls");
+Check(CodyDrawingControlState.KeepClearDuringStream(true,false,false,true,true,false),false,"a hidden canvas removes Clear immediately");
+Check(CodyDrawingControlState.KeepClearDuringStream(true,true,true,true,true,false),false,"a faded drawing removes Clear immediately");
+Check(CodyDrawingControlState.KeepClearDuringStream(true,true,false,false,true,false),false,"new drawing generation invalidates old Clear controls");
+Check(CodyDrawingControlState.KeepClearDuringStream(true,true,false,true,false,false),false,"an actually empty stream does not show Clear");
+Check(CodyDrawingControlState.KeepClearDuringStream(true,true,false,true,true,true),false,"a hidden original window does not keep Clear pinned");
 foreach(string kind in new[]{"Group","Wrapper","MaskedContainer","Placeholder","Stage3D"})Check(CodyDrawingControlState.IsDrawable(kind),false,kind+" alone does not keep Clear visible");
 foreach(string kind in new[]{"Shape","Text","Wash","Dot","Window","Photo"})Check(CodyDrawingControlState.IsDrawable(kind),true,kind+" is real drawing content");
 Check(CodyDrawingControlState.IsPressable("RadioButton",false),true,"quiz choices can be recognized by their role");
