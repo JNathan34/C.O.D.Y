@@ -49,6 +49,13 @@ internal static class CodyDrawingControls
     }
     internal static bool HasVisibleDrawing(ScreenDrawingCanvas canvas)
     {
+        if(!HasDrawingContent(canvas))return false;
+        // Hidden/minimised or background app windows must not retain the top Clear HUD.
+        if(Field(canvas,"staleWatch") is DrawingScreenWatch watch&&watch.IsBoundToBackgroundWindow)return false;
+        return true;
+    }
+    private static bool HasDrawingContent(ScreenDrawingCanvas canvas)
+    {
         if(!canvas.IsShowing||canvas.IsDrawingFadedAway)return false;
         // Empty containers and closed 3D placeholders can remain allocated. Only
         // visible drawing nodes (or a live model) should keep the Clear button up.
@@ -114,6 +121,7 @@ internal static class CodyDrawingControls
         }
         private void Post(Action action)=>Invoke(canvas,"PostToDrawingThread",action);
         internal bool Hidden=>follow.Hidden;
+        internal bool IsBoundToBackgroundWindow=>follow.Available&&!follow.OwnerForeground;
         internal bool CanContinue(ScreenCaptureFrame frame)=>follow.CanContinue(frame);
         internal object Inspect()=>follow.Inspect();
         private void Arm()=>stale=new ScreenDrawingStaleWatch(display,Fire);
@@ -161,8 +169,11 @@ internal static class CodyDrawingControls
     internal static void ScreenChangeForTest(AppHost host,string reason)=>Invoke(Field(host.Real.Canvas,"staleWatch"),"Fire",reason);
     internal static void Tick(AppHost host)
     {
-        var drawings=host.Real.DrawingCanvases.Where(HasVisibleDrawing).ToArray();
-        var latest=drawings.LastOrDefault();
+        var drawings=host.Real.DrawingCanvases.Where(HasDrawingContent).ToArray();
+        // Even hidden drawings need to be refreshed so they can reappear when
+        // their original window is restored, without re-drawing from scratch.
+        foreach(var canvas in drawings)Refresh(canvas);
+        var latest=drawings.LastOrDefault(HasVisibleDrawing);
         if(latest==null)
         {
             offeredCanvas=null;
@@ -174,7 +185,6 @@ internal static class CodyDrawingControls
         host.Lessons?.ShowGeneratingControls(latest!=offeredCanvas||generation!=offeredGeneration,latest);
         offeredCanvas=latest;
         offeredGeneration=generation;
-        foreach(var canvas in drawings)Refresh(canvas);
     }
     private static void Refresh(ScreenDrawingCanvas canvas)
     {
@@ -182,13 +192,14 @@ internal static class CodyDrawingControls
         if(Interlocked.Exchange(ref state.Queued,1)!=0)return;
         try{Invoke(canvas,"PostToDrawingThread",(Action)(()=>{
             try{
-                if(!HasVisibleDrawing(canvas))return;
+                if(!HasDrawingContent(canvas))return;
                 object controls=Field(canvas,"cardHandles");
                 if(Field(canvas,"staleWatch") is DrawingScreenWatch watch&&watch.Refresh())
                 {
                     Invoke(controls,"Hide");
                     return;
                 }
+                if(!HasVisibleDrawing(canvas))return;
                 if(!canvas.IsStreamingNarration)return;
                 Invoke(controls,"Refresh");
                 CodyModelViewport.Refresh(canvas);
