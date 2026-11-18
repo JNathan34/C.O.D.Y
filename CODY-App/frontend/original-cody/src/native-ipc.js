@@ -7,6 +7,7 @@ const {selection,providerPatch}=require('./agent-provider');
 const {setPersonalCodexEnabled}=require('./usage-policy');
 const {localMemoryText,SHARED_PAUSED}=require('./memory/commands');
 const {localMentions,localMentionRoute}=require('./mentions');
+const {normalizeMentions}=require('./mentions-normalize');
 const NATIVE_VOICES=Object.freeze(['cedar','marin','alloy','ash','ballad','coral','echo','sage','shimmer','verse']);
 const {attachmentNames}=require('./attachments');
 function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExternal=async()=>{},externalBusy=()=>false,connectProvider,codexUsage,getState,getWindow,utilities,rps,capture,attachments,chooseFiles,controller,chooseWorkingFolder,captureTextEnabled=()=>false,onTasks=()=>{},showFiles=()=>{},fileDragging=()=>{},showApprovals=()=>{},cancelLocalApprovals=()=>{},isMicrophoneMuted=()=>false,localMemoryOnly=()=>false,saveLocalMemory,onMemoryModeChange=()=>{}}){
@@ -47,8 +48,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   handle('plugins-list',()=>engine.request('plugins-list'));
   handle('mentions-list',async localOnly=>{
     const items=utilities?localMentions:[];
-    if(localOnly===true||localMemoryOnly()||selection(store.data.settings).provider!=='heyclicky')return {items};
-    try{return {items:[...items,...await engine.request('mentions-list')]};}
+    if(localOnly===true||localMemoryOnly()||selection(store.data.settings).provider!=='heyclicky')return {items:normalizeMentions([],items)};
+    try{return {items:normalizeMentions(await engine.request('mentions-list'),items)};}
     catch{return {items,error:'Could not load connected capabilities.'};}
   });
   handle('agents-state',()=>engine.request('agents-state'));
