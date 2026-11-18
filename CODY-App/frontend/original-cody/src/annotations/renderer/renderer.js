@@ -32,6 +32,27 @@
   if(!['text','spotlight','card'].includes(shape.kind)){const ink=group.firstElementChild;ink.setAttribute('class','ink');ink.setAttribute('pathLength','1');ink.setAttribute('stroke',shape.color);ink.setAttribute('stroke-width',shape.strokeWidth);}
   return group;
  }
+ function updateGeometry(entry,shape){
+  if(entry.kind!==shape.kind)return false;
+  let ink;
+  if(shape.kind==='circle'){
+   ink=entry.node.querySelector('circle');
+   if(!ink)return false;
+   ink.setAttribute('cx',shape.x);ink.setAttribute('cy',shape.y);ink.setAttribute('r',shape.radius);
+  }else if(shape.kind==='rectangle'){
+   ink=entry.node.querySelector('rect');
+   if(!ink)return false;
+   ink.setAttribute('x',shape.x);ink.setAttribute('y',shape.y);
+   ink.setAttribute('width',shape.width);ink.setAttribute('height',shape.height);
+  }else if(['path','arrow','underline','line'].includes(shape.kind)){
+   ink=entry.node.querySelector('path.ink');
+   if(!ink)return false;
+   ink.setAttribute('d',path(shape));
+  }else return false;
+  ink.setAttribute('stroke',shape.color);
+  ink.setAttribute('stroke-width',shape.strokeWidth);
+  return true;
+ }
  window.annotationOverlay.onScene(async message=>{
   const revision=message?.revision;latest=revision;
   try{
@@ -39,8 +60,19 @@
    const bounds=message.display.bounds;window.sceneDisplay=bounds;svg.setAttribute('viewBox',`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`);
    const ids=new Set(message.shapes.map(shape=>shape.id));for(const [id,entry]of nodes)if(!ids.has(id)){entry.node.remove();nodes.delete(id);}
    for(const shape of message.shapes){
-    const {removing,waitingForSpeech,paused,...drawing}=shape,key=JSON.stringify(drawing);let entry=nodes.get(shape.id);
-    if(!entry||entry.key!==key){const node=createShape(shape);if(entry)entry.node.replaceWith(node);else svg.append(node);entry={node,key};nodes.set(shape.id,entry);}
+    const {removing,waitingForSpeech,paused,opacity,glowIntensity,animationMs,...geometry}=shape;
+    const key=JSON.stringify(geometry);
+    let entry=nodes.get(shape.id);
+    if(!entry||entry.key!==key){
+     // Live updates must not replay entrance animations or flash the ink.
+     if(entry&&updateGeometry(entry,shape))entry.key=key;
+     else {
+      const node=createShape(shape);
+      if(entry)entry.node.replaceWith(node);else svg.append(node);
+      entry={node,key,kind:shape.kind};
+      nodes.set(shape.id,entry);
+     }
+    }
     entry.node.style.setProperty('--opacity',shape.opacity);entry.node.style.setProperty('--glow',shape.glowIntensity*6+'px');entry.node.style.setProperty('--animation-ms',shape.animationMs+'ms');entry.node.classList.toggle('removing',!!removing);
     entry.node.classList.toggle('waiting-speech',!!waitingForSpeech);entry.node.classList.toggle('speech-paused',!!paused);
    }
