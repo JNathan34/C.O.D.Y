@@ -8,5 +8,5 @@ test('Spotify mini-player can be disabled without stopping the media session',()
  assert.match(ui,/showMediaWidget:\s*true/);
  assert.match(html,/data-pref="showMediaWidget"/);
  assert.match(view,/showMedia=.+preferences\.showMediaWidget!==false/);
- assert.match(view,/setMediaPlaying\(Boolean\(preferences\.showMediaWidget!==false/);
+ assert.match(view,/setMediaPlaying\(Boolean\(\(typeof preferences==='undefined'\|\|preferences\.showMediaWidget!==false\)/);
 });
