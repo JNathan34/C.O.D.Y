@@ -377,6 +377,34 @@
               <div class="plugins-filters" role="group" aria-label="Filter plugins"><button type="button" data-plugin-filter="all" aria-pressed="true">All plugins</button><button type="button" data-plugin-filter="connected" aria-pressed="false">Connected</button><span id="plugins-count"></span></div>
               <p id="plugins-status" class="setting-help" role="status">Open Plugins to load the CODY catalog.</p>
               <div id="plugins-list" class="plugins-grid" aria-label="CODY plugins"></div>
+              <h3 class="group-title">YOUR MEDIA SERVERS</h3>
+              <p class="setting-help">Optional connections to your own Plex or Overseerr server. Credentials are encrypted on this Windows account and are never included in settings backups.</p>
+              <div class="settings-group" id="self-hosted-settings">
+                <form class="setting-row" data-self-hosted="plex">
+                  <span><strong>Plex server</strong><small id="self-hosted-plex-state">Not connected</small></span>
+                  <input name="url" type="url" placeholder="http://192.168.0.10:32400" maxlength="350" aria-label="Plex server URL" required autocomplete="off">
+                  <input name="key" type="password" placeholder="Your Plex token" maxlength="1024" aria-label="Plex access token" required autocomplete="new-password">
+                  <button type="submit" class="light-action">Connect</button>
+                  <button type="button" class="light-action" data-self-hosted-disconnect="plex">Disconnect</button>
+                </form>
+                <div class="setting-row"><span><strong>Media sessions and recently added</strong><small>Read-only; shown only when you explicitly ask.</small></span>
+                  <button type="button" class="light-action" data-self-hosted-read="plex:sessions">View sessions</button>
+                  <button type="button" class="light-action" data-self-hosted-read="plex:recent">Recently added</button>
+                </div>
+                <form class="setting-row" data-self-hosted="overseerr">
+                  <span><strong>Overseerr server</strong><small id="self-hosted-overseerr-state">Not connected</small></span>
+                  <input name="url" type="url" placeholder="http://192.168.0.10:5055" maxlength="350" aria-label="Overseerr server URL" required autocomplete="off">
+                  <input name="key" type="password" placeholder="Your Overseerr API key" maxlength="1024" aria-label="Overseerr API key" required autocomplete="new-password">
+                  <button type="submit" class="light-action">Connect</button>
+                  <button type="button" class="light-action" data-self-hosted-disconnect="overseerr">Disconnect</button>
+                </form>
+                <div class="setting-row"><span><strong>Media requests</strong><small>Read request status or search for titles. Creating requests is not enabled yet.</small></span>
+                  <button type="button" class="light-action" data-self-hosted-read="overseerr:requests">View requests</button>
+                </div>
+                <form class="setting-row" id="self-hosted-search-form"><input id="self-hosted-search-query" type="search" placeholder="Movie or TV title" maxlength="100" aria-label="Search Overseerr titles" required><button type="submit" class="light-action">Search Overseerr</button></form>
+              </div>
+              <p id="self-hosted-status" class="setting-help" role="status"></p>
+              <div id="self-hosted-results" class="settings-group" aria-label="Self-hosted media results"></div>
               <details class="plugin-custom"><summary>Add an MCP plugin</summary><form id="plugins-add-form"><label>Plugin name<input id="plugins-add-name" maxlength="80" required autocomplete="off"></label><label>MCP server URL<input id="plugins-add-url" type="url" maxlength="2048" placeholder="https://example.com/mcp" required autocomplete="off"></label><label>API key (optional)<input id="plugins-add-key" type="password" maxlength="8192" autocomplete="new-password"></label><p class="setting-help">Use an API key if your server needs one, or connect through its browser sign-in.</p><button class="light-action" type="submit" id="plugins-add-submit">Add plugin</button></form></details>
             </div>
             <div class="settings-tab" data-content="agents" hidden>
@@ -454,7 +482,7 @@
     </div>
   </div>
 </main>
-<script src="icons.js"></script><script src="media-art.js"></script><script src="idle-presence.js"></script><script src="../../../ui/voice-client.js"></script><script src="../../../ui/push-to-talk.js"></script><script src="../../../ui/native-voice-ui.js"></script><script src="mascot-looks.js"></script><script src="chat-format.js"></script><script src="ui.js"></script><script src="mentions.js"></script><script src="attachments.js"></script><script src="update-island.js"></script><script src="assistant.js"></script><script src="task-format.js"></script><script src="action-history.js"></script><script src="assistant-modes.js"></script><script src="task-appearance.js"></script><script src="task-card-state.js"></script><script src="background-tasks.js"></script><script src="browser-setup.js"></script><script src="browser-preference.js"></script><script src="plugins.js"></script><script src="agents.js"></script><script src="updates.js"></script><script src="agent-usage.js"></script><script src="rock-paper-scissors.js"></script>
+<script src="icons.js"></script><script src="media-art.js"></script><script src="idle-presence.js"></script><script src="../../../ui/voice-client.js"></script><script src="../../../ui/push-to-talk.js"></script><script src="../../../ui/native-voice-ui.js"></script><script src="mascot-looks.js"></script><script src="chat-format.js"></script><script src="ui.js"></script><script src="mentions.js"></script><script src="attachments.js"></script><script src="update-island.js"></script><script src="assistant.js"></script><script src="task-format.js"></script><script src="action-history.js"></script><script src="assistant-modes.js"></script><script src="task-appearance.js"></script><script src="task-card-state.js"></script><script src="background-tasks.js"></script><script src="browser-setup.js"></script><script src="browser-preference.js"></script><script src="plugins.js"></script><script src="self-hosted.js"></script><script src="agents.js"></script><script src="updates.js"></script><script src="agent-usage.js"></script><script src="rock-paper-scissors.js"></script>
 <script src="memory-settings.js"></script>
 </body>
 </html>
