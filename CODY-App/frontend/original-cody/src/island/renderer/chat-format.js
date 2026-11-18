@@ -1,6 +1,31 @@
 'use strict';
 (()=>{
  const tags='ANSWER|SUMMARY|NEXT_ACTIONS|DONE_TITLE|ARTIFACTS|ROUTINE|COMPUTER_USE_REQUEST|WAIT_FOR|LEARNED';
+ const fenceLine=/^[ \t]{0,3}(`{3,}|~{3,})(.*)$/;
+ const languageNames=new Map(Object.entries({html:'HTML',xml:'XML',css:'CSS',js:'JavaScript',javascript:'JavaScript',ts:'TypeScript',typescript:'TypeScript',py:'Python',python:'Python',json:'JSON',yaml:'YAML',yml:'YAML',sql:'SQL',sh:'Shell',bash:'Bash',ps1:'PowerShell',powershell:'PowerShell',cs:'C#',csharp:'C#',cpp:'C++',md:'Markdown',markdown:'Markdown',text:'Plain text',plaintext:'Plain text'}));
+ function closingFence(line,marker){
+  const match=fenceLine.exec(line);
+  return match&&match[1][0]===marker[0]&&match[1].length>=marker.length&&!match[2].trim();
+ }
+ function splitFences(lines){
+  const chunks=[];
+  let marker=null,start=0;
+  for(let index=0;index<lines.length;index++){
+   if(marker){
+    if(closingFence(lines[index],marker)){
+     chunks.push({lines:lines.slice(start,index+1),code:true,closed:true});
+     start=index+1;marker=null;
+    }
+   }else{
+    const opening=fenceLine.exec(lines[index]);
+    if(!opening)continue;
+    if(index>start)chunks.push({lines:lines.slice(start,index),code:false});
+    start=index;marker=opening[1];
+   }
+  }
+  if(start<lines.length)chunks.push({lines:lines.slice(start),code:Boolean(marker),closed:false});
+  return chunks;
+ }
  const value=input=>typeof input==='string'||typeof input==='number'?String(input):'';
  const array=input=>Array.isArray(input)?input:[];
  function answerText(answer){
@@ -19,8 +44,9 @@
  }
  function normalize(text){
   // Code samples are literal, including examples of the reply protocol.
-  return String(text??'').replace(/\r\n?/g,'\n').split(/(```[^\n]*\n[\s\S]*?(?:```|$))/g).map((part,index)=>{
-   if(index%2)return part;
+  return splitFences(String(text??'').replace(/\r\n?/g,'\n').split('\n')).map(chunk=>{
+   let part=chunk.lines.join('\n');
+   if(chunk.code)return part;
    let summary='';
    part=part.replace(new RegExp('<\\s*('+tags+')\\s*>([\\s\\S]*?)<\\s*\\/\\s*\\1\\s*>','gi'),(_match,tag,body)=>{
     switch(tag.toUpperCase()){
@@ -35,7 +61,7 @@
    part=part.replace(new RegExp('<\\s*(?:'+tags+')\\s*>[\\s\\S]*$','i'),'');
    part=part.replace(/<\/?[A-Z_]*$/,'');
    return part.trim()?part:summary;
-  }).join('').trim();
+  }).join('\n').trim();
  }
  function inline(node,text,depth=0){
   if(depth>6){node.append(document.createTextNode(text));return;}
@@ -50,15 +76,45 @@
   }
   node.append(document.createTextNode(text.slice(position)));
  }
+ function codeBlock(language,source){
+  const block=document.createElement('div'),toolbar=document.createElement('div'),label=document.createElement('span');
+  const button=document.createElement('button'),pre=document.createElement('pre'),code=document.createElement('code');
+  block.className='chat-code';toolbar.className='chat-code-toolbar';
+  label.textContent=languageNames.get(language)||language||'Code';
+  button.type='button';button.textContent='Copy';button.setAttribute('aria-label','Copy '+label.textContent+' code');
+  button.addEventListener('click',async()=>{
+   try{
+    if(window.cody?.copyCode)await window.cody.copyCode(source);
+    else await navigator.clipboard.writeText(source);
+    button.textContent='Copied';
+   }catch{button.textContent='Copy failed';}
+  });
+  code.dataset.language=language;code.textContent=source;
+  pre.append(code);toolbar.append(label,button);block.append(toolbar,pre);
+  return block;
+ }
  function render(node,text,role='assistant'){
   node.replaceChildren();if(role==='user'){node.textContent=String(text??'');return;}
-  const lines=normalize(text).split('\n'),fragment=document.createDocumentFragment();let paragraph=null,list=null,quote=null,code=null;
+  const chunks=splitFences(normalize(text).split('\n')),fragment=document.createDocumentFragment();let paragraph=null,list=null,quote=null;
   const reset=()=>{paragraph=null;list=null;quote=null;};
   const cells=line=>line.trim().replace(/^\||\|$/g,'').split('|').map(cell=>cell.trim());
-  for(let index=0;index<lines.length;index++){
+  for(const chunk of chunks){
+   reset();
+   if(chunk.code){
+    const language=fenceLine.exec(chunk.lines[0])[2].trim().split(/\s+/)[0].toLowerCase();
+    fragment.append(codeBlock(language,chunk.lines.slice(1,chunk.closed?-1:undefined).join('\n')));
+    continue;
+   }
+   const lines=chunk.lines;
+   for(let index=0;index<lines.length;index++){
    const line=lines[index];
-   if(/^\s*```/.test(line)){if(code)code=null;else{const pre=document.createElement('pre');code=document.createElement('code');code.dataset.language=line.trim().slice(3).trim();pre.append(code);fragment.append(pre);}reset();continue;}
-   if(code){code.textContent+=line+(index<lines.length-1?'\n':'');continue;}
+   if(/^\s*(?:<!doctype\s+html\b|<(?:html|head|body|main|div|script|style|p|h[1-6])(?:[ \t>]))/i.test(line)){
+    reset();
+    let end=lines.length-1;
+    while(end>index&&!/>\s*$/.test(lines[end]))end--;
+    fragment.append(codeBlock('html',lines.slice(index,end+1).join('\n')));
+    index=end;continue;
+   }
    if(!line.trim()){reset();continue;}
    if(line.includes('|')&&index+1<lines.length&&/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[index+1])){
     reset();const wrapper=document.createElement('div'),table=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody');wrapper.className='chat-table';
@@ -70,6 +126,7 @@
    else if(item){paragraph=null;quote=null;const type=item[2]?'ol':'ul';if(!list||list.tagName.toLowerCase()!==type){list=document.createElement(type);if(type==='ol')list.start=Number(item[2]);fragment.append(list);}const li=document.createElement('li');inline(li,item[3]);list.append(li);}
    else if(quoted){paragraph=null;list=null;if(!quote){quote=document.createElement('blockquote');fragment.append(quote);}const p=document.createElement('p');inline(p,quoted[1]);quote.append(p);}
    else{list=null;quote=null;if(!paragraph){paragraph=document.createElement('p');fragment.append(paragraph);}else paragraph.append(document.createElement('br'));inline(paragraph,line);}
+   }
   }
   node.replaceChildren(fragment);
  }

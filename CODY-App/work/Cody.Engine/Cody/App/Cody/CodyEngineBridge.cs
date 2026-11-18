@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using HeyClicky.Core.Browser;
 using HeyClicky.Core.Voice;
 using HeyClicky.Platform.Audio;
 using Microsoft.UI.Dispatching;
@@ -75,6 +76,7 @@ public static class CodyEngineBridge
     {
         if (!EngineMode || IsRunning) return;
         host = app;
+        WindowsBrowserPreference.Initialize(CodyPaths.StateRoot);
         MicrophoneMuted=File.Exists(Path.Combine(CodyPaths.StateRoot,"microphone-muted"));
         if(Program.Args.Contains("--verify-control-handoff")){
             string report=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../reports/control-handoff-live.txt"));
@@ -99,6 +101,7 @@ public static class CodyEngineBridge
         try{dictationShortcuts=new CodyDictationShortcuts(host.Real.Dictation);}catch(Exception error){Log.Warn("cody-dictation",error.Message); }
         var session = (CompanionSession)host.Services.Companion;
         session.UseSubtitlesWithoutAudio = UseSubtitlesWithoutAudio;
+        session.FormatChatReplyForSpeech = CodyCommunication.ChatReplyForSpeech;
         session.SpeechSubtitle += PublishSpeechSubtitle;
         session.SpeechInterrupted += ClearSpeechSubtitles;
         session.TurnProgress += label => Emit("turn-progress", new { label, turn });
@@ -176,6 +179,13 @@ public static class CodyEngineBridge
                 string Text(string name, string fallback = "") => request.TryGetProperty(name, out var p) ? p.GetString() ?? fallback : fallback;
                 switch (command)
                 {
+                    case "browser-preference-state":return await Task.Run(WindowsBrowserPreference.Current.Snapshot);
+                    case "browser-preference-select":return await Task.Run(()=>WindowsBrowserPreference.Current.Select(Text("browserId")));
+                    case "browser-preference-open":
+                        string webUrl=Text("url");
+                        if(!WindowsBrowserPreference.IsWebUrl(webUrl))throw new ArgumentException("Expected an HTTP or HTTPS link.");
+                        if(!WindowsBrowserPreference.Current.TryOpenOverride(webUrl))ShellOpen.Start(webUrl);
+                        return new{opened=true};
                     case "browser-setup-state":return CodyBrowserSetup.Snapshot();
                     case "browser-setup-choice":return await CodyBrowserSetup.Choose(Text("choice"),Text("targetId"),Text("browser"));
                     case "browser-setup-folder":return CodyBrowserSetup.Folder();
@@ -217,6 +227,23 @@ public static class CodyEngineBridge
                     case "drawing-controls-test-close":if(!zoomFixture)throw new InvalidOperationException("Create the local model fixture first.");CodyDrawingControls.CloseForTest(host);return new{closed=true};
                     case "drawing-controls-test-screen-change":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");var changeReason=Text("reason");if(changeReason is not ("click" or "app switch" or "space change" or "scroll"))throw new InvalidOperationException("Unsupported test reason.");CodyDrawingControls.ScreenChangeForTest(host,changeReason);return new{changed=true};
                     case "drawing-controls-test-finish":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");host.Real.Canvas.Finish();host.Real.Canvas.IsStreamingNarration=false;return new{finished=true};
+                    case "drawing-controls-test-highlight":
+                        if(host.Real.Canvas.IsShowingDrawing&&!zoomFixture)throw new InvalidOperationException("Keep the existing drawing; this check requires an empty canvas.");
+                        double Fraction(string name)
+                        {
+                            double value=request.GetProperty(name).GetDouble();
+                            return value>=0&&value<=1?value:throw new ArgumentOutOfRangeException(name);
+                        }
+                        var rememberHighlight=CodyDrawingFollow.RememberCapture();
+                        var highlightFrame=(await host.Real.Capture.CaptureAllAsync()).First();
+                        rememberHighlight?.Invoke(highlightFrame,highlightFrame.Jpeg);
+                        string highlightProgram=FormattableString.Invariant($"ring({Fraction("x")*highlightFrame.PixelWidth},{Fraction("y")*highlightFrame.PixelHeight},{Fraction("width")*highlightFrame.PixelWidth},{Fraction("height")*highlightFrame.PixelHeight});");
+                        host.Real.Canvas.BeginProgram(highlightFrame,host.Services.Settings.CursorColorHex);
+                        var highlightFeed=host.Real.Canvas.Feed(highlightProgram,true);
+                        for(int line=0;line<Math.Max(1,highlightFeed.Lines.Count);line++)host.Real.Canvas.ReleaseLine(line);
+                        host.Real.Canvas.Finish();
+                        zoomFixture=true;
+                        return new{created=true};
                     case "drawing-controls-test-card":
                     case "drawing-controls-test-empty":
                         if(host.Real.Canvas.IsShowingDrawing&&!zoomFixture)throw new InvalidOperationException("Keep the existing drawing; this check requires an empty canvas.");
@@ -234,7 +261,8 @@ public static class CodyEngineBridge
                         if(host.Real.Canvas.IsShowing&&host.Real.Canvas.InkedMarkCount>0)throw new InvalidOperationException("Keep the existing drawing; zoom verification requires an empty canvas.");
                         var captures=await host.Real.Capture.CaptureAllAsync();var capture=captures.First();host.Real.Canvas.BeginProgram(capture,host.Services.Settings.CursorColorHex);
                         bool streaming=request.TryGetProperty("streaming",out var streamingValue)&&streamingValue.ValueKind==JsonValueKind.True;host.Real.Canvas.IsStreamingNarration=streaming;
-                        var feed=host.Real.Canvas.Feed((streaming?"say('Generating the model.');paper(160,120,460,380,{title:'3D generation',board:'plain'});":"")+"scene3d(180,140,420,340,s=>{s.box({w:1.7,h:1.2,d:1.1});s.camera({spin:0});});"+(streaming?"say('Adding more detail.');":""),!streaming);
+                        string extraHighlight=request.TryGetProperty("highlight",out var showHighlight)&&showHighlight.ValueKind==JsonValueKind.True?"ring(800,200,120,80);":"";
+                        var feed=host.Real.Canvas.Feed((streaming?"say('Generating the model.');paper(160,120,460,380,{title:'3D generation',board:'plain'});":"")+"scene3d(180,140,420,340,s=>{s.box({w:1.7,h:1.2,d:1.1});s.camera({spin:0});});"+extraHighlight+(streaming?"say('Adding more detail.');":""),!streaming);
                         for(int i=0;i<Math.Max(1,feed.Lines.Count);i++)host.Real.Canvas.ReleaseLine(i);if(!streaming)host.Real.Canvas.Finish();zoomFixture=true;return new{created=true,lines=feed.Lines.Count};
                     case "model-zoom-demo-clear":if(zoomFixture){host.Real.Canvas.Clear(false);host.Real.Canvas.IsStreamingNarration=false;zoomFixture=false;}return new{cleared=true};
                     case "permissions-configure":
@@ -359,6 +387,7 @@ public static class CodyEngineBridge
                     case "cancel": voiceStartGeneration++;CodyIndependentInput.End();host.ClickyDrive?.HandleEscape();CodyProofread.Cancel();StopSpeech(); session.Cancel(); return new { cancelled = true };
                     case "fresh": session.StartFreshSession(); return new { fresh = true };
                     case "clear": host.Real.Canvas.Clear(); return new { cleared = true };
+                    case "clear-2d-drawings": await CodyDrawingControls.ClearTwoDimensional(host.Real.Canvas); return new { cleared = true };
                     case "audio-state": return JsonSerializer.Deserialize<JsonElement>(NativeAudioControl.State());
                     case "desktop-frames": return CodyDesktopFrames.Snapshot();
                     case "audio-set":
@@ -367,6 +396,9 @@ public static class CodyEngineBridge
                     case "audio-mute":
                         NativeAudioControl.SetMute(request.GetProperty("muted").GetBoolean());
                         return JsonSerializer.Deserialize<JsonElement>(NativeAudioControl.State());
+                    case "voice-volume":
+                        CodyCachedAudio.Current.Volume = request.GetProperty("volume").GetSingle();
+                        return new { volume = CodyCachedAudio.Current.Volume };
                     case "audio-output-devices":
                     case "audio-output-select":
                     {
@@ -387,7 +419,6 @@ public static class CodyEngineBridge
                         };
                     }
                     case "configure":
-                        if(request.TryGetProperty("systemInput",out var systemInputSetting))CodyIndependentInput.SystemInputEnabled=systemInputSetting.GetBoolean();
                         if(request.TryGetProperty("screenHighlight",out var highlightSetting))host.Services.Settings.ScreenHighlightEnabled=highlightSetting.GetBoolean();
                         string? cursorColor=request.TryGetProperty("cursorColor",out var cursorColorSetting)?cursorColorSetting.GetString():null;
                         if(cursorColor!=null&&!System.Text.RegularExpressions.Regex.IsMatch(cursorColor,"^#[0-9a-fA-F]{6}$"))cursorColor=null;
@@ -408,7 +439,7 @@ public static class CodyEngineBridge
                         return new { configured = true };
                     case "wake-cue":host.Services.Audio.PlayEarcon("textOpen");return new{played=true};
                     case "dictation-shortcuts":return new{installed=dictationShortcuts?.Installed==true,hold="Ctrl + Win",handsFree="Ctrl + Win, pressed twice",cancel="Esc",recording=host.Real.Dictation.IsCapturingAudio};
-                    case "cursor-preferences":return new{controlInputMode=CodyIndependentInput.SystemInputEnabled?"system":"independent",screenHighlight=host.Services.Settings.ScreenHighlightEnabled,cursorColor=host.Real.Core.Settings.Read(s=>s.CursorColorHex),cursorSize=CodySystemCursor.SizePercent,highlightActive=host.Real.Highlight.IsEnabled};
+                    case "cursor-preferences":return new{controlInputMode="system",screenHighlight=host.Services.Settings.ScreenHighlightEnabled,cursorColor=host.Real.Core.Settings.Read(s=>s.CursorColorHex),cursorSize=CodySystemCursor.SizePercent,highlightActive=host.Real.Highlight.IsEnabled};
                     case "signOut": await host.Real.Agents.SignOutAsync(); await host.Services.Auth.SignOutAsync(); return new { signedIn = false };
                     case "signIn": host.SignIn(); return new { started = true };
                     case "quit": CodyOverlayOrder.Stop();CodyIndependentInput.End();CodyTaskLibrary.Flush();host.Quit(); return new { stopping = true };
@@ -460,7 +491,7 @@ public static class CodyEngineBridge
 
     private static async Task<object> SpeakFast(string text)
     {
-        text=CodyIdentity.ForSpeech(text);
+        text=CodyIdentity.ForSpeech(CodyCommunication.ChatReplyForSpeech(text));
         StopSpeech();
         if(!host.Services.Auth.IsSignedIn) return new { spoken = false, cached = false };
         var cancellation = speechCancellation = new CancellationTokenSource();

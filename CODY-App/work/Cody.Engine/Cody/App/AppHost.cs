@@ -1907,7 +1907,8 @@ public sealed class AppHost : INotchCardActions, IAppActions, INotchActions
 	{
 		try
 		{
-			ShellOpen.Start(url);
+			if (HeyClicky.Core.Browser.WindowsBrowserPreference.Current?.TryOpenOverride(url) != true)
+				ShellOpen.Start(url);
 		}
 		catch (Exception ex)
 		{

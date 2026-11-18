@@ -15,14 +15,7 @@
    row.append(label,badge);row.addEventListener('click',()=>void api.privacy(value.id).catch(error=>status.textContent=error.message));return row;});$('agents-privacy').replaceChildren(...rows);
  }
  async function run(operation,message){if(busy)return;busy=true;render();try{const next=await operation();if(next)saved=next;status.textContent=message;}catch(error){saved=await api.state().catch(()=>saved);status.textContent=error.message;}finally{busy=false;render();}}
- const provider=$('agents-provider'),providerStatus=$('agents-provider-status');let providerPending=false;
- function renderProvider(value){provider.value=value.provider;$('agents-model-row').hidden=value.provider==='heyclicky';providerStatus.textContent=value.provider==='heyclicky'?'Claude Code uses the account connection below.':value.label+' · GPT 6.1 Sol · Medium reasoning';}
- async function loadProvider(){try{renderProvider(await api.provider());}catch(error){providerStatus.textContent=error.message;}}
- provider.addEventListener('change',async()=>{if(providerPending)return;providerPending=true;provider.disabled=true;try{renderProvider(await api.selectProvider(provider.value));}catch(error){await loadProvider();providerStatus.textContent=error.message;}finally{providerPending=false;provider.disabled=false;}});
- $('agents-provider-connect').addEventListener('click',async()=>{const button=$('agents-provider-connect');button.disabled=true;provider.disabled=true;try{const result=await api.connectProvider();providerStatus.textContent=result.message;}catch(error){providerStatus.textContent=error.message;}finally{button.disabled=false;provider.disabled=false;}});
- window.assistant.on('settings-changed',()=>void loadProvider());
- const refresh=()=>{void loadProvider();return run(()=>api.state(),'');};
- void loadProvider();
+ const refresh=()=>run(()=>api.state(),'');
  for(const input of inputs)input.addEventListener('change',()=>{
   const key=input.dataset.agentSetting,value=input.checked;
   const message=key==='usageEnabled'?(value?'Agent usage is on.':'Agent usage is off.'):'Agent settings saved.';

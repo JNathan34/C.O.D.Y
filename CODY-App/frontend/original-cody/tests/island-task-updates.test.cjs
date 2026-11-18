@@ -8,7 +8,6 @@ test('approval stays visible through progress and gives way to the finished task
   const cards=[];
   const updates=new IslandTaskUpdates(card=>cards.push(card));
   t.after(()=>updates.close());
-  updates.setEnabled(true);
   const task={id:'slides',title:'Build the slide deck',status:'Running',progress:'Writing the outline'};
   updates.updateTasks({connected:true,tasks:[task]});
   assert.equal(cards.at(-1).detail,'Writing the outline');
@@ -21,18 +20,15 @@ test('approval stays visible through progress and gives way to the finished task
   assert.equal(cards.at(-1).taskId,'slides');
 });
 
-test('setting hides live updates and avoids replaying past results',t=>{
+test('updates show immediately and avoid replaying past results',t=>{
   const updates=new IslandTaskUpdates(()=>{});
   t.after(()=>updates.close());
-  updates.setEnabled(true);
-  updates.progress('turn','Reading file…');
-  assert.equal(updates.current.text,'Reading file…');
-  updates.setEnabled(false);
-  assert.equal(updates.current,null);
-  updates.finish('turn',{answered:true});
-  updates.setEnabled(true);
   updates.updateTasks({connected:true,tasks:[{id:'old',status:'Finished'}]});
   assert.equal(updates.current,null);
+  updates.progress('turn','Reading file…');
+  assert.equal(updates.current.text,'Reading file…');
+  updates.finish('turn',{answered:true});
+  assert.equal(updates.current.text,'Reply ready');
   updates.progress('next','Working…');
   updates.finish('next',{cancelled:true});
   assert.equal(updates.current.text,'Request stopped');

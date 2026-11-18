@@ -15,13 +15,27 @@
   const note = document.getElementById('integration-note');
   const chatView = document.getElementById('view-chat');
   const settingsView = document.getElementById('view-settings');
+  const settingsSearchButton=document.getElementById('panel-settings-search');
+  const settingsSearchPanel=document.getElementById('settings-search-panel');
+  const settingsSearchInput=document.getElementById('settings-search-input');
+  const settingsSearchResults=document.getElementById('settings-search-results');
+  const settingsSearchStatus=document.getElementById('settings-search-status');
+  const settingsTabs=[...settingsView.querySelectorAll('.settings-tab[data-content]')];
   const outputApi = demoMode ? null : window.assistant?.audioOutput;
   const outputChoices = document.getElementById('output-choices');
   const outputStatus = document.getElementById('output-device-status');
+  const voiceVolume = document.getElementById('voice-volume');
+  const voiceVolumeLabel = document.querySelector('output[for="voice-volume"]');
   let outputBusy = false, outputLoaded = false, outputDeviceId = '';
   let activeView = 'chat';
   let chatExpanded=false;
   const expandChatButton=document.getElementById('chat-expand');
+  const pinChatButton=document.getElementById('chat-pin');
+  function renderChatPin(pinned){
+    pinChatButton.setAttribute('aria-pressed',String(pinned));
+    pinChatButton.title=(pinned?'Unpin chat':'Pin chat open')+' (Ctrl + Alt + P)';
+  }
+  pinChatButton.addEventListener('click',()=>api?.toggleChatPin?.());
   function setChatExpanded(value){
     chatExpanded=Boolean(value);body.classList.toggle('chat-expanded',chatExpanded);
     expandChatButton.setAttribute('aria-pressed',String(chatExpanded));
@@ -46,7 +60,7 @@
     startListeningOnHotkey:true,hotkeyMode:'hold',activityHideDelay:1600,
     quickMessageEnabled:true,quickMessagePhrase:'done',
     fontScale:100,guiScale:100,
-    enableHotkey:true,wakeWordEnabled:false,wakeHeyCody:true,wakeOkayCody:true,wakeCody:true,controlInputMode:'system',mascotLook:'blue',accentColor:window.CODYLooks.blue.color,cursorColor:'accent',cursorSize:100,hideFloatingCursor:false,screenHighlight:true,shakeToDetach:true,voiceId:'',voiceRate:1,voicePitch:1,voiceVolume:1,micDeviceId:'',micSensitivity:1,visibility:'always'
+    enableHotkey:true,wakeWordEnabled:false,wakeHeyCody:true,wakeOkayCody:true,wakeCody:true,mascotLook:'blue',accentColor:window.CODYLooks.blue.color,cursorColor:'accent',cursorSize:100,hideFloatingCursor:false,screenHighlight:true,shakeToDetach:true,voiceId:'',voiceRate:1,voicePitch:1,voiceVolume:1,micDeviceId:'',micSensitivity:1,visibility:'always'
   };
   let settings = {...DEFAULTS};
   settings.microphoneMuted=false;
@@ -466,7 +480,10 @@
   }
   function setActiveView(view){
     activeView=['settings','tasks','history'].includes(view)?view:'chat';
+    settingsSearchButton.hidden=activeView!=='settings';
+    if(activeView!=='settings'&&!settingsSearchPanel.hidden)closeSettingsSearch();
     expandChatButton.hidden=activeView!=='chat';
+    pinChatButton.hidden=!api?.toggleChatPin||activeView!=='chat';
     const history=activeView==='history',historyView=document.getElementById('view-history');
     body.classList.toggle('history-open',history);historyView.setAttribute('aria-hidden',String(!history));historyView.inert=!history;historyView.classList.toggle('is-current',history);
     if(history)document.getElementById('history-conversation').append(chatView);else if(chatView.parentElement.id==='history-conversation')historyView.parentElement.prepend(chatView);
@@ -549,13 +566,19 @@
     const cursorSizeLabel=settings.cursorSize+'%';
     document.getElementById('cursor-size').setAttribute('aria-valuetext',cursorSizeLabel);
     document.querySelector('[data-for="cursorSize"]').value=cursorSizeLabel;
-    for(const name of ['voiceRate','voicePitch','voiceVolume','micSensitivity']){
+    showVoiceVolume(voiceVolume.value);
+    for(const name of ['voiceRate','voicePitch','micSensitivity']){
       const output=document.querySelector(`[data-for="${name}"]`);
-      if(output)output.textContent=name==='voiceVolume'?Math.round(Number(settings[name]??1)*100)+'%':Number(settings[name]??1).toFixed(name==='micSensitivity'?1:2)+(name==='voicePitch'?'':'×');
+      if(output)output.textContent=Number(settings[name]??1).toFixed(name==='micSensitivity'?1:2)+(name==='voicePitch'?'':'×');
     }
     document.querySelectorAll('[data-speed]').forEach(button=>{const active=Math.abs(Number(button.dataset.speed)-Number(settings.voiceRate))<.001;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
     pauseReactions.checked=settings.idleReactions==='off';
     if(!window.assistant&&document.getElementById('chat-connection'))document.getElementById('chat-connection').textContent = window.CODYIsland?.backendConnected?'Connected to C.O.D.Y. backend':'Not connected in standalone GUI';
+  }
+  function showVoiceVolume(value){
+    const percent=Math.round(Number(value)*100)+'%';
+    voiceVolumeLabel.value=percent;
+    voiceVolume.setAttribute('aria-valuetext',percent);
   }
   async function savePreference(key,value){
     if(!(key in settings))return;
@@ -583,18 +606,87 @@
   document.getElementById('permission-check-mic').addEventListener('click',()=>void getMicrophoneAccess());
   function setSettingsTab(tab){
     if(tab==='developer'){api?.openSettings();return;}
+    settingsSearchPanel.hidden=true;
+    settingsSearchButton.setAttribute('aria-expanded','false');
     stopMicTest();
     document.querySelectorAll('.nav-item').forEach(item=>{
       item.classList.toggle('selected',item.dataset.tab===tab);
       item.setAttribute('aria-current',item.dataset.tab===tab?'page':'false');
     });
-    document.querySelectorAll('.settings-tab').forEach(item=>{
+    settingsTabs.forEach(item=>{
       const showing=item.dataset.content===tab;
       item.hidden=!showing;item.classList.toggle('selected',showing);
     });
     document.getElementById('settings-content').scrollTop=0;
-    if(tab==='microphone')void updateAudioOutputs();
+    if(tab==='voice')void updateAudioOutputs();
+    document.dispatchEvent(new CustomEvent('cody:settings-tab-changed',{detail:tab}));
   }
+  function closeSettingsSearch(){
+    setSettingsTab(settingsTabs.find(tab=>tab.classList.contains('selected'))?.dataset.content||'general');
+  }
+  function settingsSearchText(value){
+    return value.toLowerCase().replace(/[’']/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+  }
+  function renderSettingsSearch(){
+    const query=settingsSearchText(settingsSearchInput.value);
+    const words=query.split(/\s+/).filter(word=>word&&word!=='settings');
+    const matches=[];
+    function add(tab,title,section,description,target){
+      const name=settingsSearchText(title),text=settingsSearchText([title,section,description].join(' '));
+      if(words.every(word=>text.includes(word))){
+        const score=name===query?3:name.startsWith(query)?2:name.includes(query)?1:0;
+        matches.push({tab,title,section,target,score});
+      }
+    }
+    for(const pane of settingsTabs){
+      const tab=pane.dataset.content,section=pane.querySelector('h2').textContent.trim();
+      add(tab,section,'', '',null);
+      if(!words.length)continue;
+      for(const heading of pane.querySelectorAll('.group-title'))add(tab,heading.textContent.trim(),section,'',heading);
+      for(const row of pane.querySelectorAll('.setting-row')){
+        if(row.hidden||row.parentElement.closest('[hidden]:not(.settings-tab)'))continue;
+        const title=row.querySelector('strong')?.textContent.trim();
+        if(title)add(tab,title,section,row.querySelector('small')?.textContent||'',row);
+        else for(const control of row.querySelectorAll('button:not([hidden])'))add(tab,control.textContent.trim(),section,'',control);
+      }
+    }
+    add('developer','Developer settings','','animation studio',null);
+    matches.sort((a,b)=>b.score-a.score);
+    settingsSearchStatus.textContent=matches.length?'':'No settings found.';
+    settingsSearchResults.replaceChildren(...matches.map(({tab,title,section,target})=>{
+      const button=document.createElement('button'),name=document.createElement('strong'),category=document.createElement('small');
+      button.type='button';button.className='setting-row settings-search-result';
+      name.textContent=title;category.textContent=section;category.hidden=!section;button.append(name,category);
+      button.addEventListener('click',()=>{
+        setSettingsTab(tab);
+        const focus=target?.matches('button')?target:target?.querySelector('input:not(:disabled),select:not(:disabled),button:not(:disabled):not([hidden])');
+        const destination=focus||target||settingsTabs.find(pane=>pane.dataset.content===tab)?.querySelector('h2');
+        if(destination){
+          if(!focus)destination.tabIndex=-1;
+          destination.focus({preventScroll:true});
+          destination.scrollIntoView({block:'nearest'});
+        }
+      });
+      return button;
+    }));
+  }
+  function openSettingsSearch(query=''){
+    stopMicTest();
+    for(const pane of settingsTabs)pane.hidden=true;
+    settingsSearchPanel.hidden=false;
+    settingsSearchButton.setAttribute('aria-expanded','true');
+    settingsSearchInput.value=query;
+    renderSettingsSearch();
+    document.getElementById('settings-content').scrollTop=0;
+    settingsSearchInput.focus();
+  }
+  settingsSearchButton.addEventListener('click',()=>{
+    if(settingsSearchPanel.hidden)openSettingsSearch();else closeSettingsSearch();
+  });
+  settingsSearchInput.addEventListener('input',renderSettingsSearch);
+  settingsSearchInput.addEventListener('keydown',event=>{
+    if(event.key==='Enter'){event.preventDefault();settingsSearchResults.querySelector('button')?.click();}
+  });
   document.querySelectorAll('.nav-item').forEach(button=>button.addEventListener('click',()=>setSettingsTab(button.dataset.tab)));
   document.querySelectorAll('[data-pref]').forEach(control=>{
     const callback=()=>{
@@ -602,8 +694,9 @@
       const value=control.type==='checkbox'?control.checked:typeof settings[key]==='number'?Number(control.value):control.value;
       void savePreference(key,value);
     };
-    control.addEventListener(control.type==='range'?'input':'change',callback);
+    control.addEventListener(control.type==='range'&&control!==voiceVolume?'input':'change',callback);
   });
+  voiceVolume.addEventListener('input',()=>showVoiceVolume(voiceVolume.value));
   const mascotOptions=document.getElementById('mascot-options');
   for(const [id,look] of Object.entries(window.CODYLooks)){
     const button=document.createElement('button'),image=document.createElement('img'),label=document.createElement('span');
@@ -640,7 +733,7 @@
     const utterance=new SpeechSynthesisUtterance('Hello! I am C.O.D.Y., your desktop assistant.');
     const match=speechSynthesis.getVoices().find(v=>v.voiceURI===settings.voiceId);
     if(match)utterance.voice=match;
-    utterance.rate=settings.voiceRate||1;utterance.pitch=settings.voicePitch||1;utterance.volume=settings.voiceVolume??1;
+    utterance.rate=settings.voiceRate||1;utterance.pitch=settings.voicePitch||1;utterance.volume=Math.min(1,settings.voiceVolume??1);
     speechSynthesis.speak(utterance);
   });
   async function getMicrophoneAccess(){
@@ -688,10 +781,8 @@
     }
   }
   outputChoices.addEventListener('change',()=>void updateAudioOutputs(outputChoices.value));
-  document.getElementById('refresh-microphones').addEventListener('click',()=>{
-    void getMicrophoneAccess();
-    void updateAudioOutputs();
-  });
+  document.getElementById('refresh-outputs').addEventListener('click',()=>void updateAudioOutputs());
+  document.getElementById('refresh-microphones').addEventListener('click',()=>void getMicrophoneAccess());
   document.getElementById('request-mic-permission').addEventListener('click',async()=>{
     if(microphoneMuted){document.getElementById('mic-permission-status').textContent='C.O.D.Y. microphone is muted. Press Ctrl + Alt + M to unmute.';return;}
     if(window.CODYIsland?.voiceCapturing){note.textContent='Finish voice input before testing the microphone.';return;}
@@ -747,7 +838,10 @@
   document.getElementById('panel-settings').addEventListener('click',()=>setActiveView(activeView==='settings'?'chat':'settings'));
   document.getElementById('panel-send').addEventListener('click',sendPrompt);
   document.getElementById('quick-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPrompt();}});
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&panelOpen&&!event.target.closest?.('select:open')){if(activeView!=='chat')setActiveView('chat');else togglePanel(false);}});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&panelOpen&&!event.target.closest?.('select:open')){
+    if(activeView==='settings'&&!settingsSearchPanel.hidden){event.preventDefault();closeSettingsSearch();settingsSearchButton.focus();}
+    else if(activeView!=='chat')setActiveView('chat');else togglePanel(false);
+  }});
   if(api){
     api.onHotkey(onHotkey);
     api.onCommand(action=>{
@@ -760,7 +854,13 @@
     api.onSettings(applySettings);api.onAudioLevel(setAudioLevel);
     api.onCursor(applyCursor);api.onVisibility(showIsland);
     api.onExpanded(next=>{if(panelOpen!==next)setPanelOpen(next,false);});
-    api.onShowSettings(()=>{if(!panelOpen)setPanelOpen(true,false);setActiveView('settings');});
+    api.onChatPinned?.(renderChatPin);
+    api.onShowSettings(destination=>{
+      if(!panelOpen)setPanelOpen(true,false);
+      setActiveView('settings');
+      if(destination?.query)openSettingsSearch(destination.query);
+      else if(destination?.tab)setSettingsTab(destination.tab);
+    });
     Promise.all([api.getSettings(),api.getState()]).then(([prefs,current])=>{
       applySettings(prefs);
       if(current!=='idle')setState(current,false);

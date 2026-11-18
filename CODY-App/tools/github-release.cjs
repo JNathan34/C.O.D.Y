@@ -1,9 +1,23 @@
 'use strict';
 const fs=require('node:fs'),fsp=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
+const {gunzipSync}=require('node:zlib');
 const yaml=require('js-yaml');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
-async function inspectRelease(directory,version,{architectures=[]}={}){
+async function verifyBlockmap(file,size){
+  try{
+    const {version,files}=JSON.parse(gunzipSync(await fsp.readFile(file)));
+    if(version!=='2'||!Array.isArray(files)||files.length!==1)throw Error('Unsupported installer blockmap format');
+    const {name,offset,sizes,checksums}=files[0];
+    if(name!=='file'||offset!==0||!Array.isArray(sizes)||!Array.isArray(checksums)||sizes.length!==checksums.length||
+      !sizes.every(blockSize=>Number.isSafeInteger(blockSize)&&blockSize>0)||
+      !checksums.every(checksum=>typeof checksum==='string'&&checksum.length>0))throw Error('Invalid blocks');
+    if(sizes.reduce((total,blockSize)=>total+blockSize,0)!==size)throw Error('Blocks do not cover the installer');
+  }catch(error){
+    throw Error('Invalid installer blockmap: '+path.basename(file),{cause:error});
+  }
+}
+async function inspectRelease(directory,version,{architectures=[],requireBlockmaps=false}={}){
   const names=await fsp.readdir(directory);
   const manifests=names.filter(name=>/^latest(?:-arm64)?\.yml$/.test(name));
   if(!manifests.includes('latest.yml'))throw Error('Missing latest.yml. Build the NSIS installer first.');
@@ -20,7 +34,11 @@ async function inspectRelease(directory,version,{architectures=[]}={}){
       const hash=crypto.createHash('sha512');for await(const bytes of fs.createReadStream(file))hash.update(bytes);
       if(hash.digest('base64')!==entry.sha512)throw Error('Installer checksum mismatch: '+filename);
       assets.add(filename);
-      if(names.includes(filename+'.blockmap'))assets.add(filename+'.blockmap');
+      const blockmap=filename+'.blockmap';
+      if(names.includes(blockmap)){
+        await verifyBlockmap(path.join(directory,blockmap),stat.size);
+        assets.add(blockmap);
+      }else if(requireBlockmaps)throw Error('Missing installer blockmap: '+blockmap);
     }
   }
   for(const arch of architectures)if(!assets.has(`C.O.D.Y-Setup-${version}-${arch}.exe`))throw Error(`Missing ${arch} installer in update metadata.`);
@@ -40,7 +58,7 @@ async function main(){
   if(!['--check','--draft'].includes(mode))throw Error('Use --check or --draft.');
   const version=require('../frontend/original-cody/package.json').version;
   if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('Use a stable major.minor.patch version.');
-  const directory=path.join(root,'dist','standalone-'+version),assets=await inspectRelease(directory,version,{architectures:['x64','arm64']});
+  const directory=path.join(root,'dist','standalone-'+version),assets=await inspectRelease(directory,version,{architectures:['x64','arm64'],requireBlockmaps:true});
   console.log('Validated v'+version+': '+assets.map(asset=>asset.name).join(', '));
   if(mode==='--check')return;
   const login=process.env.GH_TOKEN||process.env.GITHUB_TOKEN?null:spawnSync(process.env.GH_CLI||'gh',['auth','token'],{encoding:'utf8',windowsHide:true});

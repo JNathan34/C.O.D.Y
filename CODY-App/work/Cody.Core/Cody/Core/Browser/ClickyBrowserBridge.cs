@@ -727,17 +727,42 @@ public sealed class ClickyBrowserBridge
 
 	private bool PeerIsLive(out string profile, out string session)
 	{
+		var preference = WindowsBrowserPreference.Current;
+		var target = preference?.AutomationTarget();
 		lock (gate)
 		{
 			profile = prefs.Profile ?? "";
 			session = "";
-			if (prefs.Profile == null || !peers.TryGetValue(prefs.Profile, out (string, DateTime) value) || server == null)
+			if (preference is not null)
+			{
+				string? browser = target?.Name;
+				if (browser is null)
+					return false;
+				profile = browserNames.Where(entry => entry.Value == browser && peers.ContainsKey(entry.Key))
+					.OrderByDescending(entry => entry.Key == prefs.Profile)
+					.ThenByDescending(entry => peers[entry.Key].Item2)
+					.Select(entry => entry.Key)
+					.FirstOrDefault(entry => (DateTime.UtcNow - peers[entry].Item2).TotalSeconds < 35.0) ?? "";
+			}
+			if (!peers.TryGetValue(profile, out (string, DateTime) value) || server == null)
 			{
 				return false;
 			}
 			(session, _) = value;
 			return (DateTime.UtcNow - value.Item2).TotalSeconds < 35.0;
 		}
+	}
+
+	private static string SelectedBrowserUnavailable(WindowsBrowserPreference preference)
+	{
+		var target = preference.AutomationTarget();
+		if (target.Error is not null)
+			return target.Error;
+		if (target.Name is null)
+			return "Use the Windows default browser through the approved on-screen computer controls.";
+		if (target.Name is "Chrome" or "Edge")
+			return $"The {target.Name} extension is disconnected. Connect {target.Name} under Settings > Plugins, or use the approved on-screen computer controls in {target.Name}.";
+		return $"Use {target.Name} through the approved on-screen computer controls.";
 	}
 
 	public async Task<JsonObject> PerformAsync(JsonObject arguments, string thread, string turn, string title, string groupTitle, string? progressLine, Func<bool> isActive)
@@ -759,6 +784,11 @@ public sealed class ClickyBrowserBridge
 			}
 			if (!flag)
 			{
+				if (WindowsBrowserPreference.Current is { } preference)
+				{
+					jsonObject["setup"] = SelectedBrowserUnavailable(preference);
+					return jsonObject;
+				}
 				IReadOnlyList<string> installedNames = ChromiumBrowsers.InstalledNames;
 				jsonObject["chromium_browsers"] = Strings(installedNames);
 				bool flag2 = ThreadSkipsChrome(thread);
@@ -793,6 +823,8 @@ public sealed class ClickyBrowserBridge
 		arguments = jsonObject3;
 		if (!PeerIsLive(out string profile2, out string session2))
 		{
+			if (WindowsBrowserPreference.Current is { } preference)
+				return new JsonObject { ["error"] = SelectedBrowserUnavailable(preference) };
 			IReadOnlyList<string> installedNames2 = ChromiumBrowsers.InstalledNames;
 			bool flag3 = ThreadSkipsChrome(thread);
 			if (installedNames2.Count > 0 && !flag3)
@@ -832,7 +864,8 @@ public sealed class ClickyBrowserBridge
 			lock (gate)
 			{
 				prompting = false;
-				if (!flag5 || generation != guid || !isActive() || denied.Contains(text4) || prefs.Profile != profile2)
+				if (!flag5 || generation != guid || !isActive() || denied.Contains(text4) ||
+					!PeerIsLive(out string approvedProfile, out string approvedSession) || approvedProfile != profile2 || approvedSession != session2)
 				{
 					denied.Add(text4);
 					return new JsonObject { ["error"] = "Browser permission was declined or the turn ended." };
@@ -861,7 +894,8 @@ public sealed class ClickyBrowserBridge
 		TaskCompletionSource<JsonObject> taskCompletionSource = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
 		lock (gate)
 		{
-			if (!isActive() || !grants.Contains(text4) || !peers.TryGetValue(profile2, out (string, DateTime) value) || value.Item1 != session2)
+			if (!isActive() || !grants.Contains(text4) || !PeerIsLive(out string currentProfile, out string currentSession) ||
+				currentProfile != profile2 || currentSession != session2)
 			{
 				return new JsonObject { ["error"] = "Browser connection changed. Start a new turn." };
 			}
@@ -999,6 +1033,17 @@ public sealed class ClickyBrowserBridge
 
 	public string? BrowserStateNote(bool canDrive)
 	{
+		if (WindowsBrowserPreference.Current is { } preference)
+		{
+			var target = preference.AutomationTarget();
+			if (PeerIsLive(out _, out _))
+				return $"Browser: their selected {target.Name} is connected for website jobs.";
+			if (target.Error is not null)
+				return "Browser: " + target.Error;
+			return canDrive
+				? "Browser: " + SelectedBrowserUnavailable(preference) + " Ask for screen control if the task requires it. Public web searches work independently."
+				: "Browser: the selected browser has no connection for background website jobs. Public web searches work independently.";
+		}
 		if (IsConnected)
 		{
 			return "Browser: their Chrome is connected to HeyClicky (jobs can work in their signed-in sites).";

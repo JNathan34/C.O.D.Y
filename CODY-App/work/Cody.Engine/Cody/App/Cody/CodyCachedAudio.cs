@@ -1,8 +1,11 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 
 namespace HeyClicky.App.Cody;
 
@@ -14,6 +17,7 @@ public sealed class CodyCachedAudio(IAudioOutput inner) : IAudioOutput
     private readonly object gate = new();
     private MemoryStream recording;
     private int recordingId;
+    private float volume = 1f;
     private static readonly HashSet<string> Phrases = new(StringComparer.Ordinal)
     {
         "Volume up.", "Volume down.", "Volume set.",
@@ -31,10 +35,39 @@ public sealed class CodyCachedAudio(IAudioOutput inner) : IAudioOutput
     public TimeSpan Buffered => inner.Buffered;
     public double PlayedSeconds => inner.PlayedSeconds;
     public float Level => inner.Level;
+    public float Volume
+    {
+        get => Volatile.Read(ref volume);
+        set => Volatile.Write(ref volume, float.IsFinite(value) ? Math.Clamp(value, 0f, 3f) : 1f);
+    }
+
     public void Enqueue(ReadOnlySpan<byte> pcm)
     {
         lock(gate) { if(recording != null && recording.Length < SampleRate * 2 * 15) recording.Write(pcm); }
-        inner.Enqueue(pcm);
+        float gain = Volume;
+        if (gain == 1f || pcm.IsEmpty)
+        {
+            inner.Enqueue(pcm);
+            return;
+        }
+
+        // Scale the playback copy so cached speech can be replayed at any volume.
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(pcm.Length);
+        try
+        {
+            Span<byte> output = buffer.AsSpan(0, pcm.Length);
+            pcm.CopyTo(output);
+            Span<short> samples = MemoryMarshal.Cast<byte, short>(output);
+            for (int i = 0; i < samples.Length; i++)
+            {
+                samples[i] = (short)Math.Clamp(samples[i] * gain, short.MinValue, short.MaxValue);
+            }
+            inner.Enqueue(output);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+        }
     }
     public void Flush() => inner.Flush();
     public void PlayEarcon(string name) => inner.PlayEarcon(name);

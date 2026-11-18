@@ -1003,6 +1003,9 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 	public event Action<string?>? TurnProgress;
 
 	public Func<bool>? UseSubtitlesWithoutAudio { get; set; }
+	public Func<string, string>? FormatChatReplyForSpeech { get; set; }
+
+	private string SpeechForChatReply(string text) => FormatChatReplyForSpeech?.Invoke(text) ?? text;
 
 	public event EventHandler<CompanionError>? Failed;
 
@@ -1418,6 +1421,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		Task<string?> highlightTextTask = ((strokes.Count > 0) ? HarvestHighlightTextAsync(strokes) : Task.FromResult<string>(null));
 		IReadOnlyList<ScreenCaptureFrame> frames;
 		IReadOnlyList<DisplayInfo> displays;
+		var rememberDrawingCapture = options.StartDrawingCapture?.Invoke();
 		try
 		{
 			frames = await screens.CaptureAllAsync().ConfigureAwait(continueOnCapturedContext: false);
@@ -1438,10 +1442,16 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			foreach (ScreenCaptureFrame item in frames)
 			{
 				List<ScreenCaptureFrame> list = painted;
-				list.Add(await HighlightCompositor.CompositeAsync(item, strokes, color).ConfigureAwait(continueOnCapturedContext: false));
+				var composited = await HighlightCompositor.CompositeAsync(item, strokes, color).ConfigureAwait(continueOnCapturedContext: false);
+				list.Add(composited);
+				rememberDrawingCapture?.Invoke(composited, item.Jpeg);
 			}
 			framesWithoutInk = frames;
 			frames = painted;
+		}
+		else if (rememberDrawingCapture != null)
+		{
+			foreach (var frame in frames) rememberDrawingCapture(frame, frame.Jpeg);
 		}
 		string text = ((gesture != null) ? (await highlightTextTask.ConfigureAwait(continueOnCapturedContext: false)) : null);
 		string text2 = text;
@@ -3447,6 +3457,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		}
 		int requested = firstLine;
 		List<string> spokenLines = new List<string>();
+		bool containsCode = false;
 		string silentSpeaker = (request.Typed ? null : OutputSilenceKindNow());
 		string earlyFirstLineSpoken = null;
 		SpeakNext();
@@ -3508,7 +3519,10 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 				break;
 			}
 			int heard = lineIndex;
-			string captionLine = (settings.Read((AppSettings s) => s.DrawingVoiceCaptions) ? narration.LineText(lineIndex) : null);
+			string text = narration.LineText(lineIndex) ?? "";
+			string speech = SpeechForChatReply(text);
+			containsCode |= speech != text;
+			string captionLine = (settings.Read((AppSettings s) => s.DrawingVoiceCaptions) ? speech : null);
 			double spokenSeconds = ((captionLine == null) ? 0.0 : DrawingCaptionTiming.SpokenSeconds(captionLine, settings.Read((AppSettings s) => s.SpeechSpeed)));
 			ui.Post(() =>
 			{
@@ -3529,13 +3543,12 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			{
 				SetState(VoiceState.Responding);
 			}
-			string text = narration.LineText(lineIndex) ?? "";
 			if (lineIndex == firstLine && earlyFirstLineSpoken != null && text != earlyFirstLineSpoken)
 			{
 				Log.Warn("Companion", "line 1 read early from the code differs from the engine's line");
 			}
 			spokenLines.Add(text);
-			PublishSpeechSubtitle(lineIndex == firstLine ? earlyFirstLineSpoken ?? text : text);
+			PublishSpeechSubtitle(lineIndex == firstLine && earlyFirstLineSpoken != null ? SpeechForChatReply(earlyFirstLineSpoken) : speech);
 			bool flag2;
 			lock (narration.Gate)
 			{
@@ -3554,7 +3567,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			{
 				NoteFirstLineHeard(narration.Model);
 			}
-			SetResponseText(string.Join(" ", spokenLines));
+			SetResponseText(containsCode ? NotchChatText(spokenLines) : string.Join(" ", spokenLines));
 			heardSoFar = lineIndex;
 			if (!chatMirrorEnded && request.Typed && (options.RendersTextInNotchChat?.Invoke() ?? false) && text.Trim().Length > 0)
 			{
@@ -3637,7 +3650,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			}
 			else
 			{
-				PresentMutedSpeakerReply(string.Join(" ", spokenLines));
+				PresentMutedSpeakerReply(containsCode ? NotchChatText(spokenLines) : string.Join(" ", spokenLines));
 			}
 		}
 		void SpeakNext()
@@ -3655,7 +3668,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 				}
 			}
 			audio.PrepareForUpcomingAudio();
-			mouth.SpeakLine(text2, requested);
+			mouth.SpeakLine(SpeechForChatReply(text2), requested);
 			requested++;
 		}
 		void StepAsideOnceDrawingStarts()
@@ -3866,6 +3879,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 	{
 		captionsTextAnswer = false;
 		List<string> shown = new List<string>();
+		bool containsCode = false;
 		string lastShownLine = null;
 		string question = request.Words ?? "";
 		int lineIndex;
@@ -3897,6 +3911,8 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 				break;
 			}
 			shown.Add(line);
+			string speech = SpeechForChatReply(line);
+			containsCode |= speech != line;
 			lock (narration.Gate)
 			{
 				narration.HeardLines.Add(line);
@@ -3912,9 +3928,9 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 					narration.FirstLineHeardTicks = tickCount;
 				}
 			}
-			string answer = ((options.RendersTextInNotchChat?.Invoke() ?? false) ? NotchChatText(shown) : string.Join(" ", shown));
+			string answer = containsCode || (options.RendersTextInNotchChat?.Invoke() ?? false) ? NotchChatText(shown) : string.Join(" ", shown);
 			int index = lineIndex;
-			double reading = ReadingSeconds(line);
+			double reading = ReadingSeconds(speech);
 			bool enteringCaptions = !captionsTextAnswer && canvas.InkedMarkCount > 0;
 			if (enteringCaptions)
 			{
@@ -3931,7 +3947,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 				}
 				if (captioned)
 				{
-					canvas.ShowLiveCaption(line, DrawingCaptionTiming.RevealSeconds(line, reading), reading + 1.2);
+					canvas.ShowLiveCaption(speech, DrawingCaptionTiming.RevealSeconds(speech, reading), reading + 1.2);
 				}
 				else
 				{
@@ -3944,8 +3960,8 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 				SetState(VoiceState.Responding);
 			}
 			SetResponseText(answer);
-			if (subtitleSpeech) SpeechSubtitle?.Invoke(line, reading);
-			lastShownLine = line;
+			if (subtitleSpeech) SpeechSubtitle?.Invoke(speech, reading);
+			lastShownLine = speech;
 			await DeliverActionsAsync(narration, lineIndex, deliveredActions, corrections, request, stillCurrent).ConfigureAwait(continueOnCapturedContext: false);
 			lineIndex++;
 			long readUntil = Environment.TickCount64 + (long)(reading * 1000.0);

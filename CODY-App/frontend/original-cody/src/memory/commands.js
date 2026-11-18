@@ -1,6 +1,6 @@
 'use strict';
 
-const SHARED_PAUSED='Claude through HeyClicky is paused while Local memory only is on. Local commands still work.';
+const SHARED_PAUSED='Claude Code is paused while Local memory only is on. Local commands still work.';
 
 function localMemoryText(input,localOnly){
   const match=/^(?:please\s+)?remember\s+([\s\S]+)$/i.exec(String(input||'').trim());

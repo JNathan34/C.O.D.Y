@@ -51,7 +51,7 @@ const island=require('./island/main');
 const {NativeEngine}=require('./native-engine');
 const {nativeLink,linksFromArgs}=require('./native-links');
 const {installNativeIpc}=require('./native-ipc');
-const {selection:agentSelection,providerPatch,exactCodexModel}=require('./agent-provider');
+const {exactCodexModel}=require('./agent-provider');
 const {setPersonalCodexEnabled}=require('./usage-policy');
 let sendProviderMessage,cancelProviderTurn;
 const {IslandUtilities}=require('./island-utilities');
@@ -64,6 +64,11 @@ const {ControlOverlay}=require('./control-overlay');
 const {KeywordWakeListener}=require('./voice/keyword-wake-listener');
 let controlOverlay,wakeListener;
 const nativeEngine=new NativeEngine();
+async function openPreferredWebLink(rawUrl){
+  const url=new URL(rawUrl);
+  if(!['http:','https:'].includes(url.protocol))throw Error('Expected an HTTP or HTTPS link.');
+  await nativeEngine.request('browser-preference-open',{url:url.href});
+}
 nativeEngine.on('screen-capture-ui',value=>island.setCaptureUIActive(value?.active===true));
 nativeEngine.on('offline',()=>island.setCaptureUIActive(false));
 const {startPushToTalk}=require('./voice/hotkey');
@@ -124,7 +129,12 @@ function createWindow(){
     else if(!quitting){quitting=true;app.quit();}
   });
   if(store.data.settings.startMinimized||process.argv.includes('--background'))island.showCompact();
-  win.webContents.setWindowOpenHandler(({url})=>{try{const link=new URL(url);if(['https:','http:'].includes(link.protocol))void shell.openExternal(link.href).catch(()=>{});}catch{}return {action:'deny'};});
+  win.webContents.setWindowOpenHandler(({url})=>{
+    if(/^https?:\/\//i.test(url))void openPreferredWebLink(url).catch(error=>{
+      if(win&&!win.isDestroyed())void dialog.showMessageBox(win,{type:'warning',message:'Could not open the link',detail:error.message});
+    });
+    return {action:'deny'};
+  });
   win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('file://'))event.preventDefault();});
 }
 function getState(){return {...store.publicState(),tasks:nativeTasks,rps:rps?.snapshot(),monitors:monitors?.snapshot(),capture:screenCapture?.snapshot(),timer:desktopTimer?.snapshot(),quickCard,taskStatus:taskUpdates.current,spotify:spotify?.snapshot(),controlCapabilities:controller?.catalog(),firefoxConnection:firefoxBridge?.status(),connected:Boolean(codex?.ready),busy:Boolean(activeTurn||starting),webConnected:Boolean(webBrowser?.lastState?.signedIn)};}
@@ -255,7 +265,7 @@ function registerIpc(){
   ipcMain.handle('browse-folder',async()=>{const r=await dialog.showOpenDialog(win,{properties:['openDirectory','createDirectory'],title:'Choose the folder the agent can edit'});if(r.canceled)return null;store.settings({workingFolder:r.filePaths[0]});sendUI('settings-changed',store.data.settings);return r.filePaths[0];});
   ipcMain.handle('connect',async()=>{await initCodex().start();const account=await codex.account();const models=await codex.models().catch(()=>[]);return {account:account.account,models};});
   ipcMain.handle('account',async()=>{await initCodex().start();const info=await codex.account();return info.account;});
-  ipcMain.handle('sign-in',async()=>{await initCodex().start();const a=await codex.login();if(a?.authUrl){await shell.openExternal(a.authUrl);return {started:true};}throw Error('Codex did not provide a sign-in URL');});
+  ipcMain.handle('sign-in',async()=>{await initCodex().start();const a=await codex.login();if(a?.authUrl){await openPreferredWebLink(a.authUrl);return {started:true};}throw Error('Codex did not provide a sign-in URL');});
   ipcMain.handle('rate-limits',async()=>{await initCodex().start();return codex.rateLimits();});
   ipcMain.handle('open-chatgpt',async()=>initWebBrowser().show());
   ipcMain.handle('web-status',async()=>initWebBrowser().status({create:true}));
@@ -356,6 +366,7 @@ function registerIpc(){
       starting=true;sendUI('busy',{busy:true});
       try{
         diagnostic=await prepareFirefoxTask(effectiveTask,{controller,bridge:firefoxBridge,
+          browserPreference:()=>nativeEngine.request('browser-preference-state'),
           workingFolder:settings.workingFolder,onActivity:text=>sendUI('activity',{text})});
         if(!diagnostic&&!scene.settings.enabled&&workflowAllowed.some(action=>/^(model|scene)\./.test(action))&&!/\b(?:clear|remove|close)\b/i.test(effectiveTask))diagnostic={reason:'Enable 3D models in Settings → Visuals first.'};
         if(!diagnostic&&!annotations.settings.enabled&&workflowAllowed.some(action=>action.startsWith('draw.'))&&!/\b(?:clear|remove|hide|erase)\b/i.test(effectiveTask))diagnostic={reason:'Enable screen annotations in Settings → Annotations first.'};
@@ -583,9 +594,9 @@ else app.whenReady().then(()=>{
     enabled:store.data.settings.checkForUpdates!==false,
     saveEnabled:value=>{store.data.settings.checkForUpdates=value;store.save();},
     installBlocked:()=>Boolean(activeTurn||starting||screenCapture?.active||nativeTasks.activeCount||['Listening','Processing','Responding'].includes(nativeEngine.status?.state))});
-  registerUpdateIpc({ipcMain,updates,getWindow:()=>win,shell});
+  registerUpdateIpc({ipcMain,updates,getWindow:()=>win,shell:{openExternal:openPreferredWebLink}});
   updates.on('change',state=>sendUI('updates-state',state));updates.start();
-  store.settings(providerPatch(agentSelection(store.data.settings).provider));
+  if(store.data.settings.assistantProvider!=='heyclicky')store.settings({assistantProvider:'heyclicky'});
   // Every app launch starts a clean conversation; saved history stays available.
   store.newChat();
   desktopTimer=new DesktopTimer({file:path.join(app.getPath('userData'),'island-timer.json')});
@@ -602,6 +613,14 @@ else app.whenReady().then(()=>{
   visualLedger=new VisualLedger();
   scene.on('diagnostic',message=>sendUI('diagnostic','3D visuals: '+message));
   annotations.on('diagnostic',message=>sendUI('diagnostic','Annotations: '+message));
+  let clearingNativeDrawing=false;
+  island.onClearDrawings(()=>{
+    annotations.clearImmediate('cleared with Ctrl+Alt+X');
+    if(!nativeEngine.connected||clearingNativeDrawing)return;
+    clearingNativeDrawing=true;
+    void nativeEngine.request('clear-2d-drawings').catch(error=>sendUI('diagnostic','Clear drawings: '+error.message))
+      .finally(()=>{clearingNativeDrawing=false;});
+  });
   const resetVisuals=reason=>{annotations.clearImmediate(reason);scene.clearImmediate(reason);captures.clear();visualLedger.begin('gui');};
   for(const event of ['display-added','display-removed','display-metrics-changed'])screen.on(event,()=>resetVisuals('display configuration changed'));
   for(const event of ['suspend','resume','lock-screen'])powerMonitor.on(event,()=>resetVisuals('system power or lock state changed'));
@@ -635,8 +654,8 @@ else app.whenReady().then(()=>{
   screenCapture=new ScreenCapture({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures:path.join(app.getPath('pictures'),'C.O.D.Y'),videos:path.join(app.getPath('videos'),'C.O.D.Y')});
   let lastSavedCapture=null;screenCapture.on('change',state=>{sendUI('capture-state',state);refreshIslandCards();if(state.status==='starting')island.collapse();if(state.status==='saved'&&state.savedPath!==lastSavedCapture){lastSavedCapture=state.savedPath;showQuickCard({kind:'utility',text:'Recording saved',detail:'Click to open',icon:'camera',captureKind:'recording'});}if(state.status==='error')showQuickCard({kind:'utility',text:'Recording error',detail:state.error,icon:'circle-alert'});});
   monitors=new IslandMonitors({settingsFile:path.join(app.getPath('userData'),'island-monitors.json'),weather,readDesktopFrames:()=>nativeEngine.request('desktop-frames'),fetcher:(url,options)=>require('electron').net.fetch(url,options)});
-  let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact();lastMonitorActive=state.active;});
-  const islandUtilities=new IslandUtilities({tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,showCompact:()=>{island.showCompact();if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
+  let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact({automatic:true});lastMonitorActive=state.active;});
+  const islandUtilities=new IslandUtilities({tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,appSettings:{show:island.showSettings,update:island.updatePreferences},showCompact:()=>{island.showCompact({automatic:true});if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
   attachments=new Attachments({store,onChange:state=>sendUI('attachments-state',state),encodeImage:bytes=>{
     const image=nativeImage.createFromBuffer(bytes);
     if(image.isEmpty())return null;
@@ -669,13 +688,22 @@ else app.whenReady().then(()=>{
       for(const chat of store.data.chats)delete chat.codexBridgeThreadId;
       store.save();
     },
-    isMicrophoneMuted:()=>island.preferences().microphoneMuted===true,ipcMain,engine:nativeEngine,store,sendUI,controller,submitExternal:value=>sendProviderMessage(value),cancelExternal:()=>cancelProviderTurn(),externalBusy:()=>Boolean(activeTurn||starting),codexUsage:()=>readCodexUsage(usageClient??=new CodexClient({accountOnly:true})),connectProvider:async provider=>{if(provider==='codex'){await codexAgent.client.start();const info=await codexAgent.client.account();if(info.account?.type!=='chatgpt'){const login=await codexAgent.client.login();if(login.authUrl)await shell.openExternal(login.authUrl);return {message:'Finish ChatGPT sign-in in your browser, then choose Connect again.'};}exactCodexModel(await codexAgent.client.models());return {message:'ChatGPT Codex connected · GPT 6.1 Sol · Medium'};}if(provider==='chatgpt'){await initWebBrowser().show();return {message:'Sign in to ChatGPT. GPT 6.1 Sol and Medium are verified before sending.'};}return {message:'Claude uses your existing connection.'};},chooseWorkingFolder:async()=>{const result=await dialog.showOpenDialog(win,{properties:["openDirectory","createDirectory"],title:"Choose the background task workspace"});return result.canceled?null:result.filePaths[0];},getState,getWindow:()=>win,utilities:islandUtilities,rps,capture:screenCapture,attachments,onTasks:value=>{nativeTasks=value;refreshIslandCards();},captureTextEnabled:()=>{const permissions=controller.permissions();return permissions.enabled&&permissions.keyboardMouse&&permissions.uiAutomation;},chooseFiles:async()=>{const result=await dialog.showOpenDialog(win,{title:"Attach files to C.O.D.Y.",properties:["openFile","multiSelections"]});return result.canceled?[]:result.filePaths;},showFiles:()=>island.show(),fileDragging:value=>island.setFileDragActive(value),showApprovals:()=>island.show(),cancelLocalApprovals:()=>{for(const [id,request]of pendingApprovals){if(request.resolve){pendingApprovals.delete(id);request.resolve(false);sendUI('approval-resolved',id);}}}});
+    isMicrophoneMuted:()=>island.preferences().microphoneMuted===true,ipcMain,engine:nativeEngine,store,sendUI,controller,submitExternal:value=>sendProviderMessage(value),cancelExternal:()=>cancelProviderTurn(),externalBusy:()=>Boolean(activeTurn||starting),codexUsage:()=>readCodexUsage(usageClient??=new CodexClient({accountOnly:true})),connectProvider:async provider=>{if(provider==='codex'){await codexAgent.client.start();const info=await codexAgent.client.account();if(info.account?.type!=='chatgpt'){const login=await codexAgent.client.login();if(login.authUrl)await openPreferredWebLink(login.authUrl);return {message:'Finish ChatGPT sign-in in your browser, then choose Connect again.'};}exactCodexModel(await codexAgent.client.models());return {message:'ChatGPT Codex connected · GPT 6.1 Sol · Medium'};}if(provider==='chatgpt'){await initWebBrowser().show();return {message:'Sign in to ChatGPT. GPT 6.1 Sol and Medium are verified before sending.'};}return {message:'Claude uses your existing connection.'};},chooseWorkingFolder:async()=>{const result=await dialog.showOpenDialog(win,{properties:["openDirectory","createDirectory"],title:"Choose the background task workspace"});return result.canceled?null:result.filePaths[0];},getState,getWindow:()=>win,utilities:islandUtilities,rps,capture:screenCapture,attachments,onTasks:value=>{nativeTasks=value;refreshIslandCards();},captureTextEnabled:()=>{const permissions=controller.permissions();return permissions.enabled&&permissions.keyboardMouse&&permissions.uiAutomation;},chooseFiles:async()=>{const result=await dialog.showOpenDialog(win,{title:"Attach files to C.O.D.Y.",properties:["openFile","multiSelections"]});return result.canceled?[]:result.filePaths;},showFiles:()=>island.show(),fileDragging:value=>island.setFileDragActive(value),showApprovals:()=>island.show(),cancelLocalApprovals:()=>{for(const [id,request]of pendingApprovals){if(request.resolve){pendingApprovals.delete(id);request.resolve(false);sendUI('approval-resolved',id);}}}});
   if(!store.data.settings.nativeHeyClickyGui){store.data.settings.nativeHeyClickyGui=true;store.settings({voiceAutoSpeak:true,assistantProvider:"heyclicky"});}
   setPersonalCodexEnabled(store.data.settings.assistantProvider==='codex');
   createWindow();createTray();
-  const syncTaskUpdates=prefs=>taskUpdates.setEnabled(prefs.islandTaskUpdates);
-  island.onPreferencesChanged(syncTaskUpdates);syncTaskUpdates(island.preferences());
   app.once('will-quit',()=>taskUpdates.close());
+  let nativeVoiceVolume;
+  const syncVoiceVolume=({voiceVolume:volume})=>{
+    if(volume===nativeVoiceVolume)return;
+    nativeVoiceVolume=volume;
+    void nativeEngine.request('voice-volume',{volume}).catch(error=>{
+      if(nativeVoiceVolume===volume)nativeVoiceVolume=undefined;
+      sendUI('diagnostic','Voice volume: '+error.message);
+    });
+  };
+  island.onPreferencesChanged(syncVoiceVolume);
+  syncVoiceVolume(island.preferences());
   const subtitles=new SubtitleOverlay({BrowserWindow,screen,onError:error=>sendUI('diagnostic','Subtitles: '+error.message)});
   const syncSubtitles=({speechSubtitles:enabled})=>{
     if(enabled===subtitles.enabled)return;
@@ -692,7 +720,8 @@ else app.whenReady().then(()=>{
   controlOverlay=new ControlOverlay({BrowserWindow,screen,engine:nativeEngine,getAccent:()=>island.preferences().accentColor,getCursorColor:()=>island.preferences().cursorColor,getCursorOptions:()=>island.preferences(),getIslandWindow:()=>island.window(),getDockPoint:()=>{const bounds=island.window()?.getBounds();return bounds?{x:bounds.x+bounds.width/2,y:bounds.y+16}:null;}});
   controlOverlay.on('diagnostic',message=>sendUI('diagnostic',message));
   controlOverlay.on('change',state=>taskUpdates.drive(state));
-  const syncCursorPreferences=()=>{controlOverlay.preferencesChanged();const prefs=island.preferences();void nativeEngine.request('configure',{screenHighlight:prefs.screenHighlight,cursorColor:controlOverlay.cursorColor(),cursorSize:prefs.cursorSize,systemInput:prefs.controlInputMode==='system'}).catch(error=>sendUI('diagnostic',error.message));};
+  // An older engine process may still accept the input mode in configure.
+  const syncCursorPreferences=()=>{controlOverlay.preferencesChanged();const prefs=island.preferences();void nativeEngine.request('configure',{screenHighlight:prefs.screenHighlight,cursorColor:controlOverlay.cursorColor(),cursorSize:prefs.cursorSize,systemInput:true}).catch(error=>sendUI('diagnostic',error.message));};
   let dictationActive=false,sessionLocked=false;
   nativeEngine.on('meter',value=>{dictationActive=value.dictationActive===true;});
   wakeListener=new KeywordWakeListener({launch:phrases=>{const layout=require('./native-layout').nativeLayout({packaged:app.isPackaged,resourcesPath:process.resourcesPath,userData:app.getPath('userData')});return {command:layout.executable,args:['--cody-wake','--phrases',phrases.join('|')],options:{cwd:layout.directory,env:layout.environment}};},canCapture:()=>sessionLocked?'Paused while this PC is locked.':!nativeEngine.connected?'Waiting for C.O.D.Y. to connect.':dictationActive?'Paused during dictation.':nativeBindings.gameVoice?.running?'Paused during voice games.':null,canListen:()=>sessionLocked?'Paused while this PC is locked.':!nativeEngine.connected?'Waiting for C.O.D.Y. to connect.':dictationActive?'Paused during dictation.':nativeBindings.gameVoice?.running?'Paused during voice games.':['Listening','Processing','Responding'].includes(nativeEngine.status.state)||nativeBindings.isBusy()?'Paused while C.O.D.Y. is busy.':null,

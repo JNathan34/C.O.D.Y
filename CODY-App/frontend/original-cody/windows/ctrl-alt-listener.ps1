@@ -37,6 +37,7 @@ public static class CodyModifierKeys {
             bool down = kind == 0x0100 || kind == 0x0104;
             bool up = kind == 0x0101 || kind == 0x0105;
             if (key == 0x48 && up) presses.Enqueue("VISIBILITY_RELEASE");
+            if (key == 0x50 && up) presses.Enqueue("PIN_RELEASE");
             // Only physical taps: automation must never send a quick message.
             if ((flags & 0x10) == 0) {
                 if (key == 0xA5) {
@@ -119,10 +120,12 @@ try {
         $chatKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x43)) -band 0x8000) -ne 0
         $muteKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x4D)) -band 0x8000) -ne 0
         $visibilityKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x48)) -band 0x8000) -ne 0
+        $pinKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x50)) -band 0x8000) -ne 0
+        $clearKey = (([int][CodyModifierKeys]::GetAsyncKeyState(0x58)) -band 0x8000) -ne 0
         if ($muteKeyHeld -and -not $muteKey) { [Console]::Out.WriteLine('MUTE_RELEASE'); [Console]::Out.Flush() }
         $muteKeyHeld = $muteKey
         if (-not $both) { $shortcutChord = $false }
-        if ($both -and ($chatKey -or $muteKey -or $visibilityKey) -and -not $shortcutChord) {
+        if ($both -and ($chatKey -or $muteKey -or $visibilityKey -or $pinKey -or $clearKey) -and -not $shortcutChord) {
             $shortcutChord = $true
             $held = $false
             [Console]::Out.WriteLine('CANCEL')

@@ -9,7 +9,7 @@ namespace HeyClicky.App.Cody;
 
 internal static class CodyMemoryPolicy
 {
-    internal const string BlockedMessage = "Claude through HeyClicky is paused while Local memory only is on.";
+    internal const string BlockedMessage = "Claude Code is paused while Local memory only is on.";
     private static readonly string Marker = Path.Combine(CodyPaths.StateRoot, "local-memory-only");
     internal static bool LocalOnly => File.Exists(Marker);
 

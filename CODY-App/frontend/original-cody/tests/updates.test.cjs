@@ -13,6 +13,7 @@ test('GitHub update requires an explicit download and install',async()=>{
   const {service,client,calls}=fixture();await service.check();
   assert.equal(service.snapshot().status,'available');assert.equal(service.snapshot().availableVersion,'0.16.0');
   assert.equal(client.autoDownload,false);assert.equal(client.autoInstallOnAppQuit,false);assert.equal(client.allowDowngrade,false);assert.equal(client.allowPrerelease,false);
+  assert.equal(client.disableDifferentialDownload,false);
   assert.deepEqual(calls(),{checks:1,downloads:0,installs:0});
   await service.download();assert.equal(service.snapshot().status,'ready');assert.equal(service.snapshot().progress,100);
   service.install();assert.deepEqual(calls(),{checks:1,downloads:1,installs:1});assert.equal(service.snapshot().status,'installing');

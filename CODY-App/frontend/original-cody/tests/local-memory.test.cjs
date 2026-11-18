@@ -109,7 +109,7 @@ test('the switch keeps typed memories and basic commands local and pauses HeyCli
   assert.deepEqual(await send('Remember that my name is Private Test'),{local:true});
   assert.deepEqual(notes,['my name is Private Test']);
   assert.equal(messages.some(message=>message.text.includes('Private Test')),false);
-  assert.match((await send('Answer a question')).error,/Claude through HeyClicky is paused/);
+  assert.match((await send('Answer a question')).error,/Claude Code is paused/);
   assert.equal((await send('what is the time')).utility,true);
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(messages.at(-1).text,'It is noon.');

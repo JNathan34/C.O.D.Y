@@ -11,11 +11,6 @@ class IslandTaskUpdates {
     this.approvals=new Map();
     this.current=null;
   }
-  setEnabled(enabled){
-    this.enabled=enabled;
-    if(!enabled){clearTimeout(this.timer);this.recent=null;}
-    this.publish();
-  }
   progress(id,text,detail){
     if(!id)return;
     this.foreground={id,kind:'progress',text:line(text)||'Working…',detail:line(detail),icon:'clock',target:'chat'};
@@ -51,14 +46,13 @@ class IslandTaskUpdates {
     this.publish();
   }
   remember(card){
-    if(!this.enabled||(this.recent?.target==='tasks'&&card.kind==='reply'))return;
+    if(this.recent?.target==='tasks'&&card.kind==='reply')return;
     this.recent=card;
     clearTimeout(this.timer);
     this.timer=setTimeout(()=>{this.recent=null;this.publish();},this.linger);
     this.timer.unref?.();
   }
   card(){
-    if(!this.enabled)return null;
     const approvals=[...this.approvals.values()].flat();
     if(approvals.length)return {kind:'attention',text:'Approval needed',detail:line(approvals[0].reason)||'Review request',icon:'shield-check',target:'approval'};
     const active=this.tasksOnline?[...this.tasks.values()].filter(task=>ACTIVE.has(task.status)):[];

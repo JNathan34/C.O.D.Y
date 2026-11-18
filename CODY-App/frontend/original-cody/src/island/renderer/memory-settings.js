@@ -20,8 +20,8 @@
   function showMode({localOnly}){
     toggle.checked=localOnly;
     modeStatus.textContent=localOnly
-      ? 'Claude through HeyClicky is paused. Your sign-in stays connected.'
-      : 'Claude through HeyClicky can use the signed-in account’s memories.';
+      ? 'Claude Code is paused. Your sign-in stays connected.'
+      : 'Claude Code can use memories from your signed-in account.';
   }
   async function changeMode(configure){
     if(modeBusy)return;

@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, Menu, screen, shell, session, globalShortcut, powerMonitor } = require('electron');
+const { app, BrowserWindow, clipboard, ipcMain, Menu, screen, shell, session, globalShortcut, powerMonitor } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const branding=require('../branding');
@@ -34,11 +34,9 @@ const DEFAULTS = Object.freeze({
   mascotLook: 'blue',
   cursorColor: 'accent',
   cursorSize: 100,
-  controlInputMode: 'system',
   hideFloatingCursor: false, screenHighlight: true, shakeToDetach: true,
   wakeWordEnabled: false, wakeHeyCody: true, wakeOkayCody: true, wakeCody: true,
   speechSubtitles: false,
-  islandTaskUpdates: true,
   fontScale: 100,
   guiScale: 100,
   voiceId: '',
@@ -72,11 +70,14 @@ let state = 'idle';
 let suspended = false;
 let hiddenByShortcut = false;
 let expanded = false;
+let chatPinned = false;
 let currentPanelView = 'chat';
 let timerVisible=false;
 let gameActive=false;
 let recordingActive=false,wakeListeningActive=false;
 let chatShortcutRegistered=false;
+let pinShortcutRegistered=false,pinShortcutHeld=false;
+let clearDrawingsShortcutRegistered=false,clearDrawingsListener=null;
 let muteShortcutRegistered=false,muteShortcutHeld=false;
 let visibilityShortcutRegistered=false,visibilityShortcutHeld=false;
 let forcedVisible = false;
@@ -132,7 +133,6 @@ function validateSettings(patch, old = settings) {
   next.quickMessagePhrase = next.quickMessagePhrase.trim().slice(0, 1000);
   next.activityHideDelay = Math.max(0, Math.min(10000, next.activityHideDelay));
   if (!Object.values(mascotLooks).some(look=>look.color===next.accentColor)) next.accentColor = DEFAULTS.accentColor;
-  if(!['system','independent'].includes(next.controlInputMode))next.controlInputMode='system';
   if(!Object.hasOwn(mascotLooks,next.mascotLook))next.mascotLook='blue';
   if(next.cursorColor!=='accent'&&!Object.values(mascotLooks).some(look=>look.color===next.cursorColor))next.cursorColor='accent';
   next.cursorSize = Number.isFinite(next.cursorSize)?Math.min(200,Math.max(50,Math.round(next.cursorSize/25)*25)):100;
@@ -140,7 +140,7 @@ function validateSettings(patch, old = settings) {
   if (![90,100,110,125].includes(next.guiScale)) next.guiScale = DEFAULTS.guiScale;
   next.voiceRate = Number.isFinite(next.voiceRate)?Math.min(1.4,Math.max(.7,next.voiceRate)):1;
   next.voicePitch = Number.isFinite(next.voicePitch)?Math.min(1.2,Math.max(.8,next.voicePitch)):1;
-  next.voiceVolume = Number.isFinite(next.voiceVolume)?Math.min(1,Math.max(0,next.voiceVolume)):1;
+  next.voiceVolume = Number.isFinite(next.voiceVolume)?Math.min(3,Math.max(0,next.voiceVolume)):1;
   next.micSensitivity = Number.isFinite(next.micSensitivity)?Math.min(2,Math.max(.5,next.micSensitivity)):1;
   next.voiceId = String(next.voiceId).slice(0,250);
   next.micDeviceId = String(next.micDeviceId).slice(0,250);
@@ -270,9 +270,30 @@ function setIslandState(next) {
   else if (!expanded) scheduleHide();
   updateVisibility();
 }
-function setExpanded(next) {
+function setChatPinned(value) {
+  if(chatPinned===value)return;
+  chatPinned=value;
+  emit('island:chat-pinned',chatPinned);
+}
+function toggleChatPin() {
+  if(chatPinned){setChatPinned(false);return;}
+  hiddenByShortcut=false;
+  suspended=false;
+  mount();
+  setChatPinned(true);
+  setExpanded(true);
+  updateVisibility();
+  islandWindow.show();
+  islandWindow.focus();
+  emit('island:command','chat');
+}
+function setExpanded(next,{automatic=false}={}) {
   const desired=Boolean(next);
-  if(!desired){pickerOpen=false;chatExpanded=false;}
+  if(!desired){
+    if(automatic&&chatPinned)return;
+    pickerOpen=false;chatExpanded=false;
+    if(chatPinned)setChatPinned(false);
+  }
   if(desired===expanded)return;
   expanded=desired;
   if(expanded){
@@ -317,12 +338,18 @@ function showContextMenu() {
     { label:'Start listening', click:()=>emit('island:command','start') },
     { label:'Stop listening', click:()=>emit('island:command','stop') },
     { label:'Open quick panel', click:()=>setExpanded(true) },
-    { label:'Settings', click:()=>{setExpanded(true);emit('island:show-settings');} },
+    { label:'Settings', click:()=>showSettings() },
     { label:'Developer settings', click:openSettings },
     { label:'Test all animations', click:openPreview },
     { type:'separator' },
     { label:'Quit C.O.D.Y. Island', click:()=>app.quit() }
   ]).popup({window:islandWindow});
+}
+function show(){hiddenByShortcut=false;suspended=false;mount();if(expanded)updateVisibility();else setExpanded(true);islandWindow.show();islandWindow.focus();}
+function showSettings(destination){
+  if(destination?.tab==='developer'){openSettings();return;}
+  show();
+  emit('island:show-settings',destination);
 }
 function pollCursor(clickedPoint=null) {
   if (!islandWindow || islandWindow.isDestroyed()) return;
@@ -350,7 +377,7 @@ function pollCursor(clickedPoint=null) {
   if(clickedPoint&&shouldRecoverPointer({visible:interactive,expanded,hit:silhouetteHit,button:clickedPoint.button||'left'})){
     mascotSleeping=false;wakeClickUntil=0;setExpanded(true);emit('island:command','pointer-open');
   }
-  if(clickedPoint&&interactive&&expanded&&!captureUIBusy()&&!pickerOpen&&!fileDialogs&&!onPanel&&!silhouetteHit)setExpanded(false);
+  if(clickedPoint&&interactive&&expanded&&!captureUIBusy()&&!pickerOpen&&!fileDialogs&&!onPanel&&!silhouetteHit)setExpanded(false,{automatic:true});
   const ignoreMouse = !(interactive && (pickerOpen || silhouetteHit || onPanel));
   if (ignoreMouse !== mouseIgnored) {
     islandWindow.setIgnoreMouseEvents(ignoreMouse,{forward:true});
@@ -393,7 +420,7 @@ function onModifierEvent(event) {
     hotkeyHeld = true;
     forcedVisible = true;
     updateVisibility();
-    if (!settings.startListeningOnHotkey) { setExpanded(!expanded); return; }
+    if (!settings.startListeningOnHotkey) { setExpanded(!expanded,{automatic:true}); return; }
     emit('island:hotkey','down');
   } else if (event === 'UP') {
     if (!hotkeyHeld) return;
@@ -421,6 +448,7 @@ function createIsland() {
   void islandWindow.loadFile(path.join(__dirname,'renderer','index.html')).catch(console.error);
   islandWindow.webContents.on('did-finish-load',()=>{
     emit('island:settings',settings);emit('island:state',state);emit('island:expanded',expanded);
+    emit('island:chat-pinned',chatPinned);
     updateVisibility();
     console.log('[C.O.D.Y.] v1.8.0 adaptive chat and settings loaded.');
   });
@@ -430,8 +458,8 @@ function createIsland() {
     if(concealFallback){clearTimeout(concealFallback);concealFallback=null;}
   });
   islandWindow.on('blur',()=>{
-    if (!expanded || !shouldShow() || gameActive || fileDragActive || fileDialogs || captureUIBusy()) return;
-    setTimeout(()=>{ if(shouldShow()&&!captureUIBusy()&&!gameActive&&!fileDragActive&&!fileDialogs&&islandWindow&&!islandWindow.isDestroyed()&&!islandWindow.isFocused()) setExpanded(false); },220);
+    if (!expanded || chatPinned || !shouldShow() || gameActive || fileDragActive || fileDialogs || captureUIBusy()) return;
+    setTimeout(()=>{ if(shouldShow()&&!captureUIBusy()&&!gameActive&&!fileDragActive&&!fileDialogs&&islandWindow&&!islandWindow.isDestroyed()&&!islandWindow.isFocused()) setExpanded(false,{automatic:true}); },220);
   });
   // Screen snipping and desktop transitions can hide a native overlay without
   // changing our visibility preference. Restore it without taking keyboard focus.
@@ -457,9 +485,20 @@ function createIsland() {
       if(input.type==='keyUp')handleHotkey('mute-up');
       if(input.control&&input.alt&&!input.shift&&!input.meta){event.preventDefault();if(!muteShortcutRegistered&&input.type==='keyDown'&&!input.isAutoRepeat)handleHotkey('mute');}
     }
+    if(input.code==='KeyP'){
+      if(input.type==='keyUp')handleHotkey('pin-up');
+      if(input.control&&input.alt&&!input.shift&&!input.meta){
+        event.preventDefault();
+        if(!pinShortcutRegistered&&input.type==='keyDown'&&!input.isAutoRepeat)handleHotkey('chat-pin');
+      }
+    }
     if(input.control&&input.alt&&!input.shift&&!input.meta&&input.code==='KeyC'){
       event.preventDefault();
       if(!chatShortcutRegistered&&input.type==='keyDown'&&!input.isAutoRepeat)handleHotkey('chat');
+    }
+    if(input.control&&input.alt&&!input.shift&&!input.meta&&input.code==='KeyX'&&clearDrawingsListener){
+      event.preventDefault();
+      if(!clearDrawingsShortcutRegistered&&input.type==='keyDown'&&!input.isAutoRepeat)handleHotkey('clear-drawings');
     }
   });
   islandWindow.webContents.on('context-menu',showContextMenu);
@@ -479,6 +518,10 @@ function setupIpc() {
   handle('island:read-state',()=>state);
   handle('island:read-network',()=>({wifiKnown,offline:wifiDisconnected,platform:process.platform}));
   handle('island:update-settings',(_event,patch)=>updatePreferences(patch));
+  handle('island:copy-code',(_event,text)=>{
+    if(typeof text!=='string'||text.length>1000000)throw Error('Invalid code to copy.');
+    clipboard.writeText(text);
+  });
   on('island:set-state',(_event,next)=>setIslandState(next));
   on('island:picker-open',(_event,value)=>{pickerOpen=expanded&&value===true;});
   on('island:audio-level',(_event,level)=>emit('island:audio-level',Math.max(0,Math.min(1,Number(level)||0))));
@@ -486,6 +529,7 @@ function setupIpc() {
   on('island:open-preview',openPreview);
   on('island:sleeping',(_event,value)=>{if(mascotSleeping&&value!==true)wakeClickUntil=Date.now()+1500;mascotSleeping=value===true;});
   on('island:expand',(_event,open)=>setExpanded(open));
+  on('island:toggle-chat-pin',toggleChatPin);
   on('island:chat-expanded',(_event,value)=>{chatExpanded=value===true;});
   on('island:task-detail',(_event,open)=>{taskDetailExpanded=open===true;});
   on('island:view',(_event,view)=>{if(['chat','settings','tasks','history'].includes(view))currentPanelView=view;});
@@ -545,6 +589,12 @@ function mount(){
   if(!initialized){
     visibilityShortcutRegistered=globalShortcut.register('Control+Alt+H',()=>handleHotkey('toggle-visibility'));
     if(!visibilityShortcutRegistered)console.warn('CODY: Ctrl+Alt+H is unavailable globally; using focused-window fallback.');
+    pinShortcutRegistered=globalShortcut.register('Control+Alt+P',()=>handleHotkey('chat-pin'));
+    if(!pinShortcutRegistered)console.warn('CODY: Ctrl+Alt+P is unavailable globally; using focused-window fallback.');
+    if(clearDrawingsListener){
+      clearDrawingsShortcutRegistered=globalShortcut.register('Control+Alt+X',()=>handleHotkey('clear-drawings'));
+      if(!clearDrawingsShortcutRegistered)console.warn('CODY: Ctrl+Alt+X is unavailable globally; using focused-window fallback.');
+    }
   }
   if(!initialized){readSettings();setupIpc();startWifiWatcher();screen.on('display-metrics-changed',recoverVisibility);screen.on('display-added',recoverVisibility);screen.on('display-removed',recoverVisibility);powerMonitor.on('resume',recoverVisibility);powerMonitor.on('unlock-screen',recoverVisibility);visibilityTimer=setInterval(recoverVisibility,250);chatShortcutRegistered=globalShortcut.register('Control+Alt+C',()=>handleHotkey('chat'));if(!chatShortcutRegistered)console.warn('CODY: Ctrl+Alt+C is already registered by another application; using focused-window fallback.');muteShortcutRegistered=globalShortcut.register('Control+Alt+M',()=>handleHotkey('mute'));if(!muteShortcutRegistered)console.warn('CODY: Ctrl+Alt+M is already registered by another application; using focused-window fallback.');initialized=true;}
   if(!islandWindow||islandWindow.isDestroyed())createIsland();
@@ -555,11 +605,24 @@ function stop(){
   if(visibilityShortcutRegistered){globalShortcut.unregister('Control+Alt+H');visibilityShortcutRegistered=false;}
   visibilityShortcutHeld=false;
   if(chatShortcutRegistered){globalShortcut.unregister('Control+Alt+C');chatShortcutRegistered=false;}
+  if(pinShortcutRegistered){globalShortcut.unregister('Control+Alt+P');pinShortcutRegistered=false;}
+  if(clearDrawingsShortcutRegistered){globalShortcut.unregister('Control+Alt+X');clearDrawingsShortcutRegistered=false;}
+  pinShortcutHeld=false;
   if(muteShortcutRegistered){globalShortcut.unregister('Control+Alt+M');muteShortcutRegistered=false;}muteShortcutHeld=false;
   for(const timer of [cursorTimer,visibilityTimer,wifiCheckTimer,wifiRestoreTimer,hideTimer,concealFallback])if(timer)clearInterval(timer);
   if(settingsWindow&&!settingsWindow.isDestroyed())settingsWindow.destroy();
 }
+function onClearDrawings(listener){clearDrawingsListener=listener;}
 function handleHotkey(action){
+  if(action==='clear-drawings'){clearDrawingsListener?.();return;}
+  if(action==='pin-up'){pinShortcutHeld=false;return;}
+  if(action==='chat-pin'){
+    if(pinShortcutHeld)return;
+    pinShortcutHeld=true;
+    handleHotkey('cancel');
+    toggleChatPin();
+    return;
+  }
   if(action==='visibility-up'){visibilityShortcutHeld=false;return;}
   if(action==='toggle-visibility'){
     if(visibilityShortcutHeld)return;
@@ -602,4 +665,4 @@ function handleHotkey(action){
   if(action==='down')suspended=false;
   onModifierEvent(action==='down'?'DOWN':'UP');
 }
-module.exports={withFileDialog,setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact(){suspended=false;mount();setExpanded(false);updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value,reveal=false){timerVisible=Boolean(value);if(timerVisible&&reveal)suspended=false;updateVisibility();},hide(){suspended=true;updateVisibility();},show(){hiddenByShortcut=false;suspended=false;mount();if(expanded)updateVisibility();else setExpanded(true);islandWindow.show();islandWindow.focus();},window:()=>islandWindow};
+module.exports={onClearDrawings,withFileDialog,showSettings,setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact({automatic=false}={}){suspended=false;mount();setExpanded(false,{automatic});updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value,reveal=false){timerVisible=Boolean(value);if(timerVisible&&reveal)suspended=false;updateVisibility();},hide(){suspended=true;updateVisibility();},show,window:()=>islandWindow};

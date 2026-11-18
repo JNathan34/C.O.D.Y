@@ -116,10 +116,12 @@
           <button id="panel-settings" class="icon-button" type="button" aria-label="Settings" title="Settings">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.25"/><path d="M10.2 2.8h3.6l.6 2.1 1.8.75 1.9-1.05 2.55 2.55-1.05 1.9.75 1.8 2.1.6v3.6l-2.1.6-.75 1.8 1.05 1.9-2.55 2.55-1.9-1.05-1.8.75-.6 2.1h-3.6l-.6-2.1-1.8-.75-1.9 1.05-2.55-2.55 1.05-1.9-.75-1.8-2.1-.6v-3.6l2.1-.6.75-1.8-1.05-1.9 2.55-2.55 1.9 1.05 1.8-.75z" transform="translate(0 -1) scale(1 .99)"/></svg>
           </button>
+          <button id="panel-settings-search" class="icon-button" type="button" aria-label="Search settings" title="Search settings" aria-controls="settings-search-panel" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></button>
           <button id="new-chat" class="icon-button" type="button" aria-label="New conversation" title="New conversation">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="m10 14 8.5-8.5a2 2 0 0 1 2.8 2.8L12.8 16.8 9 17.8z"/></svg>
           </button>
           <button id="chat-expand" class="icon-button" type="button" aria-label="Expand chat" title="Expand chat" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button>
+          <button id="chat-pin" class="icon-button" type="button" aria-label="Pin chat open" title="Pin chat open (Ctrl + Alt + P)" aria-keyshortcuts="Control+Alt+P" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5M8 3h8l-1 8 3 4v2H6v-2l3-4z"/></svg></button>
         </div>
       </header>
       <div class="view-stack">
@@ -182,12 +184,21 @@
             <div class="nav-version">C.O.D.Y. · <span id="settings-app-version">…</span></div>
           </nav>
           <div class="settings-content" id="settings-content">
+            <section class="settings-tab" id="settings-search-panel" aria-labelledby="settings-search-title" hidden>
+              <h2 id="settings-search-title">Search settings</h2>
+              <label class="sr-only" for="settings-search-input">Search settings</label>
+              <input id="settings-search-input" type="search" placeholder="Search settings…" maxlength="120" autocomplete="off">
+              <p id="settings-search-status" class="setting-help" role="status"></p>
+              <div id="settings-search-results" class="settings-group" aria-label="Search results"></div>
+            </section>
             <div class="settings-tab selected" data-content="general">
               <h2>General</h2>
               <h3 class="group-title">BEHAVIOUR</h3>
               <div class="settings-group">
                 <label class="setting-row"><span><strong>Launch at login</strong><small>Start C.O.D.Y. when you sign into Windows. Requires a packaged app.</small></span><input type="checkbox" data-pref="launchAtLogin" aria-label="Launch at login"></label>
+                <label class="setting-row"><span><strong>Preferred browser</strong><small>Choose which browser C.O.D.Y. uses for web links and browser tasks.</small></span><select id="preferred-browser" aria-label="Preferred browser" aria-describedby="preferred-browser-status" disabled><option value="system">Windows default</option></select></label>
               </div>
+              <p class="setting-help" id="preferred-browser-status" role="status" hidden></p>
               <h3 class="group-title">SETTINGS BACKUP</h3>
               <div class="settings-group">
                 <div class="setting-row"><span><strong>Export settings</strong><small>Save appearance, cursor, shortcut and voice preferences to a JSON file.</small></span><button id="settings-export" class="light-action" type="button">Export settings</button></div>
@@ -205,14 +216,13 @@
                 <label class="setting-row"><span><strong>Font size</strong><small>Adjust chat text and interface labels.</small></span><select class="scale-select" data-pref="fontScale" aria-label="Font size"><option value="90">90%</option><option value="100">100% (Default)</option><option value="115">115%</option><option value="130">130%</option><option value="150">150%</option></select></label>
                 <label class="setting-row"><span><strong>GUI size</strong><small>Scale the chat, Settings and task panels.</small></span><select class="scale-select" data-pref="guiScale" aria-label="GUI size"><option value="90">90%</option><option value="100">100% (Default)</option><option value="110">110%</option><option value="125">125%</option></select></label>
                 <label class="setting-row"><span><strong>On-screen subtitles</strong><small>Show C.O.D.Y.’s spoken replies above the taskbar, even when your sound is off.</small></span><input type="checkbox" data-pref="speechSubtitles"></label>
-                <label class="setting-row"><span><strong>Island task updates</strong><small>Show progress, approval requests and results in the Island.</small></span><input type="checkbox" data-pref="islandTaskUpdates"></label>
               </div>
             </div>
             <div class="settings-tab" data-content="memory" hidden>
               <h2>Memory</h2>
               <h3 class="group-title">PRIVACY</h3>
               <div class="settings-group">
-                <label class="setting-row"><span><strong>Local memory only</strong><small>Keep memories on this PC. Pauses Claude through HeyClicky, which can add account memories to replies.</small></span><input type="checkbox" id="local-memory-only" aria-describedby="memory-mode-status" disabled></label>
+                <label class="setting-row"><span><strong>Local memory only</strong><small>Keep memories on this PC. Pauses Claude Code because it can use memories from your signed-in account.</small></span><input type="checkbox" id="local-memory-only" aria-describedby="memory-mode-status" disabled></label>
               </div>
               <p class="setting-help" id="memory-mode-status" role="status"></p>
               <h3 class="group-title">MEMORY BACKUP</h3>
@@ -236,6 +246,13 @@
             </div>
             <div class="settings-tab" data-content="voice" hidden>
               <h2>Voice</h2>
+              <h3 class="group-title">PLAYBACK</h3>
+              <div class="settings-group">
+                <label class="setting-row"><span><strong>Audio output</strong><small>Choose where C.O.D.Y.’s voice and voice cues play.</small></span><select id="output-choices" aria-label="Audio output" aria-describedby="output-device-status" disabled><option value="">System default</option></select></label>
+                <label class="setting-row"><span><strong>Voice volume</strong><small>Adjust the volume of spoken replies and voice previews.</small></span><span class="range-control"><input id="voice-volume" type="range" data-pref="voiceVolume" aria-label="Voice volume" aria-valuetext="100%" min="0" max="3" step="0.01" value="1"><output for="voice-volume" aria-hidden="true">100%</output></span></label>
+                <div class="setting-row"><span><strong>Refresh audio outputs</strong></span><button id="refresh-outputs" type="button" class="light-action">Refresh</button></div>
+              </div>
+              <p id="output-device-status" class="setting-help" role="status" hidden></p>
               <h3 class="group-title">HANDS-FREE</h3><div class="settings-group">
                 <label class="setting-row"><span><strong>Listen for C.O.D.Y.</strong><small>Ask a question without holding a shortcut. Uses your Windows default microphone.</small></span><input type="checkbox" data-pref="wakeWordEnabled"></label>
                 <label class="setting-row"><span><strong>Hey Cody</strong><small>“Hey Cody, what's the time?”</small></span><input type="checkbox" data-pref="wakeHeyCody"></label>
@@ -262,12 +279,7 @@
               <h3 class="group-title">ACCESS</h3><div class="settings-group"><div class="setting-row"><span><strong>Microphone access</strong><small>Check that C.O.D.Y. can use your microphone.</small></span><button id="permission-check-mic" class="light-action" type="button">Check access</button></div></div>
               <h3 class="group-title">RECOGNITION</h3><div class="settings-group"><label class="setting-row"><span><strong>Language</strong><small>Recognition language for your speech.</small></span><select id="voice-language"><option value="en-GB">English (UK)</option><option value="en-US">English (US)</option></select></label></div><h3 class="group-title">INPUT DEVICE</h3>
               <div class="settings-group"><label class="setting-row"><span><strong>Microphone</strong><small>Select an available recording device.</small></span><select data-pref="micDeviceId" id="mic-choices"><option value="">System default</option></select></label>
-                <div class="setting-row"><span><strong>Refresh devices</strong><small>Update the list of microphones and audio outputs.</small></span><button type="button" class="light-action" id="refresh-microphones">Refresh</button></div></div>
-              <h3 class="group-title">OUTPUT DEVICE</h3>
-              <div class="settings-group">
-                <label class="setting-row"><span><strong>Audio output</strong><small>Choose where C.O.D.Y.’s voice and voice cues play.</small></span><select id="output-choices" aria-label="Audio output" aria-describedby="output-device-status" disabled><option value="">System default</option></select></label>
-              </div>
-              <p id="output-device-status" class="setting-help" role="status" hidden></p>
+                <div class="setting-row"><span><strong>Refresh microphones</strong><small>Update the list of recording devices.</small></span><button type="button" class="light-action" id="refresh-microphones">Refresh</button></div></div>
               <h3 class="group-title">TEST MICROPHONE</h3>
               <div class="settings-group mic-test-group"><div class="setting-row"><span><strong>Input levels</strong><small id="mic-permission-status">Microphone not tested</small></span><button type="button" class="light-action" id="request-mic-permission">Test microphone</button></div>
                 <div class="mic-meter" id="mic-meter" role="img" aria-label="Microphone input level"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
@@ -297,6 +309,8 @@
               <h3 class="group-title">TALK TO C.O.D.Y.</h3><div class="settings-group">
                 <div class="setting-row"><span><strong>Push to talk</strong><small>Hold Ctrl + Alt to speak. Release to stop listening.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd></div></div>
                 <div class="setting-row"><span><strong>Open chat</strong><small>Open chat and focus the message box.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>C</kbd></div></div>
+                <div class="setting-row"><span><strong>Pin or unpin chat</strong><small>Keep chat open when you click away or switch apps.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>P</kbd></div></div>
+                <div class="setting-row"><span><strong>Clear drawings</strong><small>Remove C.O.D.Y.’s on-screen annotations from any app.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>X</kbd></div></div>
                 <div class="setting-row"><span><strong>Mute or unmute C.O.D.Y.</strong><small>Toggle C.O.D.Y. voice input, wake phrases and dictation. Other apps keep their microphone access.</small></span><div class="key-combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>M</kbd></div></div>
                 <label class="setting-row"><span><strong>Microphone muted</strong><small>Pause C.O.D.Y. voice input until you unmute it.</small></span><input type="checkbox" data-pref="microphoneMuted"></label>
                 <label class="setting-row"><span><strong>Enable shortcut</strong><small>Use the keyboard while another application is focused.</small></span><input type="checkbox" data-pref="enableHotkey"></label>
@@ -322,9 +336,6 @@
                     <output for="cursor-size" data-for="cursorSize" aria-hidden="true">100%</output>
                   </span>
                 </div>
-              </div>
-              <h3 class="group-title">COMPUTER CONTROL</h3><div class="settings-group">
-                <label class="setting-row"><span><strong>Input mode</strong><small>Choose which mouse C.O.D.Y. uses during a task.</small></span><select data-pref="controlInputMode"><option value="system">My mouse and keyboard</option><option value="independent">Independent C.O.D.Y. cursor</option></select></label>
               </div>
               <h3 class="group-title">VISIBILITY AND INTERACTION</h3><div class="settings-group">
                 <label class="setting-row"><span><strong>Hide floating cursor</strong><small>Hide C.O.D.Y.’s floating cursor and stop it following your mouse.</small></span><input type="checkbox" data-pref="hideFloatingCursor"></label>
@@ -353,10 +364,6 @@
             </div>
             <div class="settings-tab" data-content="agents" hidden>
               <h2>Agents</h2>
-              <h3 class="group-title">AI</h3><div class="settings-group">
-                <label class="setting-row"><span><strong>Assistant AI</strong><small>Choose which AI handles your next request.</small></span><select id="agents-provider" aria-label="Assistant AI"><option value="heyclicky">Claude Code</option><option value="codex">ChatGPT Codex</option><option value="chatgpt">ChatGPT</option></select></label>
-                <div class="setting-row" id="agents-model-row" hidden><span><strong>GPT model</strong><small>GPT 6.1 Sol · Medium reasoning</small></span><button id="agents-provider-connect" class="light-action" type="button">Connect</button></div>
-              </div><p id="agents-provider-status" class="setting-help" role="status" aria-live="polite"></p>
               <h3 class="group-title">Claude Code Usage</h3>
               <div class="settings-group agent-usage-card">
                 <div class="setting-row"><span><strong id="agent-usage-plan">Claude Code Usage</strong><small>Agent and conversation allowance</small></span><button id="agent-usage-refresh" class="light-action" type="button">Refresh usage</button></div>
@@ -367,11 +374,6 @@
                   <p id="agent-usage-reset" class="setting-help"></p>
                 </div>
               </div><p id="agent-usage-status" class="setting-help" role="status" aria-live="polite">Open Agents to load your Claude Code usage.</p>
-              <h3 class="group-title">Codex Usage</h3>
-              <div class="settings-group agent-usage-card">
-                <div class="setting-row"><span><strong>Codex Usage</strong><small id="codex-usage-plan">ChatGPT account allowance</small></span><button id="codex-usage-refresh" class="light-action" type="button">Refresh usage</button></div>
-                <div id="codex-usage-details" hidden></div>
-              </div><p id="codex-usage-status" class="setting-help" role="status" aria-live="polite">Open Agents to load your Codex usage.</p>
               <h3 class="group-title">WORKSPACE</h3><div class="settings-group">
                 <div class="setting-row"><span><strong>Agent folder</strong><small id="agents-folder-label">Loading…</small></span><button id="agents-folder" class="light-action" type="button">Choose folder</button></div>
                 <div class="setting-row" id="agents-reset-row" hidden><span><strong>Reset to default folder</strong><small id="agents-default-folder"></small></span><button id="agents-reset" class="light-action" type="button">Reset</button></div>
@@ -432,7 +434,7 @@
     </div>
   </div>
 </main>
-<script src="icons.js"></script><script src="media-art.js"></script><script src="idle-presence.js"></script><script src="../../../ui/voice-client.js"></script><script src="../../../ui/push-to-talk.js"></script><script src="../../../ui/native-voice-ui.js"></script><script src="mascot-looks.js"></script><script src="chat-format.js"></script><script src="ui.js"></script><script src="attachments.js"></script><script src="update-island.js"></script><script src="assistant.js"></script><script src="task-format.js"></script><script src="task-appearance.js"></script><script src="background-tasks.js"></script><script src="browser-setup.js"></script><script src="plugins.js"></script><script src="agents.js"></script><script src="updates.js"></script><script src="agent-usage.js"></script><script src="rock-paper-scissors.js"></script>
+<script src="icons.js"></script><script src="media-art.js"></script><script src="idle-presence.js"></script><script src="../../../ui/voice-client.js"></script><script src="../../../ui/push-to-talk.js"></script><script src="../../../ui/native-voice-ui.js"></script><script src="mascot-looks.js"></script><script src="chat-format.js"></script><script src="ui.js"></script><script src="attachments.js"></script><script src="update-island.js"></script><script src="assistant.js"></script><script src="task-format.js"></script><script src="task-appearance.js"></script><script src="background-tasks.js"></script><script src="browser-setup.js"></script><script src="browser-preference.js"></script><script src="plugins.js"></script><script src="agents.js"></script><script src="updates.js"></script><script src="agent-usage.js"></script><script src="rock-paper-scissors.js"></script>
 <script src="memory-settings.js"></script>
 </body>
 </html>

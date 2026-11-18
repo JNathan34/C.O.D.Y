@@ -34,7 +34,7 @@
     infoUpdate.dataset.update='false';infoUpdate.dataset.taskStatus=visibleTaskStatus?.kind||'';infoUpdate.removeAttribute('role');infoUpdate.removeAttribute('tabindex');infoUpdate.removeAttribute('aria-label');infoUpdate.removeAttribute('title');
     $('island-update-progress').hidden=true;
     if(wakeListening()&&!visibleTaskStatus&&!discord&&!recording){
-      for(const name of ['task-layout','recording-layout','media-layout','weather-layout','timer-active','timer-finished'])document.body.classList.remove(name);
+      for(const name of ['task-layout','recording-layout','media-layout','weather-layout','brightness-layout','timer-active','timer-finished'])document.body.classList.remove(name);
       document.body.classList.add('utility-layout','island-content-active');
       for(const id of ['island-timer','island-recording-dot','island-recording-controls','island-media-controls','island-rps-controls'])$(id).hidden=true;
       const info=$('island-info');info.hidden=false;info.dataset.tasks='false';info.dataset.rps='false';delete info.dataset.monitor;info.classList.remove('showing-media','showing-game');
@@ -54,6 +54,7 @@
     document.body.classList.toggle('recording-layout',recording);document.body.dataset.recording=capture.status;
     document.body.classList.toggle('media-layout',Boolean(showMedia));
     document.body.classList.toggle('weather-layout',Boolean(quick&&activeCard.kind==='weather'));
+    document.body.classList.toggle('brightness-layout',Boolean(quick&&activeCard.kind==='brightness'));
     document.body.classList.toggle('utility-layout',Boolean(showUpdate||visibleTaskStatus||showMonitors||recording||showGame||(quick&&['time','date','utility'].includes(activeCard.kind))));
     const button=$('island-timer');button.hidden=!showTimer;document.body.classList.toggle('timer-active',showTimer);
     document.body.classList.toggle('island-content-active',Boolean(showUpdate||showTasks||showMonitors||recording||showTimer||quick||showMedia||showGame));
@@ -179,7 +180,7 @@
   island.backendConnected=true;island.managedChat=true;
   const note=text=>{$('integration-note').textContent=String(text||'');};
   const current=()=>app.data.chats.find(chat=>chat.id===app.data.activeChatId);
-  const displayText=text=>String(text||'').replace(/\r\n/g,'\n').replace(/\n{3,}/g,'\n\n');
+  const displayText=text=>String(text||'').replace(/\r\n/g,'\n');
   const selectedMode=mode=>{
     app.mode=['heyclicky','codex','chatgpt'].includes(mode)?mode:'heyclicky';
   };

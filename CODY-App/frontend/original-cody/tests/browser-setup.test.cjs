@@ -9,3 +9,29 @@ test('extension state and folder have separate read and user action endpoints',a
 test('engine disconnection clears the extension prompt and allows a later request to surface again',()=>{const f=fixture(),value={pending:true,connected:false,busy:false,targetId:'one'};f.engine.emit('browser-setup',value);f.engine.emit('offline');assert.deepEqual(f.events.findLast(item=>item.name==='browser-setup').value,{offline:true});f.engine.emit('browser-setup',value);assert.equal(f.shown(),2);});
 
 test('browser-specific setup preserves the selected browser and rejects unknown browsers',async()=>{const f=fixture();for(const browser of ['Chrome','Edge']){await f.invoke('browser-setup-choice',{choice:'show_me_how',targetId:'',browser});assert.equal(f.calls.at(-1).args.browser,browser);}await assert.rejects(f.invoke('browser-setup-choice',{choice:'show_me_how',targetId:'',browser:'other'}),/Invalid browser setup choice/);assert.equal(f.calls.length,2);});
+
+test('browser preferences keep discovery and selection separate from extension installation',async()=>{
+  const f=fixture();
+  await f.invoke('browser-preference-state');
+  await f.invoke('browser-preference-select','firefox');
+  await assert.rejects(f.invoke('browser-preference-select',{browserId:'edge'}),/Invalid browser selection/);
+  assert.deepEqual(f.calls,[
+    {command:'browser-preference-state',args:undefined},
+    {command:'browser-preference-select',args:{browserId:'firefox'}}
+  ]);
+});
+
+test('Firefox-only tools respect an explicit browser preference before using a connected Firefox',async()=>{
+  const {prepareFirefoxTask}=require('../src/control/firefox-startup');
+  let firefoxChecks=0;
+  const options={
+    controller:{permissions:()=>({enabled:true,level:'limited',browserRead:true,browserInteract:true})},
+    bridge:{status:()=>{firefoxChecks++;return {connected:true};}},
+    browserPreference:async()=>({effectiveBrowser:'Edge'})
+  };
+  const task='Open https://example.com in the browser';
+  assert.match((await prepareFirefoxTask(task,options)).reason,/computer controls to work in Edge/);
+  assert.equal(firefoxChecks,0);
+  assert.equal(await prepareFirefoxTask(task,{...options,browserPreference:async()=>({effectiveBrowser:'Firefox'})}),null);
+  assert.equal(firefoxChecks,1);
+});

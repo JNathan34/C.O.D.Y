@@ -2,12 +2,15 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using HeyClicky.Drawing;
+using HeyClicky.Platform.Capture;
 using HeyClicky.Platform.Win32;
+using Windows.UI.Composition;
 
 namespace HeyClicky.App.Cody;
 
@@ -68,34 +71,106 @@ internal static class CodyDrawingControls
         }
         return ReadOnDrawingThread(canvas,Count);
     }
-    internal static IDisposable WatchScreen(ScreenDrawingCanvas canvas,DisplayInfo display,Action<string> changed)
+    private static (double X,double Y,double Width,double Height)? HighlightBounds(ScreenDrawingCanvas canvas)
     {
-        int generation=(int)(Field(canvas,"clearGeneration")??-1);
-        return new ScreenDrawingStaleWatch(display,reason=>Invoke(canvas,"PostToDrawingThread",(Action)(()=>{
-            if(generation!=(int)(Field(canvas,"clearGeneration")??-1))return;
-            if(canvas.IsShowing&&!canvas.IsDrawingFadedAway&&ModelCount(canvas)>0)
+        if(Field(Field(canvas,"painter"),"unitNodes") is not IDictionary units)return null;
+        foreach(object node in units.Values)
+        {
+            if(Field(node,"Kind")?.ToString() is not ("Shape" or "Text" or "Dot" or "Wash")||
+                Property(Field(node,"Visual"),"IsVisible") is not true)continue;
+            if(Field(node,"Extent") is not ValueTuple<double,double,double,double> extent)continue;
+            var (x,y,width,height)=extent;
+            if(Math.Max(width,height)<4)continue;
+            double sampleWidth=Math.Max(32,width),sampleHeight=Math.Max(32,height);
+            return (x-(sampleWidth-width)/2,y-(sampleHeight-height)/2,sampleWidth,sampleHeight);
+        }
+        return null;
+    }
+    private sealed class DrawingScreenWatch : IDisposable
+    {
+        private readonly ScreenDrawingCanvas canvas;
+        private readonly DisplayInfo display;
+        private readonly Action<string> changed;
+        private readonly CodyDrawingFollow follow;
+        private ScreenDrawingStaleWatch stale;
+        private bool disposed;
+
+        internal DrawingScreenWatch(ScreenDrawingCanvas canvas,DisplayInfo display,ScreenCaptureService capture,Action<string> changed)
+        {
+            this.canvas=canvas;
+            this.display=display;
+            this.changed=changed;
+            if(Property(Field(canvas,"painter"),"StageVisual") is Visual stage)stage.IsVisible=true;
+            follow=new CodyDrawingFollow(capture,display,Field(canvas,"screenshotJpeg") as byte[],
+                (Vector2)(Field(canvas,"canvasSize")??Vector2.Zero),Post);
+            Arm();
+        }
+        private void Post(Action action)=>Invoke(canvas,"PostToDrawingThread",action);
+        internal bool Hidden=>follow.Hidden;
+        internal object Inspect()=>follow.Inspect();
+        private void Arm()=>stale=new ScreenDrawingStaleWatch(display,Fire);
+        internal void Fire(string reason)=>Post(()=>{
+            if(disposed||!canvas.IsShowing||canvas.IsDrawingFadedAway)return;
+            stale.Dispose();
+            if(ModelCount(canvas)>0)
             {
-                // Re-arm the one-shot watcher without dismissing the model. X and Clear
-                // still use the canvas's original explicit removal paths.
-                Invoke(canvas,"StartStaleWatch",display);
+                Arm();
+                return;
+            }
+            if(follow.Available&&!canvas.DrawsPicture)
+            {
+                follow.ScreenChanged(reason);
+                if(follow.OwnerForeground&&!canvas.IsStreamingNarration&&(reason is "click" or "scroll")&&
+                    Field(canvas,"UserActedOnScreen") is EventHandler<string> userActed)
+                    Invoke(canvas,"Raise",(Action)(()=>userActed(canvas,reason)));
+                Arm();
                 return;
             }
             changed(reason);
-        })));
+        });
+        internal bool Refresh()
+        {
+            if(canvas.DrawsPicture||ModelCount(canvas)>0||HighlightBounds(canvas) is not {} bounds)
+            {
+                follow.ResetPlacement();
+                return false;
+            }
+            follow.Tick(Property(Field(canvas,"painter"),"StageVisual") as Visual,bounds,
+                (Vector2)(Field(canvas,"canvasSize")??Vector2.Zero));
+            return follow.Hidden||follow.Moved;
+        }
+        public void Dispose()
+        {
+            disposed=true;
+            stale?.Dispose();
+            follow.Dispose();
+        }
     }
+    internal static IDisposable WatchScreen(ScreenDrawingCanvas canvas,DisplayInfo display,ScreenCaptureService capture,Action<string> changed)
+        =>new DrawingScreenWatch(canvas,display,capture,changed);
     internal static void ScreenChangeForTest(AppHost host,string reason)=>Invoke(Field(host.Real.Canvas,"staleWatch"),"Fire",reason);
     internal static void Tick(AppHost host)
     {
         var canvas=host.Real.Canvas;
         if(!HasVisibleDrawing(canvas)){offeredGeneration=-1;host.Lessons?.HideDrawingControls();return;}
-        if(!canvas.IsStreamingNarration||!canvas.IsShowing||canvas.IsDrawingFadedAway){offeredGeneration=-1;return;}
-        int generation=(int)(Field(canvas,"clearGeneration")??-1);
-        host.Lessons?.ShowGeneratingControls(generation!=offeredGeneration);offeredGeneration=generation;
+        if(canvas.IsStreamingNarration)
+        {
+            int generation=(int)(Field(canvas,"clearGeneration")??-1);
+            host.Lessons?.ShowGeneratingControls(generation!=offeredGeneration);offeredGeneration=generation;
+        }
+        else host.Lessons?.ShowGeneratingControls(false);
         if(Interlocked.Exchange(ref queued,1)!=0)return;
         try{Invoke(canvas,"PostToDrawingThread",(Action)(()=>{
             try{
-                if(!canvas.IsStreamingNarration||!HasVisibleDrawing(canvas))return;
-                object controls=Field(canvas,"cardHandles");Invoke(controls,"Refresh");
+                if(!HasVisibleDrawing(canvas))return;
+                object controls=Field(canvas,"cardHandles");
+                if(Field(canvas,"staleWatch") is DrawingScreenWatch watch&&watch.Refresh())
+                {
+                    Invoke(controls,"Hide");
+                    return;
+                }
+                if(!canvas.IsStreamingNarration)return;
+                Invoke(controls,"Refresh");
                 CodyModelViewport.Refresh(canvas);
                 if(Field(controls,"handles") is IEnumerable handles)foreach(object handle in handles)Invoke(handle,"SetRevealed",true,false);
             }catch(Exception ex){error=ex.GetBaseException().Message;}
@@ -103,6 +178,45 @@ internal static class CodyDrawingControls
         }));}catch(Exception ex){Volatile.Write(ref queued,0);error=ex.GetBaseException().Message;}
     }
     internal static void CloseForTest(AppHost host)=>Invoke(host.Real.Canvas,"SimulateCard",-1,"close",0f,0f);
+    internal static Task ClearTwoDimensional(ScreenDrawingCanvas canvas)
+    {
+        var result=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Invoke(canvas,"PostToDrawingThread",(Action)(()=>{
+            try
+            {
+                if(ModelCount(canvas)==0)canvas.Clear(animated:false);
+                else ClearMixedCanvas();
+                result.TrySetResult();
+            }
+            catch(Exception ex)
+            {
+                result.TrySetException(ex.GetBaseException());
+            }
+        }));
+        return result.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        void ClearMixedCanvas()
+        {
+            // A mixed canvas can contain an independent 3D figure and 2D
+            // annotation units. Retire the pointing marks in the engine first.
+            Invoke(Field(canvas,"engine"),"DropPointing");
+            object painter=Field(canvas,"painter");
+            if(Field(painter,"unitNodes") is IDictionary units)
+            {
+                var drawingUnits=new List<int>();
+                foreach(DictionaryEntry unit in units)
+                    if(!ContainsFigure(unit.Value)&&(CodyDrawingControlState.IsDrawable(Field(unit.Value,"Kind")?.ToString())||
+                        Field(unit.Value,"Children") is IEnumerable))drawingUnits.Add((int)unit.Key);
+                foreach(int id in drawingUnits)Invoke(painter,"RemoveUnit",id);
+            }
+            Invoke(Field(canvas,"caption"),"Hide");
+            Invoke(Field(canvas,"buttons"),"Clear");
+        }
+
+        static bool ContainsFigure(object node)
+            => Field(node,"Kind")?.ToString()=="Stage3D" ||
+                Field(node,"Children") is IEnumerable children && children.Cast<object>().Any(ContainsFigure);
+    }
     internal static Task<object> Snapshot(AppHost host)
     {
         var result=new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -111,7 +225,9 @@ internal static class CodyDrawingControls
             try{
                 int shown=0,revealed=0,closeButtons=0;object controls=Field(canvas,"cardHandles");
                 if(Field(controls,"handles") is IEnumerable handles)foreach(object handle in handles){if(Property(handle,"IsShown") is true)shown++;if(Field(handle,"revealed") is true){revealed++;if(Field(Field(handle,"layout"),"Buttons") is IEnumerable buttons)foreach(object button in buttons)if(Field(button,"Item1") is int kind&&kind==0)closeButtons++;}}
-                result.TrySetResult(new{streaming=canvas.IsStreamingNarration,showing=canvas.IsShowing,renderedUnits=VisibleUnitCount(canvas),models=ModelCount(canvas),clearVisible=host.Lessons?.GeneratingControlsShown??false,shown,revealed,closeButtons,error});
+                var stage=Property(Field(canvas,"painter"),"StageVisual") as Visual;
+                var watch=Field(canvas,"staleWatch") as DrawingScreenWatch;
+                result.TrySetResult(new{streaming=canvas.IsStreamingNarration,showing=canvas.IsShowing,renderedUnits=VisibleUnitCount(canvas),models=ModelCount(canvas),clearVisible=host.Lessons?.GeneratingControlsShown??false,shown,revealed,closeButtons,hidden=watch?.Hidden??false,offsetX=stage?.Offset.X,offsetY=stage?.Offset.Y,follow=watch?.Inspect(),error});
             }catch(Exception ex){result.TrySetException(ex.GetBaseException());}
         }));return result.Task;
     }

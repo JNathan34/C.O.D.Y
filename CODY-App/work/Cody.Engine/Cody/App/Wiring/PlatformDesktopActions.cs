@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using HeyClicky.Core.Browser;
 using HeyClicky.Core.Platform;
 using HeyClicky.Platform.Win32;
 
@@ -11,7 +12,15 @@ public sealed class PlatformDesktopActions : IDesktopActions
 
 	public bool OpenUrl(string url)
 	{
-		return basic.OpenUrl(url);
+		try
+		{
+			return WindowsBrowserPreference.Current?.TryOpenOverride(url) == true || basic.OpenUrl(url);
+		}
+		catch (Exception error)
+		{
+			Log.Warn("Tools", "Could not open link: " + error.Message);
+			return false;
+		}
 	}
 
 	public bool CopyToClipboard(string text)

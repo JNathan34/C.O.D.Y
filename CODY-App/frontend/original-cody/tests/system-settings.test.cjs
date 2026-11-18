@@ -22,6 +22,8 @@ for(const [text,action,args] of [
  ['set the screen brightness to 50 percent','system.brightness.set',{level:50}],
  ['brightness 0%','system.brightness.set',{level:0}],
  ['brightness 100%','system.brightness.set',{level:100}],
+ ['lower screen brightness','system.brightness.set',{delta:-10}],
+ ['increase display brightness by 20 percent','system.brightness.set',{delta:20}],
  ['check display brightness','system.brightness.status',{}],
  ['open Bluetooth settings','system.settings.open',{page:'bluetooth'}],
  ['turn on energy saver','system.settings.open',{page:'energySaver'}],
@@ -77,6 +79,7 @@ test('setting scripts verify state and keep power mode separate from Energy save
  const power=buildSystemScript('system.power.set',{mode:'efficiency'});
  assert.match(power,/PowerSetUserConfiguredDCPowerMode/);assert.match(power,/PowerSetUserConfiguredACPowerMode/);assert.match(power,/Windows did not confirm/);
  const brightness=buildSystemScript('system.brightness.set',{level:60});assert.match(brightness,/WmiSetBrightness/);assert.match(brightness,/CurrentBrightness -ne 60/);
+ const relative=buildSystemScript('system.brightness.set',{delta:-10});assert.match(relative,/\$monitor\.CurrentBrightness \+ \(-10\)/);assert.match(relative,/CurrentBrightness -ne \$targets\[\$_\.InstanceName\]/);
  const saver=buildSystemScript('system.settings.open',{page:'energySaver'});assert.match(saver,/ms-settings:batterysaver/);assert.match(saver,/no saver toggle has been changed/);assert.doesNotMatch(saver,/PowerSet|SetStateAsync/);
 });
 
@@ -90,18 +93,33 @@ test('agent tool selection offers only the requested setting types and their sta
  assert.equal(allowedFor('turn on Bluetooth',{...perms,systemSettings:false}).includes('system.radio.set'),false);
 });
 
-test('typed and spoken system controls use the local route without an AI submission',async()=>{
+test('typed and spoken quick commands show the result without generic Island banners',async()=>{
  const {EventEmitter}=require('node:events');const {installNativeIpc}=require('../src/native-ipc');
- for(const voice of [false,true]){
-  const text='turn on Bluetooth',engine=new EventEmitter(),handlers=new Map(),calls=[],actions=[],messages=[];engine.connected=true;engine.status={state:'Idle'};
+ for(const [text,reply,action,brightness] of [
+  ['turn on Bluetooth','Bluetooth is on.',{action:'system.radio.set',args:{kind:'bluetooth',enabled:true}}],
+  ['lower screen brightness','Brightness: 40%.',{action:'system.brightness.set',args:{delta:-10}},{levels:[40],changed:true,text:'40%',detail:'Brightness down'}],
+  ['increase the brightness','Brightness: 60%, 80%.',{action:'system.brightness.set',args:{delta:10}},{levels:[60,80],changed:true,text:'60–80%',detail:'Brightness up'}],
+  ['increase brightness','Brightness: 100%.',{action:'system.brightness.set',args:{delta:10}},{levels:[100],changed:false,text:'100%',detail:'Brightness'}],
+  ["what's the weather?",'It is sunny.',null]
+ ])for(const voice of [false,true]){
+  const engine=new EventEmitter(),handlers=new Map(),calls=[],actions=[],messages=[],cards=[],updates=[];engine.connected=true;engine.status={state:'Idle'};
   engine.request=async(command,args)=>{calls.push({command,args});return command==='end'?{utilityText:text}:{};};
-  const utilities=new IslandUtilities({controller:{execute:async(action,args)=>{actions.push({action,args});return {ok:true,result:{message:'Bluetooth is on.'}};}},showCard(){}}),settings={voiceAutoSpeak:false};
+  const utilities=new IslandUtilities({controller:{execute:async(action,args)=>{actions.push({action,args});return {ok:true,result:{message:reply,...brightness}};}},weather:{current:async()=>({reply,card:{kind:'weather',text:reply}})},showCard:card=>cards.push(card)}),settings={voiceAutoSpeak:false};
   const store={data:{settings,activeChatId:'chat'},chat:()=>({messages}),addMessage:(_id,role,text)=>{const message={id:String(messages.length),role,text};messages.push(message);return message;},updateMessage(){},save(){},publicState:()=>({settings})};
-  const webContents={mainFrame:{}};installNativeIpc({ipcMain:{removeHandler(){},handle:(name,fn)=>handlers.set(name,fn)},engine,store,utilities,sendUI(){},getState:()=>({}),getWindow:()=>({webContents})});
+  const webContents={mainFrame:{}};installNativeIpc({ipcMain:{removeHandler(){},handle:(name,fn)=>handlers.set(name,fn)},engine,store,utilities,sendUI:(event,value)=>{if(event==='native-turn-status')updates.push(value);},getState:()=>({}),getWindow:()=>({webContents})});
   const invoke=(name,...args)=>handlers.get(name)({sender:webContents,senderFrame:webContents.mainFrame},...args);
-  if(voice){await invoke('native-begin');const turn=calls.find(call=>call.command==='begin').args.turn;engine.emit('classify-utility',{turn,text});await new Promise(resolve=>setImmediate(resolve));assert.equal(calls.find(call=>call.command==='utility-route').args.handled,true);await invoke('native-end');}
+  if(voice){
+   await invoke('native-begin');const turn=calls.find(call=>call.command==='begin').args.turn;
+   engine.emit('phase',{turn,state:'Processing'});engine.emit('classify-utility',{turn,text});
+   engine.emit('turn-progress',{turn,label:'Working…'});engine.emit('phase',{turn,state:'Responding'});
+   assert.equal(calls.find(call=>call.command==='utility-route').args.handled,true);await invoke('native-end');
+  }
   else {await invoke('send-message',{chatId:'chat',text});await new Promise(resolve=>setImmediate(resolve));}
-  assert.deepEqual(actions,[{action:'system.radio.set',args:{kind:'bluetooth',enabled:true}}]);assert.equal(calls.some(call=>call.command==='submit'),false);
-  assert.equal(messages.at(-1).text,'Bluetooth is on.');
+  assert.deepEqual(actions,action?[action]:[]);assert.equal(calls.some(call=>call.command==='submit'),false);
+  assert.equal(messages.at(-1).text,reply);
+  if(brightness)assert.deepEqual(cards.at(-1),{kind:'brightness',icon:'sun',text:brightness.text,detail:brightness.detail});
+  else assert.equal(cards.at(-1).text,reply);
+  assert.deepEqual(updates.map(({finished,text,answered})=>({finished,text,answered})),[{finished:true,text:undefined,answered:false}]);
+  if(voice)assert.equal(calls.find(call=>call.command==='speak')?.args.text,reply);
  }
 });

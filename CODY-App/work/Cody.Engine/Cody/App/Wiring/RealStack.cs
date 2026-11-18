@@ -110,7 +110,8 @@ public sealed class RealStack : IAsyncDisposable
 	{
 		try
 		{
-			ShellOpen.Start(uri);
+			if (HeyClicky.Core.Browser.WindowsBrowserPreference.Current?.TryOpenOverride(uri) != true)
+				ShellOpen.Start(uri);
 			return true;
 		}
 		catch (Exception ex)
@@ -239,7 +240,7 @@ public sealed class RealStack : IAsyncDisposable
 		{
 			cursor.EndPenRide();
 		};
-		screenDrawingCanvas.ScreenChangeWatchFactory = (DisplayInfo display, Action<string> onChanged) => HeyClicky.App.Cody.CodyDrawingControls.WatchScreen(screenDrawingCanvas, display, onChanged);
+		screenDrawingCanvas.ScreenChangeWatchFactory = (DisplayInfo display, Action<string> onChanged) => HeyClicky.App.Cody.CodyDrawingControls.WatchScreen(screenDrawingCanvas, display, capture, onChanged);
 		double value2 = Lap();
 		AgentRuntimeOptions agentRuntimeOptions = new AgentRuntimeOptions();
 		AppHost.PrepareStoredSettings(core.Settings, agentRuntimeOptions);
@@ -282,6 +283,7 @@ public sealed class RealStack : IAsyncDisposable
 		{
 			UiContext = uiContext,
 			DesktopActions = new PlatformDesktopActions(),
+			StartDrawingCapture = HeyClicky.App.Cody.CodyDrawingFollow.RememberCapture,
 			ToolCallHandler = HeyClicky.App.Cody.CodyEngineBridge.EngineMode ? (call,context,ct)=>HeyClicky.App.Cody.CodyQuickActions.Handle(call,context,ct,companionTools.HandleAsync,agents,()=>{var userContext=brainContext.UserContext();var catalog=HeyClicky.App.Services.ConnectedApps.Catalog;var connected=catalog==null?userContext.ConnectedApps.AsEnumerable():catalog.Integrations.Where(item=>item.IsActiveConnection).SelectMany(item=>new[]{item.Id,item.DisplayName,item.PrimaryToolkitSlug});return connected.Concat(userContext.CustomConnectors.Where(item=>!userContext.NeedsReconnect.Contains(item.Name,StringComparer.OrdinalIgnoreCase)).Select(item=>item.Name)).ToArray();}) : companionTools.HandleAsync,
 			UserContext = brainContext.UserContext,
 			RosterNote = brainContext.RosterNote,

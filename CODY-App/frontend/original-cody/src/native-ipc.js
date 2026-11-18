@@ -104,15 +104,21 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     sendUI('message-added',{chatId:active.chatId,message});return message;
   };
   function replace(message,text){if(!active||!message)return;store.updateMessage(active.chatId,message.id,text,{persist:false});sendUI('message-replace',{chatId:active.chatId,messageId:message.id,text});}
+  const quickUtilityActions=new Set(['weather','time','date','maths','timer','volume-status','audio.adjust','audio.set','audio.mute','spotify-status','spotify.control','media.control','app.open','island-monitors','app-settings.open','app-settings.change']);
+  const usesUtilityCard=route=>quickUtilityActions.has(route?.action)||route?.action?.startsWith('system.')===true;
+  function publishProgress(operation,text){
+    if(!operation.quietUtility&&(!operation.voice||operation.voiceClassified))sendUI('native-turn-status',{id:operation.turn,text});
+  }
   function finish(error){
     if(!active)return;
     const current=active,answered=Boolean(current.answer?.text);
     if(error){if(!current.answer)current.answer=sendMessage('assistant',error);else if(!current.answer.text)replace(current.answer,error);sendUI('diagnostic',error);}
     active=null;store.save();sendUI('busy',{busy:false});sendUI('chats-changed',store.publicState());
-    sendUI('native-turn-status',{id:current.turn,finished:true,error:error||current.utilityError,cancelled:current.cancelled,answered,detail:current.utility&&answered?current.answer.text:undefined});
+    sendUI('native-turn-status',{id:current.turn,finished:true,error:error||(!current.quietUtility?current.utilityError:undefined),cancelled:current.cancelled,answered:answered&&!current.quietUtility,detail:current.utility&&answered?current.answer.text:undefined});
   }
   async function runUtility(operation,text,speak,route){
     operation.utility=true;
+    operation.quietUtility=usesUtilityCard(route);
     if(operation.voice&&route?.action==='text.proofread'&&!operation.proofreadTarget)throw Error('Click the text box, then hold your voice shortcut and say “spell check this”. The box must expose editable text.');
     if(operation.user?.attachments)delete operation.user.attachments;
     if(route?.command==='start'&&rps?.active){rps.close();await gameVoice.cancel();}
@@ -130,17 +136,23 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   engine.on('classify-utility',data=>{
     const operation=active?.voice&&active.turn===data.turn?active:null;
     const text=operation?.wake?stripWakeText(data.text):data.text;
-    const handled=Boolean(operation&&(operation.files?.length||utilities?.match(text,{spoken:true})||localMemoryText(text,localMemoryOnly())));
+    const route=operation&&!operation.files?.length?utilities?.match(text,{spoken:true}):null;
+    const handled=Boolean(operation&&(operation.files?.length||route||localMemoryText(text,localMemoryOnly())));
+    if(operation&&!operation.voiceClassified){
+      operation.quietUtility=usesUtilityCard(route);
+      operation.voiceClassified=true;
+      publishProgress(operation,'Working…');
+    }
     void engine.request('utility-route',{turn:data.turn,handled}).catch(()=>{});
   });
   engine.on('phase',data=>{
     sendUI('native-phase',data);
     if(data.state!=='Idle')sendUI('busy',{busy:Boolean(active)&&data.state!=='Listening'});
     if(active?.turn===data.turn&&['Processing','Responding'].includes(data.state)){
-      sendUI('native-turn-status',{id:active.turn,text:data.state==='Responding'?'Replying…':'Working…'});
+      publishProgress(active,data.state==='Responding'?'Replying…':'Working…');
     }
   });
-  engine.on('turn-progress',data=>{if(active?.turn===data.turn)sendUI('native-turn-status',{id:active.turn,text:data.label||'Working…'});});
+  engine.on('turn-progress',data=>{if(active?.turn===data.turn)publishProgress(active,data.label||'Working…');});
   engine.on('operation-cancelled',data=>{if(active?.turn===data.turn)active.cancelled=true;});
   engine.on('meter',data=>sendUI('native-meter',data));
   engine.on('transcript',data=>{
@@ -165,6 +177,11 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   engine.on('browser-setup',value=>{sendUI('browser-setup',value);if(value.pending&&!value.connected&&!value.busy&&value.targetId!==browserTarget)showApprovals();browserTarget=value.pending?value.targetId:null;});
   engine.on('offline',()=>{browserTarget=null;sendUI('browser-setup',{offline:true});});
   handle('browser-setup-state',()=>engine.request('browser-setup-state'));
+  handle('browser-preference-state',()=>engine.request('browser-preference-state'));
+  handle('browser-preference-select',async browserId=>{
+    if(typeof browserId!=='string'||!browserId||browserId.length>300)throw Error('Invalid browser selection.');
+    return engine.request('browser-preference-select',{browserId});
+  });
   handle('browser-setup-choice',async({choice,targetId,browser}={})=>{
     if(browser!==undefined&&!['Chrome','Edge'].includes(browser))throw Error('Invalid browser setup choice');
     if(!['do_it_for_me','show_me_how','not_now'].includes(choice)||typeof targetId!=='string'||targetId.length>1000)throw Error('Invalid browser setup choice');
@@ -243,8 +260,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(!text&&!files.length)return {error:'Enter a message or attach a file.'};
     const route=files.length?null:utilities?.match(text);
     if(route){
-      active={turn:randomUUID(),chatId,utility:true};active.user=sendMessage('user',text);sendUI('busy',{busy:true});
-      sendUI('native-turn-status',{id:active.turn,text:'Working…'});
+      active={turn:randomUUID(),chatId,utility:true,quietUtility:usesUtilityCard(route)};active.user=sendMessage('user',text);sendUI('busy',{busy:true});
+      publishProgress(active,'Working…');
       const operation=active;
       void runUtility(operation,text,voice||store.data.settings.voiceAutoSpeak,route).catch(error=>{if(active===operation)finish(error.message);});
       return {started:true,local:true,utility:true};

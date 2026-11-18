@@ -14,7 +14,25 @@ const MODEL_TRIGGER='button[aria-haspopup="menu"][data-tone="neutral"], button[d
 const approvedHosts=new Set(['chatgpt.com','auth.openai.com','auth0.openai.com','login.openai.com','accounts.openai.com','accounts.google.com','login.microsoftonline.com','appleid.apple.com','idmsa.apple.com']);
 function approvedUrl(url){try{const u=new URL(url);return u.protocol==='https:'&&approvedHosts.has(u.hostname);}catch{return false;}}
 function safeChatUrl(url){try{const u=new URL(url);return u.origin==='https://chatgpt.com'&&/^\/c\/[0-9a-f-]{10,80}\/?$/i.test(u.pathname)?u.href:null;}catch{return null;}}
+function readAnswer(node){
+  if(node.nodeType===3)return node.textContent;
+  if(node.nodeType!==1)return '';
+  if(node.matches('pre')){
+    const code=node.querySelector('code');
+    const source=(code||node).textContent;
+    if(!source.trim())return '';
+    const language=code?.dataset.language||node.dataset.language||code?.className?.match?.(/(?:^|\s)language-([\w+#.-]+)/)?.[1]||'';
+    const label=/^[\w+#.-]{1,32}$/.test(language)?language:'';
+    let ticks=2;
+    for(const match of source.matchAll(/`{3,}/g))ticks=Math.max(ticks,match[0].length);
+    const fence='`'.repeat(ticks+1);
+    return fence+label+'\n'+source+(source.endsWith('\n')?'':'\n')+fence;
+  }
+  if(!node.querySelector('pre'))return node.innerText||node.textContent||'';
+  return Array.from(node.childNodes,readAnswer).filter(text=>text.trim()).join('\n\n');
+}
 function snapshotScript(){return `(() => {
+  const readAnswer=${readAnswer.toString()};
   const selector=${JSON.stringify(COMPOSER)};
   const composer=Array.from(document.querySelectorAll(selector)).find(e=>e.getClientRects().length>0) || document.querySelector(selector);
   // Turn-key ancestors can nest the role nodes; count the outermost conversation turns only.
@@ -52,9 +70,9 @@ function snapshotScript(){return `(() => {
   // structured root exists AND it is the assistant body itself (never a group).
   const fallback=last?.matches?.('[data-message-author-role="assistant"]') ? last :
     last?.querySelector?.('[data-message-author-role="assistant"]');
-  let answer=roots.map(e=>e.innerText||e.textContent||'').filter(Boolean).join('\\n').trim();
+  let answer=roots.map(readAnswer).filter(Boolean).join('\\n').trim();
   if(!answer && !roots.length && fallback && !last?.hasAttribute?.('data-turn-key'))
-    answer=(fallback.innerText||'').trim();
+    answer=readAnswer(fallback).trim();
   // A common accessible role label must not be mistaken for an answer.
   if(/^(?:ChatGPT|Assistant) said\\s*:?$/i.test(answer))answer='';
   const answerPresent=Boolean(answer);

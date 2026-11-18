@@ -3,6 +3,7 @@ const {contextBridge,ipcRenderer,webUtils}=require('electron');
 const allowedEvents=new Set(['updates-state','status','diagnostic','auth-changed','chats-changed','settings-changed','message-added','message-delta','message-replace','activity','usage','busy','approval','approval-resolved','window-state','quota','web-status','firefox-status','voice-hotkey','timer-changed','island-card','island-task-status','spotify-changed','native-phase','native-meter','rps-state','capture-state','monitor-state','computer-approvals','attachments-state','tasks-changed','tasks-open','browser-setup','browser-setup-open','wake-word-state']);
 contextBridge.exposeInMainWorld('assistant',{
   browserSetup:{state:()=>ipcRenderer.invoke('browser-setup-state'),choose:value=>ipcRenderer.invoke('browser-setup-choice',value),folder:()=>ipcRenderer.invoke('browser-setup-folder')},
+  browserPreference:{state:()=>ipcRenderer.invoke('browser-preference-state'),select:id=>ipcRenderer.invoke('browser-preference-select',id)},
   updates:{state:()=>ipcRenderer.invoke('updates-state'),check:()=>ipcRenderer.invoke('updates-check'),download:()=>ipcRenderer.invoke('updates-download'),install:()=>ipcRenderer.invoke('updates-install'),configure:value=>ipcRenderer.invoke('updates-configure',value),releases:()=>ipcRenderer.invoke('updates-releases')},
   state:()=>ipcRenderer.invoke('state'),
   settingsBackup:{import:()=>ipcRenderer.invoke('settings-import'),export:()=>ipcRenderer.invoke('settings-export')},
@@ -82,6 +83,7 @@ contextBridge.exposeInMainWorld('cody',Object.freeze({
   getState:()=>ipcRenderer.invoke('island:read-state'),
   getNetworkStatus:()=>ipcRenderer.invoke('island:read-network'),
   updateSettings:patch=>ipcRenderer.invoke('island:update-settings',patch),
+  copyCode:text=>ipcRenderer.invoke('island:copy-code',text),
   setState:state=>ipcRenderer.send('island:set-state',state),
   setSleeping:value=>ipcRenderer.send('island:sleeping',value===true),
   setAudioLevel:level=>ipcRenderer.send('island:audio-level',level),
@@ -89,6 +91,7 @@ contextBridge.exposeInMainWorld('cody',Object.freeze({
   openPreview:()=>ipcRenderer.send('island:open-preview'),
   expand:open=>ipcRenderer.send('island:expand',open),
   setChatExpanded:value=>ipcRenderer.send('island:chat-expanded',value===true),
+  toggleChatPin:()=>ipcRenderer.send('island:toggle-chat-pin'),
   setView:view=>ipcRenderer.send('island:view',view),
   setPickerOpen:open=>ipcRenderer.send('island:picker-open',Boolean(open)),
   show:()=>ipcRenderer.send('island:show'),
@@ -100,6 +103,7 @@ contextBridge.exposeInMainWorld('cody',Object.freeze({
   onHotkey:cb=>listen('island:hotkey',cb),
   onCommand:cb=>listen('island:command',cb),
   onExpanded:cb=>listen('island:expanded',cb),
+  onChatPinned:cb=>listen('island:chat-pinned',cb),
   onShowSettings:cb=>listen('island:show-settings',cb),
   onVisibility:cb=>listen('island:visibility',cb),
   onCursor:cb=>listen('island:cursor',cb),

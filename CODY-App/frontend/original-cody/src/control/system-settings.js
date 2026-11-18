@@ -15,6 +15,7 @@ function parseSystemCommand(input){
  if((m=/^(?:set|switch|change)(?: (?:the |my )?power mode)? to (?:the )?(best power efficiency|best efficiency|balanced|best performance|high performance)(?: mode)?$/.exec(t))||(m=/^(?:use|enable) (best power efficiency|best efficiency|balanced|best performance|high performance)(?: mode)?$/.exec(t)))return {action:'system.power.set',args:{mode:/efficiency/.test(m[1])?'efficiency':m[1]==='balanced'?'balanced':'performance'}};
  if(/^(?:(?:check|show)(?: me)? (?:the |my )?)?power mode(?: status)?$/.test(t))return {action:'system.power.status',args:{}};
  if((m=/^(?:set |change )?(?:(?:the|my) )?(?:(?:screen|display) )?brightness (?:to )?(100|[1-9]?\d)(?:\s*%| percent)?$/.exec(t)))return {action:'system.brightness.set',args:{level:Number(m[1])}};
+ if((m=/^(lower|decrease|reduce|raise|increase) (?:(?:the|my) )?(?:(?:screen|display) )?brightness(?: by (100|[1-9]\d?)(?:\s*%| percent)?| (?:a bit|a little))?$/.exec(t)))return {action:'system.brightness.set',args:{delta:(/^(?:raise|increase)$/.test(m[1])?1:-1)*Number(m[2]||10)}};
  if(/^(?:(?:check|show)(?: me)? (?:the |my )?)?(?:screen |display )?brightness(?: level)?$/.test(t))return {action:'system.brightness.status',args:{}};
  if((m=/^(?:open|show)(?: me)? (?:the |my )?(bluetooth|wifi|power|energy saver|battery saver|display|sound|notifications|storage|keyboard|mouse|windows update|network) settings$/.exec(t)))return {action:'system.settings.open',args:{page:({'energy saver':'energySaver','battery saver':'energySaver','windows update':'updates'})[m[1]]||m[1]}};
  // Windows' Energy/Battery saver toggle is separate from its performance mode.
@@ -27,7 +28,10 @@ function validateSystemArgs(action,args){
  case 'system.radio.set':if(keys!=='enabled,kind'||!['bluetooth','wifi'].includes(args.kind)||typeof args.enabled!=='boolean')break;return {kind:args.kind,enabled:args.enabled};
  case 'system.radio.status':if(keys!=='kind'||!['bluetooth','wifi'].includes(args.kind))break;return {kind:args.kind};
  case 'system.power.set':if(keys!=='mode'||!Object.hasOwn(MODES,args.mode))break;return {mode:args.mode};
- case 'system.brightness.set':if(keys!=='level'||!Number.isInteger(args.level)||args.level<0||args.level>100)break;return {level:args.level};
+ case 'system.brightness.set':
+  if(keys==='level'&&Number.isInteger(args.level)&&args.level>=0&&args.level<=100)return {level:args.level};
+  if(keys==='delta'&&Number.isInteger(args.delta)&&args.delta!==0&&Math.abs(args.delta)<=100)return {delta:args.delta};
+  break;
  case 'system.power.status':case 'system.brightness.status':if(keys!=='')break;return {};
  case 'system.settings.open':if(keys!=='page'||!Object.hasOwn(PAGES,args.page))break;return {page:args.page};
  }
@@ -102,19 +106,28 @@ if ($actual -ne $target.ToString()) { throw 'Windows did not confirm the request
 $actual = Read-PowerMode
 @{message=('Power mode: '+(Power-Label $actual)+$(if ($onBattery) { ' on battery.' } else { ' while plugged in.' }));mode=$actual;onBattery=$onBattery} | ConvertTo-Json -Compress
 `);
+ const relative=args.delta!==undefined;
+ const targetLevel=relative?`[Math]::Min(100,[Math]::Max(0,[int]$monitor.CurrentBrightness + (${args.delta})))`:args.level;
  return String.raw`
 try { $monitors = @(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightness -ErrorAction Stop | Where-Object { $_.Active }) } catch { throw 'This display does not expose Windows brightness controls. External monitors may need their own controls.' }
 if (-not $monitors.Count) { throw 'This display does not expose Windows brightness controls. External monitors may need their own controls.' }
 `+(action.endsWith('.set')?`
+$targets = @{}
+${relative?'$changed = $false':''}
 foreach ($monitor in $monitors) {
+ $targetLevel = ${targetLevel}
+ $targets[$monitor.InstanceName] = $targetLevel
+ if ($monitor.CurrentBrightness -eq $targetLevel) { continue }
  $method = Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightnessMethods | Where-Object { $_.InstanceName -eq $monitor.InstanceName }
  if (-not $method) { throw 'Windows brightness adjustment is unavailable for this display.' }
- $result = Invoke-CimMethod -InputObject $method -MethodName WmiSetBrightness -Arguments @{Timeout=[uint32]0;Brightness=[byte]${args.level}}
+ $result = Invoke-CimMethod -InputObject $method -MethodName WmiSetBrightness -Arguments @{Timeout=[uint32]0;Brightness=[byte]$targetLevel}
  if ($result.ReturnValue -ne 0) { throw 'Windows could not change display brightness.' }
+ ${relative?'$changed = $true':''}
 }
 $monitors = @(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightness | Where-Object { $_.Active })
-if (-not $monitors.Count -or @($monitors | Where-Object { $_.CurrentBrightness -ne ${args.level} }).Count) { throw 'Windows did not confirm the requested brightness. Check Display settings.' }
-@{message='Brightness set to ${args.level}%.';level=${args.level}} | ConvertTo-Json -Compress
+if ($monitors.Count -ne $targets.Count -or @($monitors | Where-Object { -not $targets.ContainsKey($_.InstanceName) -or $_.CurrentBrightness -ne ${relative?'$targets[$_.InstanceName]':args.level} }).Count) { throw 'Windows did not confirm the requested brightness. Check Display settings.' }
+${relative?`$levels = @($monitors | ForEach-Object { $_.CurrentBrightness })
+@{message=('Brightness: '+(($levels | ForEach-Object { [string]$_+'%' }) -join ', ')+'.');levels=$levels;changed=$changed}`:`@{message='Brightness set to ${args.level}%.';level=${args.level}}`} | ConvertTo-Json -Compress
 `:`
 @{message=('Brightness: '+(($monitors | ForEach-Object { [string]$_.CurrentBrightness+'%' }) -join ', ')+'.');levels=@($monitors | ForEach-Object { $_.CurrentBrightness })} | ConvertTo-Json -Compress
 `);

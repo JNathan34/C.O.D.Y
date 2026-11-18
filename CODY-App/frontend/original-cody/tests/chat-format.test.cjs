@@ -16,6 +16,12 @@ test('normal Markdown, code examples and ordinary JSON are preserved',()=>{
  for(const raw of ['## Title\n\n**Bold**\n- First','{"key":"value"}','```xml\n<ANSWER>{"line":"literal"}</ANSWER>\n```'])assert.equal(normalize(raw),raw);
  assert.equal(normalize('<ANSWER>Not JSON, still readable</ANSWER>'),'Not JSON, still readable');
 });
+test('tilde and longer backtick fences preserve literal protocol tags and blank lines',()=>{
+ const tilde='~~~html\n<ANSWER>\n\n\n  literal markup\n</ANSWER>\n~~~';
+ const markdown='````markdown\n```xml\n<SUMMARY>literal</SUMMARY>\n```\n````';
+ assert.equal(normalize(tilde+'\n\n'+markdown),tilde+'\n\n'+markdown);
+ assert.equal(normalize('Example\n~~~html\n<ANSWER>still streaming'),'Example\n~~~html\n<ANSWER>still streaming');
+});
 test('native line schema supports ranked rows, drafts and optional or malformed collections',()=>{
  const text=answerText({line:'Result',ranked:true,list:[null,{text:'First',detail:'Detail'}],draft:{text:'Hello\nWorld'},note:'Note'});
  assert.match(text,/Result/);assert.match(text,/1\. First — Detail/);assert.match(text,/> Hello\n> World/);assert.match(text,/Note/);

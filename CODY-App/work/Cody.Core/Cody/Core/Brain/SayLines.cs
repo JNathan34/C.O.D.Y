@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 
 namespace HeyClicky.Core.Brain;
@@ -82,9 +83,14 @@ public static class SayLines
 					if (code[index] == '\\' && index + 1 < code.Length)
 					{
 						char c3 = code[index + 1];
-						StringBuilder stringBuilder2 = stringBuilder;
-						flag = ((c3 == 'n' || c3 == 't') ? true : false);
-						stringBuilder2.Append(flag ? ' ' : c3);
+						if (c3 == 'u' && index + 6 <= code.Length &&
+							ushort.TryParse(code.AsSpan(index + 2, 4), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out ushort character))
+						{
+							stringBuilder.Append((char)character);
+							index += 6;
+							continue;
+						}
+						stringBuilder.Append(c3 switch { 'n' => '\n', 'r' => '\r', 't' => '\t', _ => c3 });
 						index += 2;
 					}
 					else

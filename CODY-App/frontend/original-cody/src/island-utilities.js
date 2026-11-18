@@ -6,6 +6,7 @@ const {parseMediaCommand}=require('./media-commands');
 const {parseAppCommand}=require('./app-commands');
 const {isProofreadCommand}=require('./proofread-command');
 const {parseSystemCommand}=require('./control/system-settings');
+const {parseSettingsCommand}=require('./settings-commands');
 const {parseDiscordCommand}=require('./control/discord');
 
 const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy'};
@@ -15,6 +16,13 @@ const DISCORD_PROGRESS={
   deafen:{on:'Deafening…',off:'Undeafening…',toggle:'Toggle deafen…'}
 };
 const discordCard=(text,icon,tooltip)=>({kind:'utility',source:'discord',text,detail:'Discord',icon,tooltip});
+function brightnessCard(result,delta){
+  const levels=(Array.isArray(result.levels)?result.levels:[result.level]).filter(Number.isInteger);
+  const low=Math.min(...levels),high=Math.max(...levels);
+  const text=levels.length?(low===high?`${low}%`:`${low}–${high}%`):'Brightness';
+  const detail=result.changed&&delta?(delta>0?'Brightness up':'Brightness down'):'Brightness';
+  return {kind:'brightness',text,detail,icon:'sun'};
+}
 function requestedApp(input){
   const query=commandText(input,{preserveShow:true});
   const match=/^(?:open|launch|start)\s+(?:(?:the|my)\s+)?(.+?)(?:\s+(?:app|application))?(?:\s+for me)?$/i.exec(query);
@@ -35,9 +43,10 @@ function matchesApp(window,name){
 }
 
 class IslandUtilities {
-  constructor({tasks,monitors,capture,rps,weather,timer,spotify,controller,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{tasks,monitors,capture,rps,weather,timer,spotify,controller,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
+  constructor({tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false}={}){
     const system=parseSystemCommand(input);if(system)return {kind:'direct',...system,text:input};
+    if(this.appSettings){const setting=parseSettingsCommand(input);if(setting)return setting;}
     const discord=parseDiscordCommand(input,{spoken});if(discord)return {kind:discord.action==='discord.leave-clarify'?'local':'direct',...discord};
     if(/^(?:(?:show|open|view)(?: me)? (?:my |the )?(?:background )?tasks|background tasks)$/i.test(commandText(input,{preserveShow:true})))return {kind:'local',action:'background-tasks'};
     if(isProofreadCommand(input))return {kind:'direct',action:'text.proofread',args:{}};
@@ -80,6 +89,17 @@ class IslandUtilities {
     try{
       let reply,confirmation;
       switch(route.action){
+        case 'app-settings.open':
+          this.appSettings.show({tab:route.destination,query:route.query});
+          reply=route.query?`Showing Settings results for ${route.query}.`:'Opened C.O.D.Y. settings.';
+          break;
+        case 'app-settings.change':
+          if(route.value!==undefined){
+            const saved=this.appSettings.update({[route.key]:route.value});
+            if(saved[route.key]!==route.value)throw Error('That value could not be saved.');
+          }
+          reply=route.reply;
+          break;
         case 'background-tasks':if(!this.tasks)throw Error('Background tasks are unavailable.');this.tasks.open();reply='Here are your background tasks.';confirmation='Here are your tasks.';break;
         case 'island-monitors':{const result=await this.monitors.execute(route.monitor);reply=result.reply;confirmation=result.confirmation;this.clearCard();break;}
         case 'screen-capture':{
@@ -132,7 +152,10 @@ class IslandUtilities {
           const result=await this.controller.execute(action,args,{origin:'chat'});
           if(result.cancelled)return {handled:true,cancelled:true,reply:'Action cancelled.'};
           if(!result.ok)throw Error(result.error||'The action did not complete.');
-          if(action.startsWith('system.')){reply=result.result.message;confirmation=reply;show({kind:'utility',text:action==='system.settings.open'?'Settings opened':reply,detail:action==='system.settings.open'?'Windows':'System control',icon:'settings'});}
+          if(action.startsWith('system.')){
+            reply=result.result.message;confirmation=reply;
+            show(action.startsWith('system.brightness.')?brightnessCard(result.result,args.delta):{kind:'utility',text:action==='system.settings.open'?'Settings opened':reply,detail:action==='system.settings.open'?'Windows':'System control',icon:'settings'});
+          }
           else if(action.startsWith('audio.')){reply=this.volumeCard(typeof result.result?.level==='number'?result.result:await this.audioState(),generation);confirmation=route.action==='audio.adjust'?(route.delta>0?"Volume up.":"Volume down."):action==='audio.mute'?(args.muted?"Muted.":"Unmuted."):"Volume set.";}
           else if(action==='spotify.control'||action==='media.control'){this.mediaCard(({play:'Playing',pause:'Paused',next:'Next track',previous:'Previous track',toggle:'Playback changed',seek:'Seeked'})[args.command]);reply=args.command==='seek'?`Skipped ${args.seconds<0?'back':'forward'} ${Math.abs(args.seconds)} seconds.`:({play:'Playing.',pause:'Paused.',next:'Skipping to the next track.',previous:'Playing the previous track.',toggle:'Playback changed.'})[args.command];confirmation=({play:'Playing.',pause:'Paused.',next:'Next track.',previous:'Previous track.',toggle:'Done.',seek:'Done.'})[args.command];}
           else if(action==='plezy.play'){reply=`Playing ${result.result?.title||args.title} on Plezy.`;confirmation='Playing.';show({kind:'utility',text:'Playing',detail:result.result?.title||args.title,icon:'play'});this.refreshMedia();}
@@ -143,7 +166,12 @@ class IslandUtilities {
         }
       }
       return {handled:true,reply,confirmation};
-    }catch(error){const reply=error.message||'That utility is unavailable.';show(discord?discordCard('Failed','shield-alert',reply):{kind:route.action==='weather'?'weather':'utility',text:'Unavailable',detail:route.action==='weather'?'Weather':'C.O.D.Y.',icon:route.action==='weather'?'cloud-off':'circle-alert',tooltip:reply});return {handled:true,reply,error:true};}
+    }catch(error){
+      const reply=error.message||'That utility is unavailable.';
+      const weather=route.action==='weather',brightness=route.action.startsWith('system.brightness.');
+      show(discord?discordCard('Failed','shield-alert',reply):{kind:weather?'weather':brightness?'brightness':'utility',text:'Unavailable',detail:weather?'Weather':brightness?'Brightness':'C.O.D.Y.',icon:weather?'cloud-off':'circle-alert',tooltip:reply});
+      return {handled:true,reply,error:true};
+    }
   }
   // Spoken requests are performed by HeyClicky. Mirror the outcome without
   // replaying actions (especially Next track, volume changes or app launches).

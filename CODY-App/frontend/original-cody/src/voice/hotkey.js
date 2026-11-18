@@ -16,6 +16,7 @@ function startPushToTalk(emit) {
       if (line === 'CANCEL') { held = false; emit('cancel'); }
       if (line === 'MUTE_RELEASE') emit('mute-up');
       if (line === 'VISIBILITY_RELEASE') emit('visibility-up');
+      if (line === 'PIN_RELEASE') emit('pin-up');
       if (line === 'ALTGR_TAP') emit('quick-message');
       const click=/^CLICK (-?\d+) (-?\d+)(?: (left|right|middle))?$/.exec(line);
       if(click)emit({type:'pointer',x:Number(click[1]),y:Number(click[2]),button:click[3]||'left'});

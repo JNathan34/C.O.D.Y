@@ -13,8 +13,7 @@ class UpdateService extends EventEmitter{
     const client=this.createUpdater();
     client.autoDownload=false;client.autoInstallOnAppQuit=false;
     client.allowPrerelease=false;client.allowDowngrade=false;
-    // This installer ships the full native engine; avoid differential updates.
-    client.disableDifferentialDownload=true;
+    client.disableDifferentialDownload=false;
     client.on('checking-for-update',()=>this.set({status:'checking',error:null}));
     client.on('update-available',info=>this.set({status:'available',availableVersion:info.version,progress:0,error:null,lastChecked:new Date().toISOString()}));
     client.on('update-not-available',()=>this.set({status:'current',availableVersion:null,error:null,lastChecked:new Date().toISOString()}));

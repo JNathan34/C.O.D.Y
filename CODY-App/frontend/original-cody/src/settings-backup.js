@@ -11,12 +11,12 @@ const filters=[{name:'C.O.D.Y. settings backup',extensions:['json']}];
 // permissions, and the switches for microphone privacy stay on this PC.
 const ISLAND_KEYS=[
   'launchAtLogin','visibility','islandSize','revealStyle','animationSpeed',
-  'accentColor','mascotLook','cursorColor','cursorSize','controlInputMode',
+  'accentColor','mascotLook','cursorColor','cursorSize',
   'hideFloatingCursor','screenHighlight','shakeToDetach','cursorTracking',
   'idleReactions','blinkEnabled','reactiveExpressions','funReactions',
   'sunglassesEnabled','pretendSleepEnabled','wifiReactions',
   'enableHotkey','startListeningOnHotkey','quickMessageEnabled','quickMessagePhrase',
-  'wakeHeyCody','wakeOkayCody','wakeCody','voiceRate','voicePitch','voiceVolume','micSensitivity','speechSubtitles','islandTaskUpdates'
+  'wakeHeyCody','wakeOkayCody','wakeCody','voiceRate','voicePitch','voiceVolume','micSensitivity','speechSubtitles'
 ];
 const APP_KEYS=['voiceAutoSpeak','runInBackground','startMinimized'];
 const VOICE_KEYS=['voice','recognitionLanguage'];
@@ -29,6 +29,11 @@ function parseBackup(text,validateIsland){
   try{backup=JSON.parse(text.replace(/^\uFEFF/,''));}catch{throw Error('This file is not valid JSON.');}
   if(!isObject(backup)||backup.format!==FORMAT)throw Error('Choose a C.O.D.Y. settings backup file.');
   if(backup.version!==VERSION)throw Error('This settings backup version is unsupported.');
+  // Ignore retired preferences in backups made by older versions.
+  if(isObject(backup.island)){
+    delete backup.island.islandTaskUpdates;
+    delete backup.island.controlInputMode;
+  }
   const section=(name,keys)=>{
     const value=Object.hasOwn(backup,name)?backup[name]:{};
     if(!isObject(value)||Object.keys(value).some(key=>!keys.includes(key)))throw Error('Invalid '+name+' settings in the backup.');

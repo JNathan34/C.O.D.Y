@@ -66,6 +66,8 @@ public sealed class CompanionSessionOptions
 
 	public Func<double>? CaptureSettleSeconds { get; init; }
 
+	public Func<Action<ScreenCaptureFrame, byte[]>?>? StartDrawingCapture { get; init; }
+
 	public Func<bool>? RendersTextInNotchChat { get; init; }
 
 	public Func<bool>? StepNotchChatAsideForDrawing { get; init; }

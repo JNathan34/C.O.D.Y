@@ -4,11 +4,31 @@ const source=fs.readFileSync(path.join(__dirname,'../src/island/main.js'),'utf8'
 const cursor=source.slice(source.indexOf('function pollCursor('),source.indexOf('function onModifierEvent('));
 test('native collapse resets expanded chat hit bounds, including repeated minimise requests',()=>{
  const fn=source.slice(source.indexOf('function setExpanded('),source.indexOf('function openSettings('));
- const context=vm.createContext({expanded:true,chatExpanded:true,pickerOpen:true,forcedVisible:true,hideTimer:null,emit(){},isActive:()=>false,scheduleHide(){},updateVisibility(){},islandWindow:{focus(){}}});
+ const context=vm.createContext({expanded:true,chatExpanded:true,chatPinned:false,pickerOpen:true,forcedVisible:true,hideTimer:null,emit(){},isActive:()=>false,scheduleHide(){},updateVisibility(){},islandWindow:{focus(){}}});
  vm.runInContext(fn,context);context.setExpanded(true);assert.equal(context.chatExpanded,true);
  context.setExpanded(false);assert.equal(context.chatExpanded,false);assert.equal(context.expanded,false);assert.equal(context.pickerOpen,false);
  context.setExpanded(true);assert.equal(context.chatExpanded,false);
  context.setExpanded(false);context.chatExpanded=true;context.setExpanded(false);assert.equal(context.chatExpanded,false);
+});
+test('pin shortcut opens chat, ignores key repeat, and blocks automatic collapse until unpinned',()=>{
+ const messages=[];
+ const context=vm.createContext({expanded:false,chatExpanded:false,chatPinned:false,pinShortcutHeld:false,
+  pickerOpen:false,forcedVisible:false,hideTimer:null,suspended:true,hiddenByShortcut:true,hotkeyHeld:true,
+  emit:(...args)=>messages.push(args),isActive:()=>false,scheduleHide(){},updateVisibility(){},mount(){},islandWindow:{show(){},focus(){}}});
+ vm.runInContext(source.slice(source.indexOf('function setChatPinned('),source.indexOf('function openSettings(')),context);
+ vm.runInContext(source.slice(source.indexOf('function handleHotkey('),source.indexOf('module.exports=')),context);
+ context.handleHotkey('chat-pin');
+ assert.equal(context.expanded,true);assert.equal(context.chatPinned,true);assert.equal(context.hotkeyHeld,false);
+ assert.equal(context.hiddenByShortcut,false);assert.equal(context.suspended,false);
+ assert.deepEqual(messages.at(-1),['island:command','chat']);
+ context.handleHotkey('chat-pin');context.setExpanded(false,{automatic:true});
+ assert.equal(context.expanded,true);assert.equal(context.chatPinned,true);
+ context.handleHotkey('pin-up');context.handleHotkey('chat-pin');
+ assert.equal(context.expanded,true);assert.equal(context.chatPinned,false);
+ context.setExpanded(false,{automatic:true});assert.equal(context.expanded,false);
+ context.handleHotkey('pin-up');context.handleHotkey('chat-pin');
+ context.setExpanded(false);
+ assert.equal(context.expanded,false);assert.equal(context.chatPinned,false);
 });
 test('expanded chat accepts clicks in its wider and lower area; compact chat leaves that space click-through',()=>{
  function run(chatExpanded,point){let ignored,closed=false;

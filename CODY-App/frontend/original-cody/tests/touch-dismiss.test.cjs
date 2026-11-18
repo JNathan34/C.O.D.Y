@@ -9,8 +9,8 @@ test('queued touchscreen presses survive split stdout chunks and rapid taps',()=
  vm.runInNewContext(read('voice/hotkey.js'),context);
  const events=[];context.module.exports.startPushToTalk(event=>events.push(JSON.parse(JSON.stringify(event))));
  child.stdout.emit('data','POINTER -120 30 le');
- child.stdout.emit('data','ft\nPOINTER 900 400 left\n');
- assert.deepEqual(events,[{type:'pointer',x:-120,y:30,button:'left',physicalPixels:true},{type:'pointer',x:900,y:400,button:'left',physicalPixels:true}]);
+ child.stdout.emit('data','ft\nPOINTER 900 400 left\nPIN_RELEASE\n');
+ assert.deepEqual(events,[{type:'pointer',x:-120,y:30,button:'left',physicalPixels:true},{type:'pointer',x:900,y:400,button:'left',physicalPixels:true},'pin-up']);
 });
 
 test('native touch coordinates are converted before checking inside/outside the island',()=>{
@@ -26,10 +26,10 @@ test('native touch coordinates are converted before checking inside/outside the 
 test('outside presses from Windows or the transparent host collapse expanded panels',()=>{
  const source=read('island/main.js');
  const poll=source.slice(source.indexOf('function pollCursor('),source.indexOf('function onModifierEvent('));
- function tap({chatExpanded=false,guiScale=100,x=936,y=745,pickerOpen=false,fileDialogs=0,capture=false,host=false,type='mouseDown'}={}){
+ function tap({chatExpanded=false,chatPinned=false,guiScale=100,x=936,y=745,pickerOpen=false,fileDialogs=0,capture=false,host=false,type='mouseDown'}={}){
   let collapsed=false;
   const bounds={x:-1200,y:44,width:940,height:750};
-  const context={chatExpanded,pickerOpen,fileDialogs,islandWindow:{isDestroyed:()=>false,isVisible:()=>true,getBounds:()=>bounds,getContentBounds:()=>bounds,setIgnoreMouseEvents(){}},settings:{islandSize:'medium',visibility:'always',guiScale},SIZES:{medium:{width:216,height:32}},SETTINGS_WIDTH:900,SETTINGS_HEIGHT:716,TASKS_WIDTH:520,TASKS_HEIGHT:420,CHAT_WIDTH:520,CHAT_HEIGHT:352,currentPanelView:'chat',taskDetailExpanded:false,expanded:true,mouseIgnored:null,mascotSleeping:false,wakeClickUntil:0,shouldRecoverPointer:()=>false,shouldShow:()=>true,captureUIBusy:()=>capture,setExpanded:value=>{context.expanded=value;collapsed=!value;},emit(){},performance:{now:()=>100},lastPointerTime:0,lastPointer:null,hoverVisible:false};
+  const context={chatExpanded,pickerOpen,fileDialogs,islandWindow:{isDestroyed:()=>false,isVisible:()=>true,getBounds:()=>bounds,getContentBounds:()=>bounds,setIgnoreMouseEvents(){}},settings:{islandSize:'medium',visibility:'always',guiScale},SIZES:{medium:{width:216,height:32}},SETTINGS_WIDTH:900,SETTINGS_HEIGHT:716,TASKS_WIDTH:520,TASKS_HEIGHT:420,CHAT_WIDTH:520,CHAT_HEIGHT:352,currentPanelView:'chat',taskDetailExpanded:false,expanded:true,mouseIgnored:null,mascotSleeping:false,wakeClickUntil:0,shouldRecoverPointer:()=>false,shouldShow:()=>true,captureUIBusy:()=>capture,setExpanded:(value,{automatic=false}={})=>{if(automatic&&chatPinned)return;context.expanded=value;collapsed=!value;},emit(){},performance:{now:()=>100},lastPointerTime:0,lastPointer:null,hoverVisible:false};
   vm.runInNewContext(poll,context);
   if(host){
    let prevented=false;
@@ -40,6 +40,7 @@ test('outside presses from Windows or the transparent host collapse expanded pan
  }
  for(const host of [false,true]){
   assert.equal(tap({host}),true);assert.equal(tap({host,chatExpanded:true}),true);
+  assert.equal(tap({host,chatPinned:true}),false);
   assert.equal(tap({host,x:470,y:200}),false);assert.equal(tap({host,chatExpanded:true,x:470,y:600}),false);
   assert.equal(tap({host,x:750,y:200}),true);assert.equal(tap({host,guiScale:125,x:750,y:200}),false);
   assert.equal(tap({host,pickerOpen:true}),false);assert.equal(tap({host,capture:true}),false);assert.equal(tap({host,fileDialogs:1}),false);

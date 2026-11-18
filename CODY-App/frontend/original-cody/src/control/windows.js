@@ -113,6 +113,10 @@ if(-not $firefoxPath){
  }
 }
 if(-not $firefoxPath){$firefoxCommand=Get-Command firefox.exe -ErrorAction SilentlyContinue;if($firefoxCommand){$firefoxPath=$firefoxCommand.Source}}
+if(-not $firefoxPath){
+ $package=Get-AppxPackage -Name Mozilla.Firefox -ErrorAction SilentlyContinue | Select-Object -First 1
+ if($package.InstallLocation){$candidate=Join-Path $package.InstallLocation 'VFS\ProgramFiles\Firefox Package Root\firefox.exe';if(Test-Path -LiteralPath $candidate -PathType Leaf){$firefoxPath=$candidate}}
+}
 if(-not $firefoxPath){throw 'Firefox is not installed or could not be located. Install Firefox, then try again.'}
 Start-Process -FilePath $firefoxPath -ErrorAction Stop
 'Launched firefox'`;
