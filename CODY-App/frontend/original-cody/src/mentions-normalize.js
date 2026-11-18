@@ -1,10 +1,12 @@
 'use strict';
+const {cloudWordPresentation}=require('./plugin-catalog');
 // Treat backend capability lists as untrusted catalog data. A picker entry
 // never grants permissions; the dispatcher still authorises actual actions.
 function normalizeMentions(source,local=[]){
  const remote=Array.isArray(source)?source:Array.isArray(source?.items)?source.items:[];
  const seen=new Set(local.map(x=>x.id)),results=[...local];
- for(const item of remote.slice(0,250)){
+ for(const raw of remote.slice(0,250)){
+  const item=cloudWordPresentation(raw);
   if(!item||typeof item!=='object'||typeof item.id!=='string'||!/^[a-z\d][\w.:/-]{0,159}$/i.test(item.id)||seen.has(item.id)||
      typeof item.name!=='string'||!item.name.trim())continue;
   const kind=['plugin','skill','tool','computer','agent'].includes(item.kind)?item.kind:'tool';

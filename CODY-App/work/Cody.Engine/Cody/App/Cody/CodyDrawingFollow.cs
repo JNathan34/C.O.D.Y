@@ -47,8 +47,10 @@ internal sealed class CodyDrawingFollow : IDisposable
     private readonly double imageWidth, imageHeight;
     private CodyDrawingTarget.Document document;
     private RectD surface;
-    private long nextRead, lastRead;
-    private bool reading, scheduled, contextChanged, pageCurrent;
+    private long nextRead, lastRead, screenVersion;
+    private bool reading, readingDocument, scheduled, contextChanged, pageCurrent;
+    private long nextDocumentRead;
+    private int documentAttempts;
     private string confirmedTitle;
 
     internal CodyDrawingFollow(DisplayInfo display, byte[] screenshot, Vector2 imageSize, Action<Action> post,
@@ -86,7 +88,13 @@ internal sealed class CodyDrawingFollow : IDisposable
         var document = TracksDocument(app)
             ? CodyDrawingTarget.Capture(app.WindowHandle, bounds.Rect, IsBrowser(app), () => OwnerIsForeground(app))
             : null;
-        return (frame, _) => origins.GetValue(frame.Jpeg, _ => new CaptureOrigin(app, bounds, document));
+        return (frame, original) =>
+        {
+            var capture = new CaptureOrigin(app, bounds, document);
+            origins.GetValue(frame.Jpeg, _ => capture);
+            // Highlight compositing can provide both clean and marked JPEGs.
+            if (original != null) origins.GetValue(original, _ => capture);
+        };
     }
 
     private static bool IsBrowser(ForegroundApp app) => ForegroundAppInfo.IsBrowserProcess(app.ProcessName, out _);
@@ -96,9 +104,12 @@ internal sealed class CodyDrawingFollow : IDisposable
 
     private async Task UseDocument(Task<CodyDrawingTarget.Document> pending)
     {
+        readingDocument = true;
+        documentAttempts++;
         var captured = await pending.ConfigureAwait(false);
         post(() =>
         {
+            readingDocument = false;
             if (!token.IsCancellationRequested) document = captured;
         });
     }
@@ -123,17 +134,19 @@ internal sealed class CodyDrawingFollow : IDisposable
         owner = owner?.WindowHandle.ToString(), foreground = GetAncestor(GetForegroundWindow(), 3).ToString(),
         sampling = reading, hasSampled = marks.Values.Any(mark => mark.Anchor != null),
         viewport = owner != null && TryClientBounds(owner.WindowHandle, out var view) ? view.Rect : (RectD?)null,
-        tracking = contentTracking ? "document" : "window", hasBrowserTab = document?.Tab != null,
+        tracking = contentTracking ? "document" : "window", hasDocument = document != null, documentAttempts,
+        provider = document?.Legacy != null ? "MSAA" : document != null ? "UIA" : null,
+        hasBrowserTab = document?.Tab != null || document?.Legacy?.Tab != null,
         marks = marks.Values.Select(mark => new { id = mark.Id, role = mark.Role, control = mark.Control,
             visible = mark.Visible, removed = mark.Removed, anchored = mark.Anchor != null,
             x = mark.Offset.X, y = mark.Offset.Y, box = ToScreen(mark) }).ToArray() };
 
     internal void Sync(IReadOnlyList<(int Id, string Role, RectD Box, Visual[] Units)> visible,
-        bool streaming = false)
+        bool streaming = false, IReadOnlyCollection<int> retained = null)
     {
         // Incremental drawing feeds can omit existing render units briefly.
         if (!streaming)
-            foreach (int id in marks.Keys.Except(visible.Select(mark => mark.Id)).ToArray()) marks.Remove(id);
+            foreach (int id in marks.Keys.Except(retained ?? visible.Select(mark => mark.Id).ToArray()).ToArray()) marks.Remove(id);
         foreach (var item in visible)
         {
             if (!marks.TryGetValue(item.Id, out var mark))
@@ -152,6 +165,7 @@ internal sealed class CodyDrawingFollow : IDisposable
     internal void ScreenChanged(string reason)
     {
         if (!Available) return;
+        screenVersion++;
         if (reason is "scroll" or "window moved" or "app switch" or "space change") contextChanged = true;
         nextRead = 0;
         if (!IsOwnerForeground() || !IsPageCurrent()) Hide();
@@ -202,23 +216,37 @@ internal sealed class CodyDrawingFollow : IDisposable
             }
             return;
         }
-        if (document == null) return;
+        if (document == null)
+        {
+            // Providers can miss the initial capture while accessibility starts.
+            // Retry only while the original screen context is still unchanged.
+            long currentTime = Environment.TickCount64;
+            if (!readingDocument && !contextChanged && viewport.Equals(origin) &&
+                owner.WindowTitle == WindowTitle() && currentTime >= nextDocumentRead)
+            {
+                nextDocumentRead = currentTime + 500;
+                _ = UseDocument(CodyDrawingTarget.Capture(owner.WindowHandle, viewport.Rect,
+                    IsBrowser(owner), () => !token.IsCancellationRequested && IsOwnerForeground()));
+            }
+            return;
+        }
         if (!IsPageCurrent()) Hide();
 
         long now = Environment.TickCount64;
         if (reading || now < nextRead) return;
         bool sameGeometry = viewport.Equals(origin);
+        bool canBind = sameGeometry && (!contextChanged || document.Scroll != null);
         var queries = marks.Values.Where(mark => !mark.Removed &&
-            (mark.Anchor != null || !mark.BindingAttempted && sameGeometry && !contextChanged))
+            (mark.Anchor != null || !mark.BindingAttempted && canBind))
             .Select(mark => new CodyDrawingTarget.Query(mark.Id, OriginalBox(mark), mark.Anchor,
-                sameGeometry && !contextChanged)).ToArray();
+                canBind)).ToArray();
         if (queries.Length == 0) return;
         reading = true;
         nextRead = now + 33;
-        _ = ReadTargets(viewport, WindowTitle(), queries);
+        _ = ReadTargets(viewport, WindowTitle(), queries, screenVersion);
     }
 
-    private async Task ReadTargets(Bounds viewport, string title, CodyDrawingTarget.Query[] queries)
+    private async Task ReadTargets(Bounds viewport, string title, CodyDrawingTarget.Query[] queries, long version)
     {
         var frames = await CodyDrawingTarget.Read(owner.WindowHandle, document, viewport.Rect, queries,
             () => !token.IsCancellationRequested && IsOwnerForeground()).ConfigureAwait(false);
@@ -226,7 +254,7 @@ internal sealed class CodyDrawingFollow : IDisposable
         {
             if (token.IsCancellationRequested) return;
             reading = false;
-            if (!IsOwnerForeground() || title != WindowTitle() || !TryClientBounds(owner.WindowHandle, out var current) ||
+            if (version != screenVersion || !IsOwnerForeground() || title != WindowTitle() || !TryClientBounds(owner.WindowHandle, out var current) ||
                 !current.Equals(viewport))
             {
                 Schedule();
@@ -252,9 +280,9 @@ internal sealed class CodyDrawingFollow : IDisposable
                 foreach (var frame in frames.Targets)
                 {
                     if (!marks.TryGetValue(frame.Id, out var mark) || mark.Removed) continue;
-                    if (mark.Anchor == null && !contextChanged)
+                    if (mark.Anchor == null && queries.Any(query => query.Id == mark.Id && query.Bind))
                     {
-                        mark.BindingAttempted = true;
+                        mark.BindingAttempted = frame.Anchor != null;
                         mark.Anchor = frame.Anchor;
                         if (mark.Role == "ring" && mark.Anchor?.Control == true)
                         {

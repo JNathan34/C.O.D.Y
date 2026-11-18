@@ -40,6 +40,8 @@ const {ComputerController}=require('./control/controller');
 const {ActionAudit}=require('./control/action-audit');
 const {AssistantModes}=require('./assistant-modes');
 const {SelfHosted}=require('./integrations/self-hosted');
+const {OverseerrRequests,registerOverseerrRequestIpc}=require('./integrations/overseerr-requests');
+const {PlexSignIn}=require('./integrations/plex-sign-in');
 const {parseDirectAction}=require('./control/parser');
 const {FirefoxBridge}=require('./control/firefox-bridge');
 const {buildWebActionPrompt,parseActionReply,stripTrailingActionDraft}=require('./control/web-actions');
@@ -68,7 +70,7 @@ const {ControlOverlay}=require('./control-overlay');
 const {KeywordWakeListener}=require('./voice/keyword-wake-listener');
 let controlOverlay,wakeListener;
 const nativeEngine=new NativeEngine();
-let actionAudit,assistantModes,selfHosted;
+let actionAudit,assistantModes,selfHosted,plexSignIn,overseerrRequestFlow;
 async function openPreferredWebLink(rawUrl){
   const url=new URL(rawUrl);
   if(!['http:','https:'].includes(url.protocol))throw Error('Expected an HTTP or HTTPS link.');
@@ -243,12 +245,18 @@ function registerIpc(){
   ipcMain.handle('computer-catalog',e=>{fromCody(e);return controller.catalog()});
   ipcMain.handle('computer-audit',e=>{fromCody(e);return actionAudit?.recent()||[];});
   ipcMain.handle('self-hosted-status',e=>{fromAnnotationUI(e);return selfHosted.status();});
-  ipcMain.handle('self-hosted-connect',(e,id,credentials)=>{fromAnnotationUI(e);return selfHosted.configure(id,credentials);});
-  ipcMain.handle('self-hosted-disconnect',(e,id)=>{fromAnnotationUI(e);return selfHosted.disconnect(id);});
+  registerOverseerrRequestIpc({ipcMain,authorise:fromAnnotationUI,requests:overseerrRequestFlow});
+  ipcMain.handle('self-hosted-connect',(e,id,credentials)=>{fromAnnotationUI(e);if(id==='plex')throw Error('Use Sign in with Plex to connect your account.');return selfHosted.connect(id,credentials);});
+  ipcMain.handle('self-hosted-disconnect',(e,id)=>{fromAnnotationUI(e);if(id==='plex')plexSignIn.cancel();return selfHosted.disconnect(id);});
+  ipcMain.handle('plex-sign-in-start',e=>{fromAnnotationUI(e);return plexSignIn.start();});
+  ipcMain.handle('plex-sign-in-state',e=>{fromAnnotationUI(e);return plexSignIn.snapshot();});
+  ipcMain.handle('plex-sign-in-cancel',e=>{fromAnnotationUI(e);return plexSignIn.cancel();});
+  ipcMain.handle('plex-sign-in-select',(e,id)=>{fromAnnotationUI(e);if(typeof id!=='string'||!id||id.length>300)throw Error('Choose a Plex server.');return plexSignIn.select(id);});
   ipcMain.handle('self-hosted-read',(e,id,method,query)=>{
     fromAnnotationUI(e);
     if(id==='plex'&&method==='sessions')return selfHosted.plexSessions();
     if(id==='plex'&&method==='recent')return selfHosted.plexRecent();
+    if(id==='plex'&&method==='test')return selfHosted.plexTest();
     if(id==='overseerr'&&method==='requests')return selfHosted.overseerrRequests();
     if(id==='overseerr'&&method==='search')return selfHosted.overseerrSearch(query);
     throw Error('Unknown self-hosted read request.');
@@ -610,6 +618,10 @@ else app.whenReady().then(()=>{
   nativeTheme.themeSource='dark';app.setAppUserModelId(branding.appId);
   store=new StateStore(app.getPath('userData'));
   selfHosted=new SelfHosted({file:path.join(app.getPath('userData'),'self-hosted-connections.dat'),cipher:safeStorage,fetcher:(url,options)=>require('electron').net.fetch(url,options)});
+  overseerrRequestFlow=new OverseerrRequests({service:selfHosted});
+  plexSignIn=new PlexSignIn({service:selfHosted,version:app.getVersion(),openBrowser:openPreferredWebLink,
+    fetcher:(url,options)=>require('electron').net.fetch(url,options)});
+  app.once('will-quit',()=>plexSignIn.close());
   assistantModes=new AssistantModes({file:path.join(app.getPath('userData'),'assistant-modes.json'),island,store,
     onChange:()=>sendUI('settings-changed',store.data.settings)});
   updates=new UpdateService({version:app.getVersion(),packaged:app.isPackaged,

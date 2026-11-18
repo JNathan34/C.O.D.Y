@@ -8,6 +8,7 @@ const {setPersonalCodexEnabled}=require('./usage-policy');
 const {localMemoryText,SHARED_PAUSED}=require('./memory/commands');
 const {localMentions,localMentionRoute}=require('./mentions');
 const {normalizeMentions}=require('./mentions-normalize');
+const {normalizePluginCatalog}=require('./plugin-catalog');
 const {WordSession}=require('./word-session');
 const NATIVE_VOICES=Object.freeze(['cedar','marin','alloy','ash','ballad','coral','echo','sage','shimmer','verse']);
 const {attachmentNames}=require('./attachments');
@@ -48,7 +49,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(typeof deviceId!=='string'||deviceId.length>512)throw Error('Invalid output device.');
     return engine.request('audio-output-select',{deviceId});
   });
-  handle('plugins-list',()=>engine.request('plugins-list'));
+  handle('plugins-list',async()=>normalizePluginCatalog(await engine.request('plugins-list')));
   handle('mentions-list',async localOnly=>{
     const items=utilities?localMentions:[];
     if(localOnly===true||localMemoryOnly()||selection(store.data.settings).provider!=='heyclicky')return {items:normalizeMentions([],items)};

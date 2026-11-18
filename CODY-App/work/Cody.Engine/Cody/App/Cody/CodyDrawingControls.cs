@@ -163,8 +163,10 @@ internal static class CodyDrawingControls
                 var glows=Field(painter,"glowNodesByUnit") as IDictionary;
                 using var document=JsonDocument.Parse(json);
                 var visible=new List<(int Id,string Role,RectD Box,Visual[] Units)>();
+                var retained=new HashSet<int>();
                 foreach(var item in document.RootElement.EnumerateArray())
                 {
+                    retained.Add(item.GetProperty("id").GetInt32());
                     var box=item.GetProperty("bounds").EnumerateArray().Select(value=>value.GetDouble()).ToArray();
                     var ids=item.GetProperty("units").EnumerateArray().Select(value=>value.GetInt32()).ToArray();
                     var nodes=ids.Select(id=>units[id]).Where(node=>node!=null).ToHashSet(ReferenceEqualityComparer.Instance);
@@ -178,7 +180,7 @@ internal static class CodyDrawingControls
                     visible.Add((item.GetProperty("id").GetInt32(),item.GetProperty("role").GetString(),
                         new RectD(box[0],box[1],box[2]-box[0],box[3]-box[1]),visuals));
                 }
-                follow.Sync(visible, canvas.IsStreamingNarration);
+                follow.Sync(visible, canvas.IsStreamingNarration, retained);
             }
             follow.Tick();
             return !canvas.DrawsPicture&&(follow.Hidden||follow.Moved);

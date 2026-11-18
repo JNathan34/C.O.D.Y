@@ -5,7 +5,8 @@ const {runPowerShell,psQuote}=require('./windows');
 const STYLES=new Set(['normal','title','heading1','heading2','label']);
 const ALIGNMENTS=new Set(['left','center','right','justify']);
 const SCOPES=new Set(['cursor','selection','paragraph','document','append']);
-const SCRIPT=path.join(__dirname,'../../windows/word-document.ps1');
+// PowerShell cannot read Electron's virtual ASAR filesystem.
+const SCRIPT=path.join(__dirname,'../../windows/word-document.ps1').replace('app.asar'+path.sep,'app.asar.unpacked'+path.sep);
 
 function wordIntent(text,selected=false,pending=false){
   if(selected||pending)return true;

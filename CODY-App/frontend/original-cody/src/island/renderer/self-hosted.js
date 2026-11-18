@@ -3,37 +3,166 @@
  const api=window.assistant?.selfHosted,area=document.querySelector('[data-content="integrations"]');
  const status=document.getElementById('self-hosted-status'),results=document.getElementById('self-hosted-results');
  if(!api||!area||!status||!results)return;
- let state,busy=false;
+ let state,busy=false,plexState=null,plexTimer,plexLoading=false,lastSearch=[],plexFeedback='';
+ const plexApi=api.plexSignIn;
+ const plexButton=document.getElementById('plex-sign-in');
+ const plexTest=document.getElementById('plex-test');
+ const plexDisconnect=area.querySelector('[data-self-hosted-disconnect="plex"]');
+ const plexPanel=area.querySelector('[data-media-panel="plex"]');
+ const plexCancel=document.getElementById('plex-sign-in-cancel');
+ const plexStatus=document.getElementById('plex-sign-in-status');
+ const plexServers=document.getElementById('plex-server');
+ const plexServerForm=document.getElementById('plex-server-form');
  function text(value){return String(value==null?'':value).slice(0,200);}
+ function credentialState(form,service){
+  const saved=state?.services?.[service];
+  const same=saved?.connected&&form.elements.namedItem('url').value.trim().replace(/\/+$/,'')===saved.url;
+  const key=form.elements.namedItem('key');
+  key.required=!same;
+  key.placeholder=same?'•••••••• (saved — leave blank to keep)':service==='plex'?'Your Plex token':'Your Overseerr API key';
+  key.setAttribute('aria-description',same?'Your key is saved securely. Enter a new key only to replace it.':'Enter the key for this server.');
+  form.querySelector('button[type="submit"]').textContent=saved?.connected?'Save connection':'Connect';
+ }
  function entries(items,transform){
   results.replaceChildren();
   if(!items.length){const line=document.createElement('p');line.className='setting-help';line.textContent='Nothing to show.';results.append(line);return;}
   for(const item of items.slice(0,20)){const line=document.createElement('div');line.className='setting-row';line.textContent=transform(item);results.append(line);}
  }
+ function action(label,callback){
+  const button=document.createElement('button');button.type='button';button.className='light-action';button.textContent=label;button.addEventListener('click',callback);return button;
+ }
+ function searchEntries(items){
+  lastSearch=items;results.replaceChildren();
+  if(!items.length){entries([],()=>{});return;}
+  for(const item of items){
+   const row=document.createElement('div');row.className='overseerr-search-result';
+   const label=document.createElement('p');label.textContent=text(item.title)+' ('+text(item.type)+(item.year?', '+text(item.year):'')+')';
+   row.append(label,action('Review request',()=>void work(async()=>requestPreview(await api.requestPreview({id:item.id,type:item.type})),'overseerr',false)));
+   results.append(row);
+  }
+ }
+ function requestPreview(detail){
+  results.replaceChildren();
+  const form=document.createElement('form');form.className='overseerr-request-preview';
+  const title=document.createElement('h4');title.textContent=text(detail.title)+(detail.year?' ('+text(detail.year)+')':'');
+  const help=document.createElement('p');help.className='setting-help';help.textContent=detail.blocked?'This title is already available or requested.':'Requests use your server’s default quality settings and may be approved automatically.';
+  form.append(title,help);
+  const submit=document.createElement('button');submit.type='submit';submit.className='light-action';submit.textContent=detail.type==='tv'?'Request selected seasons':'Confirm movie request';submit.disabled=detail.blocked||detail.type==='tv';
+  if(detail.type==='tv'&&!detail.blocked){
+   const seasons=document.createElement('fieldset');const legend=document.createElement('legend');legend.textContent='Choose seasons';seasons.append(legend);
+   for(const season of detail.seasons){
+    const label=document.createElement('label');label.className='overseerr-season';
+    const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.name='season';checkbox.value=season.number;checkbox.disabled=season.blocked;
+    label.append(checkbox,document.createTextNode(season.name+(season.blocked?' — available or requested':'')));seasons.append(label);
+   }
+   seasons.addEventListener('change',()=>{submit.disabled=!form.querySelector('input[name="season"]:checked');});form.append(seasons);
+  }
+  const buttons=document.createElement('div');buttons.className='plugin-card-actions';
+  if(!detail.blocked)buttons.append(submit);
+  buttons.append(action('Cancel',()=>{searchEntries(lastSearch);status.textContent='Request cancelled.';}));form.append(buttons);
+  form.addEventListener('submit',event=>{
+   event.preventDefault();if(busy||submit.disabled)return;
+   const selected=[...form.querySelectorAll('input[name="season"]:checked')].map(input=>Number(input.value));
+   void work(async()=>{
+    const result=await api.requestSubmit({token:detail.token,...(detail.type==='tv'?{seasons:selected}:{})});
+    status.textContent='Request #'+text(result.id)+' — '+text(result.title)+' — '+({1:'Pending approval',2:'Approved',3:'Declined'}[result.status]||'Status unknown');
+   },'overseerr',false);
+  });
+  status.textContent='Review your '+(detail.type==='tv'?'TV':'movie')+' request';results.append(form);form.querySelector('input:not(:disabled),button')?.focus();
+ }
  function render(){
   if(!state)return;
   for(const service of ['plex','overseerr']){
    const connected=state.services?.[service]?.connected===true;
-   document.getElementById('self-hosted-'+service+'-state').textContent=connected?'Connected to '+text(state.services[service].url):'Not connected';
+   const label=document.getElementById('self-hosted-'+service+'-state');
+   if(label)label.textContent=connected?'Connected to '+text(state.services[service].name||state.services[service].url):'Not connected';
    const form=area.querySelector('form[data-self-hosted="'+service+'"]');
-   if(connected)form.elements.namedItem('url').value=state.services[service].url;
+   if(form){if(connected&&!form.dataset.dirty)form.elements.namedItem('url').value=state.services[service].url;credentialState(form,service);}
    area.querySelector('[data-self-hosted-disconnect="'+service+'"]').disabled=busy||!connected;
    for(const button of area.querySelectorAll('[data-self-hosted-read^="'+service+':"]'))button.disabled=busy||!connected;
   }
   area.querySelector('#self-hosted-search-form button').disabled=busy||!state.services?.overseerr?.connected;
+  renderPlex();
   document.dispatchEvent(new CustomEvent('cody:self-hosted', {detail:state}));
  }
+ function renderPlex(){
+  if(!plexButton)return;
+  const phase=plexState?.phase;
+  const pending=['starting','waiting','servers','connecting'].includes(phase);
+  const connected=state?.services?.plex?.connected===true;
+  plexButton.hidden=connected&&!pending;
+  plexButton.disabled=busy||!plexApi||['starting','waiting','connecting'].includes(phase)||state?.available===false;
+  plexButton.textContent='Sign in with Plex';
+  plexTest.hidden=!connected;
+  plexTest.disabled=busy||pending||!connected;
+  plexDisconnect.hidden=!connected;
+  plexCancel.hidden=!pending;
+  plexCancel.disabled=false;
+  plexStatus.textContent=plexFeedback||(pending||['error','expired'].includes(phase)?plexState?.message:'')||'';
+  plexStatus.hidden=!plexStatus.textContent;
+  const selected=plexServers.value;
+  plexServers.replaceChildren(...(plexState?.servers||[]).map(server=>new Option(server.name+(server.owned?'':' (shared)'),server.id)));
+  if([...plexServers.options].some(option=>option.value===selected))plexServers.value=selected;
+  plexServerForm.hidden=phase!=='servers'||!plexServers.options.length;
+  plexServerForm.querySelector('button').disabled=busy||phase!=='servers';
+  plexPanel.hidden=!pending&&!plexStatus.textContent;
+  clearTimeout(plexTimer);
+  if(pending)plexTimer=setTimeout(()=>void syncPlex(),1500);
+ }
+ async function syncPlex(){
+  if(!plexApi||plexLoading)return;
+  plexLoading=true;
+  try{
+   const previous=plexState?.phase;
+   plexState=await plexApi.state();
+   if(plexState.phase==='connected'&&previous!=='connected'){
+    state=await api.status();
+    plexFeedback='';
+    render();
+   }else renderPlex();
+  }catch(error){plexFeedback=error.message;renderPlex();}
+  finally{plexLoading=false;}
+ }
  async function load(){
-  try{state=await api.status();render();if(!state.available)status.textContent='Windows encrypted credential storage is unavailable. Connections cannot be saved.';}
+  try{
+   state=await api.status();
+   if(plexApi)plexState=await plexApi.state();
+   render();
+   if(!state.available)status.textContent='Windows encrypted credential storage is unavailable. Connections cannot be saved.';
+  }
   catch(error){status.textContent='Cannot load media connections: '+error.message;}
  }
- async function work(action){
-  if(busy)return;busy=true;area.querySelectorAll('[data-media-panel] button').forEach(button=>button.disabled=true);
-  try{await action();await load();}
-  catch(error){status.textContent=error.message;}
-  finally{busy=false;area.querySelectorAll('[data-media-panel] button').forEach(button=>button.disabled=false);render();}
+ plexButton?.addEventListener('click',()=>void work(async()=>{
+  plexFeedback='';
+  plexState=await plexApi.start();
+  renderPlex();
+ },'plex'));
+ plexTest?.addEventListener('click',()=>void work(async()=>{
+  const result=await api.read('plex','test');
+  if(result?.ok!==true)throw Error('Plex did not confirm the connection.');
+  plexFeedback='Connection verified'+(result.name?' — '+text(result.name):'')+'.';
+ },'plex',false));
+ plexCancel?.addEventListener('click',async()=>{
+  try{plexFeedback='';plexState=await plexApi.cancel();renderPlex();}
+  catch(error){plexFeedback=error.message;renderPlex();}
+ });
+ plexServerForm?.addEventListener('submit',event=>{
+  event.preventDefault();
+  void work(async()=>{
+   plexState=await plexApi.select(plexServers.value);
+   renderPlex();
+  },'plex');
+ });
+ async function work(action,service,reload=true){
+  if(busy)return;busy=true;const buttons=[...area.querySelectorAll('[data-media-panel] button,#plex-connection-actions button')].map(button=>({button,disabled:button.disabled}));buttons.forEach(({button})=>button.disabled=true);
+  if(service==='plex'){plexFeedback='';renderPlex();}
+  else if(service){area.querySelector('[data-media-panel="'+service+'"]').append(status,results);results.replaceChildren();status.textContent='Working…';}
+  try{await action();if(reload)await load();}
+  catch(error){if(service==='plex')plexFeedback=error.message;else status.textContent=error.message;}
+  finally{busy=false;buttons.forEach(({button,disabled})=>{if(button.isConnected)button.disabled=disabled;});render();}
  }
  for(const form of area.querySelectorAll('[data-self-hosted]')){
+  form.addEventListener('input',()=>{form.dataset.dirty='true';credentialState(form,form.dataset.selfHosted);});
   form.addEventListener('submit',event=>{
    event.preventDefault();
    const service=form.dataset.selfHosted;
@@ -41,16 +170,16 @@
    void work(async()=>{
     state=await api.connect(service,{url,key});
     form.elements.namedItem('key').value='';
-    form.closest('[data-media-panel]').hidden=true;
-    results.replaceChildren();status.textContent='Connected to your '+service+' server. No library contents are loaded automatically.';
-   });
+    delete form.dataset.dirty;
+    results.replaceChildren();status.textContent='Connection verified. Your '+service+' key is saved securely and stays saved when you close or minimise this window.';
+   },service);
   });
  }
  for(const button of area.querySelectorAll('[data-self-hosted-disconnect]')){
   button.addEventListener('click',()=>{
    const service=button.dataset.selfHostedDisconnect;
    if(!window.confirm('Disconnect your '+service+' server and delete its stored token?'))return;
-   void work(async()=>{state=await api.disconnect(service);results.replaceChildren();status.textContent=service+' disconnected.';});
+   void work(async()=>{state=await api.disconnect(service);const form=area.querySelector('[data-self-hosted="'+service+'"]');if(form){form.elements.namedItem('key').value='';delete form.dataset.dirty;}if(service==='plex'){plexFeedback='';plexState=await plexApi.state();}else{results.replaceChildren();status.textContent=service+' disconnected.';}},service);
   });
  }
  for(const button of area.querySelectorAll('[data-self-hosted-read]')){
@@ -66,9 +195,9 @@
      entries(data,item=>text(item.title)+' ('+text(item.type)+')');
     }else{
      status.textContent='Recent Overseerr requests';
-     entries(data,item=>'#'+text(item.id)+' — '+text(item.title)+' ('+text(item.type)+')');
+     entries(data,item=>'#'+text(item.id)+' — '+text(item.title)+' ('+text(item.type)+') — '+({1:'Pending approval',2:'Approved',3:'Declined'}[item.status]||'Unknown status'));
     }
-   });
+   },service,false);
   });
  }
  document.getElementById('self-hosted-search-form').addEventListener('submit',event=>{
@@ -76,8 +205,10 @@
   void work(async()=>{
    const data=await api.read('overseerr','search',query);
    status.textContent='Overseerr search for '+text(query);
-   entries(data,item=>text(item.title)+' ('+text(item.type)+', '+text(item.year)+') — TMDB '+text(item.id));
-  });
+   searchEntries(data);
+  },'overseerr',false);
  });
  document.querySelector('[data-tab="integrations"]')?.addEventListener('click',()=>void load());
+ window.addEventListener('focus',()=>{if(plexState&&plexApi)void syncPlex();});
+ window.addEventListener('beforeunload',()=>clearTimeout(plexTimer));
 })();

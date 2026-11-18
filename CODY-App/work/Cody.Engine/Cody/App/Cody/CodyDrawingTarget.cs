@@ -18,20 +18,23 @@ internal static class CodyDrawingTarget
     private const int TextPattern = 10014, ScrollPattern = 10004;
     private const int ElementNotAvailable = unchecked((int)0x80040201);
 
-    internal sealed record Document(UiaElement Element, UiaElement Tab, (double X, double Y)? Scroll)
+    internal sealed record Document(UiaElement Element, UiaElement Tab, (double X, double Y)? Scroll,
+        CodyDrawingLegacyTarget.Document Legacy = null)
     {
         internal long NextTabCheck;
     }
-    internal sealed class Anchor(UiaElement element, UiaRange range, RectD original, bool control = false)
+    internal sealed class Anchor(UiaElement element, UiaRange range, RectD original, bool control = false,
+        CodyDrawingLegacyTarget.Anchor legacy = null)
     {
         internal RectD Original { get; } = original;
         internal bool Control { get; } = control;
-        private readonly string originalContent = Content(element, range);
+        private readonly string originalContent = legacy == null ? Content(element, range) : null;
         private long nextCheck;
         private bool replaced;
 
         internal RectD? Read()
         {
+            if (legacy != null) return legacy.Read();
             if (replaced || !Visible(element)) return null;
             long now = Environment.TickCount64;
             if (now >= nextCheck)
@@ -54,7 +57,11 @@ internal static class CodyDrawingTarget
         {
             var root = uia.ElementFromHandle(window);
             var document = DocumentAt(uia, root, Center(viewport)) ?? FindDocument(uia, root, viewport);
-            if (document == null) return new Result();
+            if (document == null)
+            {
+                var legacy = CodyDrawingLegacyTarget.Capture(window, viewport, browser, valid);
+                return new Result(Data: legacy == null ? null : new Document(null, null, null, legacy));
+            }
             var tab = browser ? SelectedTab(uia, root, document, viewport) : null;
             return new Result(Data: new Document(document, tab, ReadScroll(document)));
         }, valid, TimeSpan.FromMilliseconds(1200)).ConfigureAwait(false);
@@ -66,6 +73,8 @@ internal static class CodyDrawingTarget
     {
         var response = await Run((uia, _) =>
         {
+            if (document.Legacy != null)
+                return new Result(Data: CodyDrawingLegacyTarget.Read(document.Legacy, viewport, queries, valid));
             if (document.Tab != null)
             {
                 try
@@ -132,12 +141,16 @@ internal static class CodyDrawingTarget
         {
             var point = new Point((int)Math.Round(box.X + box.Width * fraction),
                 (int)Math.Round(box.Y + box.Height / 2));
-            var leaf = uia.ElementFromPoint(point);
+            var leaf = ElementAt(uia, document.Element, point);
             if (!Within(uia, leaf, document.Element)) continue;
             for (var node = leaf; node != null; node = walker.GetParentElement(node))
             {
                 if (uia.CompareElements(node, document.Element)) break;
                 int role = Role(node);
+                // Images have no TextPattern. Falling through to the document's
+                // nearest word can attach an icon's ring to a neighbouring heading.
+                if (role == 50006 && Bounds(node) is { } image && Fits(box, image))
+                    return new Anchor(node, null, image);
                 if (role is 50000 or 50002 or 50003 or 50005 or 50007 or 50009 or 50011 or 50013 or 50024 &&
                     Bounds(node) is { } bounds && Fits(box, bounds))
                     return new Anchor(node, null, bounds, control: true);
@@ -217,15 +230,36 @@ internal static class CodyDrawingTarget
 
     private static UiaElement DocumentAt(Uia uia, UiaElement root, Point point)
     {
-        var leaf = uia.ElementFromPoint(point);
-        if (!Within(uia, leaf, root)) return null;
-        UiaElement document = null;
-        for (var node = leaf; node != null; node = uia.RawViewWalker.GetParentElement(node))
+        var documents = root.FindAll(Descendants, uia.CreatePropertyCondition(ControlType, DocumentType));
+        for (int i = 0; i < Math.Min(documents.Length, 64); i++)
         {
-            if (uia.CompareElements(node, root)) break;
-            if (Role(node) == DocumentType) document = node;
+            var document = documents.GetElement(i);
+            if (Visible(document) && Bounds(document) is { } bounds &&
+                bounds.Contains(new PointD(point.X, point.Y))) return document;
         }
-        return document;
+        return null;
+    }
+
+    private static UiaElement ElementAt(Uia uia, UiaElement root, Point point)
+    {
+        // Hit-test inside the owner's accessibility tree. A transparent drawing
+        // window can win desktop ElementFromPoint, causing a hide/show feedback loop.
+        var hit = uia.ElementFromPoint(point);
+        if (Within(uia, hit, root)) return hit;
+        var walker = uia.RawViewWalker;
+        int remaining = 700, bestDepth = -1;
+        UiaElement best = null;
+        void Visit(UiaElement node, int depth)
+        {
+            if (node == null || depth > 48 || remaining-- <= 0 || !Visible(node)) return;
+            var rect = Bounds(node);
+            if (rect is { } bounds && !bounds.Contains(new PointD(point.X, point.Y))) return;
+            if (rect != null && depth > bestDepth) { best = node; bestDepth = depth; }
+            for (var child = walker.GetFirstChildElement(node); child != null && remaining > 0;
+                child = walker.GetNextSiblingElement(child)) Visit(child, depth + 1);
+        }
+        Visit(root, 0);
+        return best;
     }
 
     private static UiaElement FindDocument(Uia uia, UiaElement root, RectD viewport)

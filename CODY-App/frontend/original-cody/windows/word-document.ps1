@@ -7,7 +7,7 @@ function Fingerprint($document) {
     # Word exports fresh editing-session IDs even when content is unchanged.
     # Exclude those IDs while retaining text, styles, pictures and layout.
     $value=[regex]::Replace([string]$document.Content.WordOpenXML,'\s+w:rsid\w*="[^"]*"','')
-    $value=[regex]::Replace($value,'<w:rsids>.*?</w:rsids>','')
+    $value=[regex]::Replace($value,'<w:rsids>[\s\S]*?</w:rsids>','')
     $hash=[Security.Cryptography.SHA256]::Create()
     try {return [Convert]::ToBase64String($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($value)))}
     finally {$hash.Dispose()}
@@ -45,13 +45,17 @@ if($payload.mode -eq 'snapshot'){
         $remaining-=$text.Length
         $paragraphs+=@{number=$number;text=$text;style=[string]$paragraph.Range.Style.NameLocal}
     }
+    # Reading Shapes initializes Word's default shape settings in a new document.
+    # Do it before fingerprinting so this snapshot cannot invalidate its own guard.
+    $pictureCount=$doc.Shapes.Count
+    $inlinePictureCount=$doc.InlineShapes.Count
     @{
         ok=$true
         target=@{document=$doc.Name;fullName=$doc.FullName;window=[string]$word.ActiveWindow.Hwnd;
             fingerprint=(Fingerprint $doc);start=[int]$selection.Start;end=[int]$selection.End;saved=[bool]$doc.Saved}
         context=@{document=$doc.Name;paragraphs=$paragraphs;truncated=($remaining -le 0 -or $doc.Paragraphs.Count -gt 120);
             selectedText=([string]$selection.Text).Substring(0,[Math]::Min(([string]$selection.Text).Length,8000));
-            pictureCount=$doc.Shapes.Count;inlinePictureCount=$doc.InlineShapes.Count;readOnly=[bool]$doc.ReadOnly}
+            pictureCount=$pictureCount;inlinePictureCount=$inlinePictureCount;readOnly=[bool]$doc.ReadOnly}
     }|ConvertTo-Json -Depth 8 -Compress
     return
 }

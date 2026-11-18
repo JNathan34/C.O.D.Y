@@ -7,7 +7,7 @@ const localMentions = [
   {id:'tool:calculator', name:'Calculator', description:'Calculate numbers and percentages.', icon:'calculator', actions:['maths']},
   {id:'tool:settings', name:'Settings', description:'Find, open or change C.O.D.Y. settings.', icon:'settings', actions:['app-settings.open','app-settings.change']}
 ].map(item=>({...item,kind:'tool'}));
-localMentions.push({id:'plugin:word',name:'Word',description:'Draft and format your open Word document, or insert attached pictures. Try “type Hello world”.',icon:'file-text',kind:'plugin',actions:['word.edit']});
+localMentions.push({id:'plugin:word',name:'Word (Desktop)',description:'Draft and format the Word document open on this PC, or insert attached pictures. Built into C.O.D.Y.',icon:'file-text',kind:'plugin',actions:['word.edit']});
 
 function localMentionRoute(id, text, utilities) {
   const capability = localMentions.find(item=>item.id===id);

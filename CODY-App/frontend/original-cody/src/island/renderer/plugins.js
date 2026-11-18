@@ -4,15 +4,16 @@
  const $=id=>document.getElementById(id),list=$('plugins-list'),status=$('plugins-status'),pending=new Map(),busy=new Set();let browserState={offline:true},catalog=null,loading=false,filter='all',confirmRemoval=null,lastLoaded=0;
  let mediaState={services:{}};
  const mediaPanels=[...document.querySelectorAll('[data-media-panel]')];
+ const plexActions=$('plex-connection-actions');
  const visible=()=>!page.hidden&&document.body.classList.contains('settings-open');
  const element=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
  const signin=element('button','light-action','Sign in to Claude Code');signin.id='plugins-signin';signin.hidden=true;status.after(signin);
  function button(text,action,disabled=false){const node=element('button','light-action',text);node.type='button';node.disabled=disabled;node.addEventListener('click',action);return node;}
  function all(){return [
-  {id:'local-word',name:'Word',description:'Use @Word to draft and format your open document or insert pictures with text wrapping.',kind:'word',icon:'file-text',connected:false},
+  {id:'local-word',name:'Word (Desktop)',description:'Draft and format the Word document open on this PC, or insert pictures with text wrapping. Built into C.O.D.Y.',kind:'word',icon:'file-text',connected:false},
   ...['plex','overseerr'].map(id=>({id:'media-'+id,service:id,name:id==='plex'?'Plex':'Overseerr',kind:'media',
     connected:mediaState.services?.[id]?.connected===true,
-    description:id==='plex'?'View sessions and recently added titles from your Plex server.':'Search your Overseerr server and check media requests.'})),
+    description:id==='plex'?'Connect your Plex account to use your media server.':'Find movies and TV shows, request titles and check your Overseerr requests.'})),
   ...['Chrome','Edge'].map(name=>({id:'browser-'+name.toLowerCase(),name,description:'Connect '+name+' so Cody can work with its websites and tabs.',browser:name,connected:browserState.connectedBrowsers?.includes(name)===true,kind:'browser',status:'available'})),
   ...(catalog?.plugins||[]),...(catalog?.custom||[])
  ].sort((a,b)=>Number(b.connected)-Number(a.connected)||a.name.localeCompare(b.name));}
@@ -21,7 +22,7 @@
   $('plugins-signin').hidden=catalog.signedIn;
   const query=$('plugins-search').value.trim().toLocaleLowerCase(),items=all().filter(p=>(filter!=='connected'||p.connected)&&(!query||(p.name+' '+p.description).toLocaleLowerCase().includes(query)));
   $('plugins-count').textContent=items.length+' '+(items.length===1?'plugin':'plugins');
-  $('self-hosted-settings').append(...mediaPanels);
+  $('self-hosted-settings').append(...mediaPanels,plexActions);
   list.replaceChildren();
   if(!items.length){list.append(element('p','setting-help',query?'No plugins match your search.':filter==='connected'?'No plugins connected yet.':'No plugins are available yet.'));return;}
   for(const plugin of items){
@@ -30,15 +31,21 @@
    if(plugin.kind==='word'||plugin.kind==='media'){
     const icon=element('img');icon.src=plugin.kind==='word'?'assets/task-apps/word.png':'assets/media/'+plugin.service+'.svg';icon.alt='';icon.width=32;icon.height=32;heading.append(icon);
    }else if(typeof plugin.logo==='string'&&plugin.logo.startsWith('https://')){const icon=document.createElement('img');icon.src=plugin.logo;icon.alt='';icon.loading='lazy';icon.width=32;icon.height=32;icon.addEventListener('error',()=>icon.replaceWith(fallback),{once:true});heading.append(icon);}else{if(plugin.kind==='browser')window.CODYIcons?.set(fallback,'globe');heading.append(fallback);}
-   const title=element('div');title.append(element('h3','',plugin.name),element('small',plugin.connected?'plugin-connected':'',plugin.connected?'Connected':waiting?'Finish sign-in in your browser':plugin.kind==='word'?'Built-in plugin':plugin.kind==='custom'?'MCP plugin · '+plugin.status:plugin.status==='needs_reconnect'?'Needs reconnection':plugin.kind==='local'?'Local plugin':'Available'));heading.append(title);card.append(heading,element('p','plugin-description',plugin.description));
+   const connectedLabel=plugin.service==='plex'&&mediaState.services.plex?.name?'Connected · '+mediaState.services.plex.name:'Connected';
+   const title=element('div');title.append(element('h3','',plugin.name),element('small',plugin.connected?'plugin-connected':'',plugin.connected?connectedLabel:waiting?'Finish sign-in in your browser':plugin.kind==='word'?'Built-in plugin':plugin.kind==='custom'?'MCP plugin · '+plugin.status:plugin.status==='needs_reconnect'?'Needs reconnection':plugin.kind==='local'?'Local plugin':'Available'));heading.append(title);card.append(heading,element('p','plugin-description',plugin.description));
    const actions=element('div','plugin-card-actions');
    const remove=(accountId)=>{confirmRemoval={id:plugin.id,accountId};render();};
-   if(plugin.kind==='media'){
+   if(plugin.kind==='media'&&plugin.service!=='plex'){
     const panel=mediaPanels.find(item=>item.dataset.mediaPanel===plugin.service);
-    const toggle=button(plugin.connected?'Manage':'Connect',()=>{panel.hidden=!panel.hidden;toggle.setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden)panel.querySelector('input')?.focus();});
+    const toggle=button(plugin.connected?'Manage':'Connect',()=>{
+      panel.hidden=!panel.hidden;if(!panel.hidden)panel.querySelector('button,input')?.focus();
+      toggle.setAttribute('aria-expanded',String(!panel.hidden));
+    });
     toggle.setAttribute('aria-expanded',String(!panel.hidden));actions.append(toggle);
+   }else if(plugin.kind==='media'){
+    // Reuse the real Plex controls; a second proxy sign-in button is confusing.
    }else if(plugin.kind==='word'){
-    actions.append(button('Use in chat',()=>{window.CODYIsland?.setActiveView('chat');const composer=window.CODYInlineComposer;const offset=composer?.selectionOffsets()?.end??0;composer?.insertMention({id:'plugin:word',name:'Word',kind:'plugin',icon:'file-text'},offset,offset);document.getElementById('quick-input')?.focus();}));
+    actions.append(button('Use in chat',()=>{window.CODYIsland?.setActiveView('chat');const composer=window.CODYInlineComposer;const offset=composer?.selectionOffsets()?.end??0;composer?.insertMention({id:'plugin:word',name:plugin.name,kind:'plugin',icon:'file-text'},offset,offset);document.getElementById('quick-input')?.focus();}));
    }else if(plugin.kind==='browser'){actions.append(button(plugin.connected?'Manage':'Install',()=>window.CODYBrowserSetup?.open(plugin.browser),browserState.busy===true));}else if(confirmRemoval?.id===plugin.id){
     card.append(element('p','plugin-removal-question',confirmRemoval.accountId?'Disconnect this account?':'Remove access for this plugin?'));
     actions.append(button('Remove access',()=>void act(plugin,'disconnect',confirmRemoval.accountId),working),button('Cancel',()=>{confirmRemoval=null;render();},working));
@@ -50,7 +57,7 @@
     if(plugin.kind!=='custom'||plugin.canConnect)actions.append(button(working?'Working…':waiting?'Waiting for sign-in…':plugin.kind==='local'?'Configure':plugin.status==='needs_reconnect'?'Reconnect':plugin.kind==='custom'?'Connect':'Install',()=>void act(plugin,'connect'),working||waiting));
     if(plugin.kind==='custom')actions.append(button('Remove',()=>remove(),working));
    }
-   card.append(actions);
+   card.append(plugin.kind==='media'&&plugin.service==='plex'?plexActions:actions);
    if(plugin.kind==='media')card.append(mediaPanels.find(item=>item.dataset.mediaPanel===plugin.service));
    if(plugin.accounts?.length){const details=document.createElement('details');details.className='plugin-accounts';details.append(element('summary','',plugin.accounts.length+' connected '+(plugin.accounts.length===1?'account':'accounts')));for(const account of plugin.accounts){const row=element('div','plugin-account-row');row.append(element('span','',account.name),button('Disconnect',()=>remove(account.id),working));details.append(row);}card.append(details);}
    list.append(card);

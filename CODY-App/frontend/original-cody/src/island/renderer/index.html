@@ -382,23 +382,19 @@
               <p id="plugins-status" class="setting-help" role="status">Open Plugins to load the CODY catalog.</p>
               <div id="plugins-list" class="plugins-grid" aria-label="CODY plugins"></div>
               <div id="self-hosted-settings" hidden>
-                <div class="plugin-connection" data-media-panel="plex" hidden>
-                <form data-self-hosted="plex">
-                  <small id="self-hosted-plex-state" class="setting-help">Not connected</small>
-                  <label for="plex-url">Server URL</label>
-                  <input id="plex-url" name="url" type="url" placeholder="http://192.168.0.10:32400" maxlength="350" aria-label="Plex server URL" required autocomplete="off">
-                  <label for="plex-key">Plex token</label>
-                  <input id="plex-key" name="key" type="password" placeholder="Your Plex token" maxlength="1024" aria-label="Plex access token" required autocomplete="new-password">
-                  <div class="plugin-card-actions">
-                  <button type="submit" class="light-action">Connect</button>
-                  <button type="button" class="light-action" data-self-hosted-disconnect="plex">Disconnect</button>
-                  </div>
-                </form>
-                <div class="plugin-card-actions">
-                  <button type="button" class="light-action" data-self-hosted-read="plex:sessions">View sessions</button>
-                  <button type="button" class="light-action" data-self-hosted-read="plex:recent">Recently added</button>
+                <div class="plugin-connection plugin-plex-connection" data-media-panel="plex" hidden>
+                <div class="plugin-card-actions" id="plex-connection-actions">
+                  <button type="button" class="light-action" id="plex-sign-in">Sign in with Plex</button>
+                  <button type="button" class="light-action" id="plex-sign-in-cancel" hidden>Cancel sign-in</button>
+                  <button type="button" class="light-action" id="plex-test" hidden>Test connection</button>
+                  <button type="button" class="light-action" data-self-hosted-disconnect="plex" hidden>Disconnect</button>
                 </div>
-                <p class="setting-help">Your token is encrypted on this Windows account and excluded from settings backups.</p>
+                <p id="plex-sign-in-status" class="setting-help" role="status" hidden></p>
+                <form id="plex-server-form" hidden>
+                  <label for="plex-server">Media server</label>
+                  <select id="plex-server" aria-label="Plex media server" required></select>
+                  <button type="submit" class="light-action">Connect to server</button>
+                </form>
                 </div>
                 <div class="plugin-connection" data-media-panel="overseerr" hidden>
                 <form data-self-hosted="overseerr">

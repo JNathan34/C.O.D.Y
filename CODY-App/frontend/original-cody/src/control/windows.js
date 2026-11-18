@@ -20,11 +20,18 @@ const HOTKEYS=Object.freeze({
 });
 
 function psQuote(v){return "'"+String(v).replace(/'/g,"''")+"'";}
+function powerShellError(raw){
+  if(!raw.includes('#< CLIXML'))return raw;
+  const errors=[...raw.matchAll(/<S\s+S="Error"\s*>([\s\S]*?)<\/S>/g)].map(match=>match[1]);
+  if(!errors.length)return 'Windows command failed without an error message.';
+  return errors.join('').replace(/&(?:lt|gt|quot|apos|amp);/g,entity=>({'&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'",'&amp;':'&'}[entity]))
+    .replace(/_x([0-9a-f]{4})_/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16))).trim();
+}
 function runPowerShell(script,opts={}){
   return new Promise((resolve,reject)=>{
     if(process.platform!=='win32'&&!opts.allowNonWindows) return reject(Error('Windows control requires Windows'));
     if(opts.signal?.aborted)return reject(Error('Action cancelled.'));
-    const proc=(opts.spawn||spawn)('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(`$ErrorActionPreference='Stop';\n${script}`,'utf16le').toString('base64')],{windowsHide:true,stdio:[opts.input===undefined?'ignore':'pipe','pipe','pipe']});
+    const proc=(opts.spawn||spawn)('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';\n${script}`,'utf16le').toString('base64')],{windowsHide:true,stdio:[opts.input===undefined?'ignore':'pipe','pipe','pipe']});
     let out='',err='',finished=false;
     const done=(error,result)=>{if(finished)return;finished=true;clearTimeout(timer);opts.signal?.removeEventListener('abort',abort);if(error)reject(error);else resolve(result);};
     const abort=()=>{proc.kill();done(Error('Action cancelled.'));};
@@ -33,7 +40,7 @@ function runPowerShell(script,opts={}){
     proc.stdout.on('data',part=>{out+=part.toString();if(out.length>1_000_000){proc.kill();done(Error('Command output exceeded limit'));}});
     proc.stderr.on('data',part=>{err+=part.toString();if(err.length>16_000)err=err.slice(0,16_000);});
     proc.on('error',done);
-    proc.on('close',code=>done(code===0?null:Error((err||out||`Windows command exited with ${code}`).slice(0,1500)),out.trim()));
+    proc.on('close',code=>done(code===0?null:Error(powerShellError(err||out||`Windows command exited with ${code}`).slice(0,1500)),out.trim()));
     if(opts.input!==undefined){proc.stdin.on('error',error=>{if(error.code!=='EPIPE')done(error);});proc.stdin.end(opts.input,'utf8');}
   });
 }

@@ -31,6 +31,23 @@ test('Plex sessions use header token, never URLs or cloud accounts',async t=>{
  assert.equal(f.service.status().services.plex.key,undefined);
  f.service.disconnect('plex');assert.equal(f.service.status().services.plex.connected,false);
 });
+
+test('Plex connection test verifies authenticated library access and exposes no library or token',async t=>{
+ const f=fixture(t,async(url,options)=>{
+  assert.equal(url,'https://plex.example.org/library/sections');assert.equal(options.headers['X-Plex-Token'],'saved-token');
+  return {ok:true,text:async()=>JSON.stringify({MediaContainer:{size:0}})};
+ });
+ f.service.configure('plex',{url:'https://plex.example.org',key:'saved-token',account:true,name:'Home server'});
+ assert.deepEqual(await f.service.plexTest(),{ok:true,name:'Home server'});
+});
+
+test('Plex connection test rejects invalid credentials and unexpected server responses',async t=>{
+ for(const response of [{ok:false,status:401},{ok:true,text:async()=>JSON.stringify({MediaContainer:{machineIdentifier:'public-identity'}})}]){
+  const f=fixture(t,async()=>response);f.service.configure('plex',{url:'https://plex.example.org',key:'old-token'});
+  await assert.rejects(f.service.plexTest(),/rejected|did not confirm/);
+  assert.equal(f.service.status().services.plex.connected,true);
+ }
+});
 test('Overseerr search and requests use official read-only API paths',async t=>{
  const calls=[];
  const f=fixture(t,async(url,options)=>{
@@ -50,4 +67,44 @@ test('no encrypted storage means no secret is written to disk',t=>{
  const file=path.join(dir,'connections.dat'),service=new SelfHosted({file,cipher:{isEncryptionAvailable:()=>false}});
  assert.throws(()=>service.configure('plex',{url:'https://plex.example.com',key:'token'}),/encrypted/);
  assert.equal(fs.existsSync(file),false);
+});
+
+test('Overseerr key survives restart and blank-key reconnect; failed verification preserves it',async t=>{
+ const calls=[];
+ const fetcher=async(url,options)=>{calls.push({url,key:options.headers['X-Api-Key']});return {ok:options.headers['X-Api-Key']==='saved-secret',status:401,headers:{get:()=>null},text:async()=>JSON.stringify({id:1})};};
+ const f=fixture(t,fetcher);
+ await f.service.connect('overseerr',{url:'https://requests.example.org',key:'saved-secret'});
+ const service=new SelfHosted({file:f.file,cipher:f.cipher,fetcher});
+ assert.equal(service.status().services.overseerr.connected,true);
+ assert.ok(!JSON.stringify(service.status()).includes('saved-secret'));
+ await service.connect('overseerr',{url:'https://requests.example.org/',key:''});
+ assert.equal(calls.at(-1).key,'saved-secret');
+ assert.ok(calls.at(-1).url.endsWith('/api/v1/auth/me'));
+ await assert.rejects(service.connect('overseerr',{url:'https://requests.example.org',key:'bad-secret'}),/rejected/);
+ await service.connect('overseerr',{url:'https://requests.example.org',key:''});
+ await assert.rejects(service.connect('overseerr',{url:'https://other.example.org',key:''}),/Enter your/);
+ assert.equal(calls.some(call=>call.url.includes('other.example.org')),false);
+ service.disconnect('overseerr');
+ assert.equal(new SelfHosted({file:f.file,cipher:f.cipher,fetcher}).status().services.overseerr.connected,false);
+});
+
+test('Overseerr refuses fake connected status for HTML, invalid JSON identity or an unreachable server',async t=>{
+ for(const response of [{ok:true,text:async()=>'<html>Proxy login</html>'},{ok:true,text:async()=>'{}'},null]){
+  const f=fixture(t,async()=>{if(!response)throw Error('offline');return response;});
+  await assert.rejects(f.service.connect('overseerr',{url:'https://requests.example.org',key:'secret'}),/JSON|confirm|reached/);
+  assert.equal(f.service.status().services.overseerr.connected,false);assert.equal(fs.existsSync(f.file),false);
+ }
+});
+
+test('Overseerr requests resolve real API media IDs into titles and retain failed lookups',async t=>{
+ const calls=[];
+ const f=fixture(t,async(url)=>{
+  calls.push(url);
+  const data=url.includes('/request?')?{results:[{id:1,type:'movie',status:2,media:{tmdbId:42}},{id:2,type:'tv',status:1,media:{tmdbId:17}},{id:3,type:'movie',status:3,media:{tmdbId:43}}]}:url.endsWith('/movie/42')?{title:'A Film'}:url.endsWith('/tv/17')?{name:'A Show'}:null;
+  return {ok:!!data,status:404,text:async()=>JSON.stringify(data)};
+ });
+ f.service.configure('overseerr',{url:'https://requests.example.org',key:'secret'});
+ const items=await f.service.overseerrRequests();
+ assert.deepEqual(items.map(item=>[item.title,item.status]),[['A Film',2],['A Show',1],['TMDB 43',3]]);
+ assert.equal(calls.length,4);
 });

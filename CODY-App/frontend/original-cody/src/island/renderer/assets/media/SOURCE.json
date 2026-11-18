@@ -8,5 +8,8 @@
     "notes": "ViewBox restricted to the original logo symbol.",
     "source": "https://github.com/sct/overseerr/blob/98ea135f2d370faba0362d259fccf51d8fd44a16/public/logo_stacked.svg",
     "license": "LICENSE-overseerr.txt"
+  },
+  "plex": {
+    "notes": "Plex chevron redrawn as a compact symbol on a dark rounded tile."
   }
 }

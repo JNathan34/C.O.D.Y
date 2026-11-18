@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const {screenMarkState}=require('./drawing-mark-state.cjs');
 
 const assets = path.resolve(__dirname, '../run/current/Assets/Engine');
 function insert(file, anchor, code) {
@@ -26,13 +27,6 @@ insert('clicky-draw-engine.js', '      keepNotesOnly() {', `      codyScreenMark
 `);
 insert('clicky-draw-engine.js', '      cardsNow: () => ed.cardsNow(),', '      codyScreenMarks: () => ed.codyScreenMarks(),\n');
 insert('clicky-draw-native.js', '    setPieces(source)', `    codyScreenMarks() {
-      return JSON.stringify(session?.codyScreenMarks().flatMap(mark => {
-        const units = new Set();
-        for (const node of mark.nodes) {
-          const unit = unitOf(node);
-          if (unit && unit.__sent && unit.parentNode && unit.parentNode.tagName !== 'defs') units.add(unit.__n);
-        }
-        return units.size ? [{ id: mark.id, role: mark.role, bounds: mark.bounds, units: [...units] }] : [];
-      }) || []);
+      return JSON.stringify((${screenMarkState.toString()})(session, unitOf));
     },
 `);

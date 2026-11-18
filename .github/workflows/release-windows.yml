@@ -85,6 +85,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "JavaScript tests failed" }
           dotnet run --project tools/drawing-controls-tests/DrawingControlsTests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw "Native drawing checks failed" }
+          dotnet run --project tools/drawing-target-tests/DrawingTargetTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Drawing target checks failed" }
 
       - name: Restore verified native build inputs
         shell: pwsh
