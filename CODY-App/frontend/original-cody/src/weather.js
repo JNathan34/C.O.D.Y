@@ -59,7 +59,7 @@ class Weather{
     const daily=[];
     for(let i=0;i<Math.min(7,days.time.length);i++){
       const high=days.temperature_2m_max[i],low=days.temperature_2m_min[i],code=days.weather_code[i];
-      if(!Number.isFinite(high)||!Number.isFinite(low)||!Number.isInteger(code)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(days.time[i]))
+      if(!Number.isFinite(high)||!Number.isFinite(low)||!Number.isInteger(code)||!/^\d{4}-\d{2}-\d{2}$/.test(days.time[i]))
         throw Error('The weather forecast contains invalid readings.');
       daily.push({date:days.time[i],high:Math.round(high),low:Math.round(low),description:condition(code,true).description});
     }
