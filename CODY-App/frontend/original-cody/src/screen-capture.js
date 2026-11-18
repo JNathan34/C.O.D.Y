@@ -7,7 +7,7 @@ const {finalizeMp4}=require('./screen-recorder/finalize-mp4');
 const {captureScreenshot}=require('./screen-recorder/screenshot');
 function captureCommand(input,{recording=false}={}){
   const text=commandText(input).toLowerCase().replace(/[’']/g,'').replace(/[-,]/g,' ').replace(/\s+/g,' ').trim();
-  if(/^(?:save (?:that|this|the|my) (?:drawing|annotation)|save (?:this|the) annotated (?:screen|screenshot|picture)|take (?:a )?screenshot of (?:that|the|my) drawing|capture (?:the|my) annotated screen)$/.test(text))return 'annotated-screenshot';
+  if(/^(?:save (?:that|this|the|my) (?:drawing|annotation)|save (?:this|the) annotated (?:screen|screenshot|picture)(?: as (?:a )?picture)?|take (?:a )?screenshot of (?:that|the|my) drawing|capture (?:the|my) annotated screen)$/.test(text))return 'annotated-screenshot';
   if(/^(?:(?:take|capture|save|grab|make) )?(?:a |the )?(?:screenshot|screen shot|screen capture)(?: (?:of )?(?:my |the )?screen)?$/.test(text)||/^(?:take|capture|save|grab) (?:a )?(?:picture|photo) of (?:my |the )?screen$/.test(text))return 'screenshot';
   if(/^(?:capture|screenshot) (?:my|the) screen$/.test(text))return 'screenshot';
   if(/^(?:(?:start|begin) (?:a |the )?)?(?:screen recording|recording (?:my |the )?screen)$/.test(text)||/^record (?:my |the )?screen$/.test(text))return 'start';
@@ -18,7 +18,7 @@ function captureCommand(input,{recording=false}={}){
 }
 class ScreenCapture extends EventEmitter{
   constructor({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,annotations,now=Date.now,captureImage=captureScreenshot}){
-    super();Object.assign(this,{BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,now,captureImage});
+    super();Object.assign(this,{BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,annotations,now,captureImage});
     this.status='idle';this.elapsed=0;this.bytes=0;this.pending=new Map();this.tail=Promise.resolve();
     const authorize=event=>{if(event.sender!==this.worker?.webContents||event.senderFrame!==event.sender.mainFrame)throw Error('Untrusted screen recorder');};
     ipcMain.handle('screen-recorder-chunk',async(event,value)=>{
