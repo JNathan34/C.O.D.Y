@@ -58,6 +58,7 @@ const {IslandUtilities}=require('./island-utilities');
 const {RockPaperScissors}=require('./rock-paper-scissors');
 const {ScreenCapture}=require('./screen-capture');
 const {IslandMonitors}=require('./island-monitors');
+const {BrightnessMonitor}=require('./brightness-monitor');
 const {Attachments,attachmentNames,isImageAttachment}=require('./attachments');
 let attachments;
 const {ControlOverlay}=require('./control-overlay');
@@ -693,7 +694,15 @@ else app.whenReady().then(()=>{
   if(!store.data.settings.nativeHeyClickyGui){store.data.settings.nativeHeyClickyGui=true;store.settings({voiceAutoSpeak:true,assistantProvider:"heyclicky"});}
   setPersonalCodexEnabled(store.data.settings.assistantProvider==='codex');
   createWindow();createTray();
-  app.once('will-quit',()=>taskUpdates.close());
+  // Subscribe to Windows monitor brightness notifications instead of polling.
+  // Unsupported external monitors fail quietly; brightness controls still work.
+  const brightnessMonitor=new BrightnessMonitor();
+  brightnessMonitor.on('change',level=>{
+    if(['Listening','Processing','Responding'].includes(nativeEngine.status?.state))return;
+    showQuickCard({kind:'brightness',text:level+'%',detail:'Brightness',icon:'sun',level},2400);
+  });
+  brightnessMonitor.start();
+  app.once('will-quit',()=>{brightnessMonitor.stop();taskUpdates.close();});
   let nativeVoiceVolume;
   const syncVoiceVolume=({voiceVolume:volume})=>{
     if(volume===nativeVoiceVolume)return;
