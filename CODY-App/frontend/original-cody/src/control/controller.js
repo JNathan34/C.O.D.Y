@@ -108,8 +108,9 @@ function actionSummary(action,args,context={}){
   return `${ACTIONS[action].description}\n\n${value}`;
 }
 class ComputerController {
-  constructor({readPermissions,writePermissions,getWorkingFolder,confirm,runner,clipboard,desktopCapturer,logAction,developerRunner,browserBridge,spotify,annotations,scene,captures,visualLedger}={}){
+  constructor({readPermissions,writePermissions,getWorkingFolder,confirm,runner,clipboard,desktopCapturer,logAction,developerRunner,browserBridge,spotify,annotations,scene,captures,visualLedger,canUseLocalTools=()=>true}={}){
     this.annotations=annotations;
+    this.canUseLocalTools=canUseLocalTools;
     Object.assign(this,{scene,captures,visualLedger});
     this.spotify=spotify;
     this.readPermissions=readPermissions||(()=>DEFAULT_PERMISSIONS);
@@ -136,6 +137,10 @@ class ComputerController {
   }
   catalog(){return availableActions(this.permissions());}
   async execute(action,args={},context={origin:'gui'}){
+    // A mode can deny local quick tools, but cannot grant a permission.
+    // Native background agent permissions remain independent.
+    const restricted=new Set(['applications','windows','keyboardMouse','uiAutomation','browserRead','browserInteract','clipboard','screenshots','filesRead','filesWrite','developerTools']);
+    if(restricted.has(ACTIONS[action]?.permission)&&!this.canUseLocalTools())throw Error('Local computer tools are paused in this mode. Switch to Normal or Work mode.');
     const e=permissionError(action,this.permissions());if(e)throw Error(e);
     let clean=ensureArgs(action,args);
     const scope=accessScope(this.permissions().level,this.getWorkingFolder(),action,clean);
