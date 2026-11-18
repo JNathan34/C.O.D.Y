@@ -15,6 +15,7 @@ const {validate:validateDrawing}=require('../annotations/schema');
 const {validate:validateScene}=require('../visuals/schema');
 const {splitMetadata}=require('../visuals/ledger');
 const {splitApps,validateSplitApps,appPin,focusOrLaunchApp}=require('./app-layout');
+const {editWord,validateWordArgs}=require('./word-edit');
 const {normalizeApp}=require('../app-commands');
 const {validateSystemArgs,buildSystemScript}=require('./system-settings');
 const {validateDiscordArgs,runDiscordCommand}=require('./discord');
@@ -36,6 +37,7 @@ function ensureArgs(action,args){
     case 'app.open':return {app:str(args.app,60,'application').toLowerCase()};
     case 'app.split':return {apps:validateSplitApps(args.apps)};
     case 'text.proofread':if(args.target!==undefined&&(typeof args.target!=='string'||!/^[a-f0-9-]{36}$/i.test(args.target)))throw Error('Invalid text target');return args.target?{target:args.target}:{};
+    case 'word.edit':return validateWordArgs(args);
     case 'window.pin':{const app=normalizeApp(args.app);if(!app||typeof args.pinned!=='boolean')throw Error('Choose a supported app and pin state.');return {app,pinned:args.pinned};}
     case 'audio.set':return {level:integer(args.level,0,100,'volume')};
     case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':return validateDiscordArgs(action,args);
@@ -176,7 +178,8 @@ class ComputerController {
       }
       case 'app.open':result=await focusOrLaunchApp(clean.app,{runner:this.runner});break;
       case 'app.split':result=await splitApps(clean.apps,{runner:this.runner});break;
-      case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);break;
+      case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);if(typeof result?.changed!=='boolean')throw Error('Spelling correction outcome was not verified.');break;
+      case 'word.edit':result=await editWord(clean,{runner:this.runner});break;
       case 'window.pin':result=await appPin(clean.app,clean.pinned,{runner:this.runner});break;
       case 'audio.set':result=this.nativeAudio?await this.nativeAudio.set(clean.level):await this.runner(windows.audioSet(clean.level));break;
       case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':result=await runDiscordCommand(action,clean,{runner:this.runner,signal:context.signal});break;
