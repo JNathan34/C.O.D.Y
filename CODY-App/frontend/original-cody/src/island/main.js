@@ -53,6 +53,7 @@ const DEFAULTS = Object.freeze({
   sunglassesEnabled: true,
   pretendSleepEnabled: true,
   wifiReactions: true,
+  weatherUnit: 'celsius', weatherCity: '',
   showMediaWidget: true,
   animationSpeed: 'normal', // slow | normal | fast | off
   revealStyle: 'liquid', // liquid | simple | none
@@ -145,6 +146,8 @@ function validateSettings(patch, old = settings) {
   next.micSensitivity = Number.isFinite(next.micSensitivity)?Math.min(2,Math.max(.5,next.micSensitivity)):1;
   next.voiceId = String(next.voiceId).slice(0,250);
   next.micDeviceId = String(next.micDeviceId).slice(0,250);
+  if(!['celsius','fahrenheit'].includes(next.weatherUnit))next.weatherUnit='celsius';
+  next.weatherCity=String(next.weatherCity||'').trim().slice(0,100);
   next.schemaVersion = 7;
   return next;
 }
