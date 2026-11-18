@@ -42,6 +42,44 @@ class Weather{
     this.location={latitude:place.latitude,longitude:place.longitude,label:place.city||place.region||'your area',approximate:true,expiresAt:this.now()+30*60*1000};
     return this.location;
   }
+  async forecast(name=''){
+    const place=await this.locate(name);
+    const data=await this.json('https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({
+      latitude:String(place.latitude),longitude:String(place.longitude),
+      hourly:'temperature_2m,precipitation_probability,weather_code',
+      daily:'temperature_2m_max,temperature_2m_min,weather_code',
+      temperature_unit:'celsius',timezone:'auto',forecast_days:'7'
+    }));
+    const days=data.daily,hours=data.hourly;
+    if(!Array.isArray(days?.time)||days.time.length<3||
+      !Array.isArray(days.temperature_2m_max)||!Array.isArray(days.temperature_2m_min)||
+      !Array.isArray(days.weather_code)||!Array.isArray(hours?.time)||
+      !Array.isArray(hours.temperature_2m)||!Array.isArray(hours.precipitation_probability))
+      throw Error('Hourly and weekly forecast data is unavailable.');
+    const daily=[];
+    for(let i=0;i<Math.min(7,days.time.length);i++){
+      const high=days.temperature_2m_max[i],low=days.temperature_2m_min[i],code=days.weather_code[i];
+      if(!Number.isFinite(high)||!Number.isFinite(low)||!Number.isInteger(code)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(days.time[i]))
+        throw Error('The weather forecast contains invalid readings.');
+      daily.push({date:days.time[i],high:Math.round(high),low:Math.round(low),description:condition(code,true).description});
+    }
+    const stamp=typeof data.current?.time==='string'?data.current.time:hours.time[0];
+    const first=hours.time.findIndex(t=>t>=stamp);
+    if(first<0)throw Error('The hourly forecast is unavailable.');
+    const hourly=[];
+    for(let i=first;i<Math.min(first+6,hours.time.length);i++){
+      const temperature=hours.temperature_2m[i],rain=hours.precipitation_probability[i];
+      if(!Number.isFinite(temperature)||!Number.isFinite(rain)||rain<0||rain>100)throw Error('The hourly forecast contains invalid readings.');
+      hourly.push({time:hours.time[i],temperature:Math.round(temperature),rain:Math.round(rain)});
+    }
+    if(hourly.length<3)throw Error('The hourly forecast is incomplete.');
+    const summary=daily.slice(0,3).map((day,i)=>
+      `${i===0?'Today':i===1?'Tomorrow':day.date}: ${day.low}–${day.high}°C, ${day.description}`).join('; ');
+    return {reply:`Weather forecast for ${place.label}. ${summary}. Next six hours: ${hourly.map(h=>h.temperature+'°C ('+h.rain+'% rain)').join(', ')}.`,
+      card:{kind:'weather',text:daily[0].high+'°C high',detail:place.label,icon:condition(days.weather_code[0],true).icon,
+        tooltip:'Seven-day forecast in Celsius; weather data from Open-Meteo.'},
+      days:daily,hours:hourly,location:place.label};
+  }
   async current(name=''){
     const key=name.trim().toLowerCase()||'@current-location',cached=this.cache.get(key);
     if(cached&&cached.expiresAt>this.now())return cached.result;
