@@ -4,7 +4,7 @@ const {rank}=require('./retrieval'),{digest}=require('./import');
 const PROVIDERS=['codex','heyclicky','chatgpt'];
 const KINDS=['local-memory','imported-memory','conversation-history','project-context','codex-history'];
 const MAX_LOCAL_BACKUP_NOTES=15000;
-const secret=/(?:\bsk-(?:proj-)?[\w-]{16,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password)\s*[:=]\s*\S{8,})/i;
+const secret=/(?:\bsk-(?:proj-)?[\w-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}|\bxox[baprs]-[A-Za-z0-9-]{12,}|\bBearer\s+[A-Za-z0-9._-]{16,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|client[_ -]?secret)\s*[:=]\s*\S{8,})/i;
 function grants(value={}){if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!PROVIDERS.includes(k))||Object.values(value).some(v=>typeof v!=='boolean'))throw Error('Invalid memory sharing permissions');return Object.fromEntries(PROVIDERS.map(p=>[p,value[p]===true]));}
 class MemoryService{
  constructor({directory,cipher}){if(!cipher?.isEncryptionAvailable())throw Error('Windows encrypted storage is unavailable. Memory is disabled.');this.cipher=cipher;fs.mkdirSync(directory,{recursive:true});const {DatabaseSync}=require('node:sqlite');this.db=new DatabaseSync(path.join(directory,'memory.sqlite'));this.db.exec('PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,payload BLOB NOT NULL); CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,source_id TEXT NOT NULL,fingerprint TEXT NOT NULL,payload BLOB NOT NULL,UNIQUE(source_id,fingerprint));');}

@@ -166,7 +166,7 @@ body.panel-open.settings-open .island-timer{left:57px}
 .island-media-controls button:hover{background:#23402d;color:#fff}
 body.panel-open .island-media-controls{background:#101114}
 .media-music-notes{--note-size:calc(var(--mascot-size) * .29);position:absolute;inset:0;opacity:0;transition:opacity 180ms ease;pointer-events:none}
-.music-note{position:absolute;width:var(--note-size);height:var(--note-size);background:#36ddff;mask:url('assets/icons/music-2.svg') center/contain no-repeat;filter:drop-shadow(0 0 1.5px #00bdebb3);animation:media-note-float calc(3.8s * var(--motion-factor)) ease-in-out infinite;animation-play-state:paused}
+.music-note{position:absolute;width:var(--note-size);height:var(--note-size);background:#36ddff;mask:url('assets/icons/music-2.svg') center/contain no-repeat;animation:media-note-float calc(3.8s * var(--motion-factor)) ease-in-out infinite;animation-play-state:paused}
 .music-note-left{left:-24%;top:56%;animation-delay:-1.3s;rotate:-13deg}
 .music-note-high{right:-28%;top:7%;animation-delay:-2.7s;rotate:12deg}
 .music-note-low{right:-29%;top:66%;animation-delay:-.4s;rotate:7deg}
@@ -424,3 +424,14 @@ body[data-motion="off"][data-microphone="restored"] .microphone-slash-mask{opaci
 .mention-chip .mention-icon svg,.mention-chip .mention-icon img{width:14px;height:14px}
 .mention-remove{display:grid;place-items:center;min-width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:inherit;cursor:pointer}
 .mention-remove:hover,.mention-remove:focus-visible{background:#3b526e;outline:1px solid var(--ui-accent)}
+
+/* The in-app Reduced motion option must cover the same secondary effects as
+   the Windows accessibility option, including idle expressions and notices. */
+body[data-motion="off"] .media-music-notes,
+body[data-motion="off"] .island-info,
+body[data-motion="off"] .mascot{transition:none!important}
+body[data-motion="off"].timer-finished .island-timer,
+body[data-motion="off"][data-expression="squint"] #face-eyes,
+body[data-motion="off"] .island-info[data-discord-mic-changed="true"] #island-info-icon,
+body[data-motion="off"] .island-info[data-discord-mic-changed="true"] .discord-mic-slash{animation:none!important}
+body[data-motion="off"][data-expression="squint"] #face-eyes{transform:scaleY(.45)}

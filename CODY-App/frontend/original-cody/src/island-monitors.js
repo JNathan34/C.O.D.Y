@@ -6,7 +6,21 @@ const {Weather,parseWeatherRequest}=require('./weather');
 const METRICS=['cpu','ram','gpu','fps','wifi','wifiDetails','wifiSpeed','speedtest','clock','weather'];
 const canonicalMetric=id=>({cpuTemp:'cpu',gpuTemp:'gpu'})[id]||id;
 const aliases={cpu:'cpu','cpu usage':'cpu',processor:'cpu','processor usage':'cpu',temp:'cpuTemp',temperature:'cpuTemp','cpu temp':'cpuTemp','cpu temperature':'cpuTemp',ram:'ram',memory:'ram','ram usage':'ram','memory usage':'ram',gpu:'gpu','gpu usage':'gpu','gpu temp':'gpuTemp','gpu temperature':'gpuTemp',fps:'fps','fps counter':'fps','desktop fps':'fps','frame rate':'fps',wifi:'wifi','wi fi':'wifi','wifi details':'wifiDetails','wi fi details':'wifiDetails','wifi speed':'wifiSpeed','wi fi speed':'wifiSpeed','network speed':'wifiSpeed','speed test':'speedtest'};
+function diagnoseConnection({wifi,stale=false,rx=null,tx=null,latency=null}={}){
+  if(stale||!wifi)return 'Windows has not returned a current Wi-Fi reading. Check that Wi-Fi is enabled, then retry. An Ethernet connection may still be working.';
+  if(wifi.connected===false)return 'Windows reports Wi-Fi disconnected. Check flight mode, the network password, and whether your router is online. Reconnect before running an Internet speed test.';
+  if(wifi.connected!==true)return 'Wi-Fi status is unavailable. Verify the adapter in Windows Network settings.';
+  const signal=Number.isFinite(wifi.signal)?wifi.signal:null;
+  const link=Number(wifi.receiveMbps||wifi.linkMbps);
+  const signalDescription=signal===null?'signal unknown':signal<40?'weak signal':signal<65?'fair signal':'good signal';
+  const linkDescription=link>0?' Link speed '+Math.round(link)+' Mbps is the router connection, not Internet download speed.':' Link speed is unavailable.';
+  const traffic=Number.isFinite(rx)&&Number.isFinite(tx)?' Current traffic: download '+rx.toFixed(1)+' Mbps, upload '+tx.toFixed(1)+' Mbps. This is activity, not maximum speed.':'';
+  const ping=Number.isFinite(latency)?' Last measured Internet latency '+Math.round(latency)+' ms.':'';
+  const advice=signal!==null&&signal<65?' Move closer to the access point or try a better-positioned Wi-Fi band.':' If pages are still slow, check other devices or run a speed test explicitly.';
+  return 'Connected to '+(wifi.ssid||'Wi-Fi')+' ('+signalDescription+(signal===null?'':', '+signal+'%')+').'+linkDescription+traffic+ping+advice;
+}
 function monitorCommand(input){
+  if(/^(?:diagnose|troubleshoot|check|test) (?:my |the )?(?:wifi|wi fi|network|internet|connection)(?: (?:connection|problems?|issues?|health))?$|^(?:why is my (?:wifi|wi fi|internet|connection) slow)$/.test(commandText(input).toLowerCase().replace(/wi-fi/g,'wifi')))return {action:'diagnose'};
   const explicitDisplay=/^(?:show|display|monitor|keep showing|pin)(?: me)?\s/i.test(commandText(input,{preserveShow:true}));
   let text=commandText(input).toLowerCase().replace(/[’']/g,'').replace(/wi-fi/g,'wifi').trim();
   if(explicitDisplay)text=text.replace(/\s+(?:(?:24\s*\/\s*7|24\s+7|all the time|permanently|always)|(?:on|in) (?:the |my )?island)$/,'');
@@ -48,6 +62,11 @@ class IslandMonitors extends EventEmitter{
   async execute(route){
     if(route.metrics){route={...route,metrics:[...new Set(route.metrics.map(canonicalMetric))]};if(route.metrics.some(id=>!METRICS.includes(id)))throw Error('Unknown Island monitor.');}
     if(route.weatherLocation!==undefined&&(typeof route.weatherLocation!=='string'||route.weatherLocation.length>100||!route.metrics?.includes('weather')))throw Error('Invalid weather location.');
+    if(route.action==='diagnose'){
+      // No background download or latency test: diagnostics use current local readings.
+      const stale=!this.windowsUpdatedAt||this.now()-this.windowsUpdatedAt>20000;
+      return {reply:diagnoseConnection({wifi:this.data.wifi,stale,rx:this.rx,tx:this.tx,latency:this.lastLatency}),confirmation:'Connection checked.'};
+    }
     if(route.action==='clear'){this.selected.clear();this.resetFps();this.weatherGeneration++;this.weatherPending=null;this.speedAbort?.abort();this.save();this.publish();return {reply:'Island monitors cleared.',confirmation:'Done.'};}
     if(route.action==='hide'){for(const metric of route.metrics)this.selected.delete(metric);if(route.metrics.includes('fps'))this.resetFps();if(route.metrics.includes('weather')){this.weatherGeneration++;this.weatherPending=null;}if(!this.selected.has('speedtest'))this.speedAbort?.abort();this.save();this.publish();return {reply:'Stopped showing '+route.metrics.map(id=>id.replace(/([A-Z])/g,' $1').toLowerCase()).join(' and ')+'.',confirmation:'Done.'};}
     if(route.action==='speedtest'){
@@ -162,10 +181,10 @@ class IslandMonitors extends EventEmitter{
       let start=performance.now();const down=await request('https://speed.cloudflare.com/__down?bytes=20000000');let bytes=0;for await(const chunk of down.body)bytes+=chunk.byteLength;const download=bytes*8/(performance.now()-start)/1000;
       this.values.speedtest={text:'Speed test',detail:'Measuring upload…'};this.publish();
       const uploadBytes=4000000;start=performance.now();await (await request('https://speed.cloudflare.com/__up',{method:'POST',body:new Uint8Array(uploadBytes),headers:{'Content-Type':'application/octet-stream'}})).arrayBuffer();const upload=uploadBytes*8/(performance.now()-start)/1000;
-      this.values.speedtest={text:'↓'+download.toFixed(1)+' Mbps',detail:'↑'+upload.toFixed(1)+' Mbps',tooltip:`${Math.round(latency)} ms latency · approximate Internet speed via Cloudflare`};
+      this.lastLatency=latency;this.values.speedtest={text:'↓'+download.toFixed(1)+' Mbps',detail:'↑'+upload.toFixed(1)+' Mbps',tooltip:`${Math.round(latency)} ms latency · approximate Internet speed via Cloudflare`};
     }catch(error){this.values.speedtest={text:'Speed test',detail:controller.signal.aborted?'Stopped or timed out':error.message};}
     finally{clearTimeout(timer);this.speedRunning=false;this.speedAbort=null;this.save();this.publish();}
   }
   close(){this.closed=true;this.resetFps();this.weatherGeneration++;clearInterval(this.timer);this.speedAbort?.abort();this.child?.kill();}
 }
-module.exports={IslandMonitors,monitorCommand};
+module.exports={IslandMonitors,monitorCommand,diagnoseConnection};

@@ -37,6 +37,8 @@ const {formatWebPrompt}=require('./cody-persona');
 const {inspectQuota,quotaMessage}=require('./quota');
 const {routeRequest,isExpensive,localAnswer,localCard,validateFolder}=require('./router');
 const {ComputerController}=require('./control/controller');
+const {ActionAudit}=require('./control/action-audit');
+const {AssistantModes}=require('./assistant-modes');
 const {parseDirectAction}=require('./control/parser');
 const {FirefoxBridge}=require('./control/firefox-bridge');
 const {buildWebActionPrompt,parseActionReply,stripTrailingActionDraft}=require('./control/web-actions');
@@ -65,6 +67,7 @@ const {ControlOverlay}=require('./control-overlay');
 const {KeywordWakeListener}=require('./voice/keyword-wake-listener');
 let controlOverlay,wakeListener;
 const nativeEngine=new NativeEngine();
+let actionAudit,assistantModes;
 async function openPreferredWebLink(rawUrl){
   const url=new URL(rawUrl);
   if(!['http:','https:'].includes(url.protocol))throw Error('Expected an HTTP or HTTPS link.');
@@ -237,7 +240,11 @@ function registerIpc(){
   ipcMain.handle('firefox-status',e=>{fromCody(e);return firefoxBridge?.status()||{connected:false,error:'Bridge not initialized'};});
   ipcMain.handle('firefox-smoke-test',async e=>{fromCody(e);if(!firefoxBridge?.status().connected)throw Error('Firefox is not ready; check the add-on connection first.');return testFirefoxTools(controller);});
   ipcMain.handle('computer-catalog',e=>{fromCody(e);return controller.catalog()});
-  ipcMain.handle('computer-audit',e=>{fromCody(e);const fs=require('node:fs');try{return fs.readFileSync(path.join(app.getPath('userData'),'control-audit.jsonl'),'utf8').split('\n').filter(Boolean).slice(-80).map(line=>JSON.parse(line))}catch{return []}});
+  ipcMain.handle('computer-audit',e=>{fromCody(e);return actionAudit?.recent()||[];});
+  ipcMain.handle('assistant-modes-list',e=>{fromAnnotationUI(e);return assistantModes.list();});
+  ipcMain.handle('assistant-modes-activate',(e,id)=>{fromAnnotationUI(e);const result=assistantModes.activate(id);sendUI('settings-changed',store.data.settings);return result;});
+  ipcMain.handle('assistant-modes-save',(e,name)=>{fromAnnotationUI(e);return assistantModes.save(name);});
+  ipcMain.handle('assistant-modes-delete',(e,id)=>{fromAnnotationUI(e);return assistantModes.remove(id);});
   ipcMain.handle('computer-emergency-stop',async e=>{fromCody(e);controller.configure({enabled:false});activeTurn?.abortController?.abort();if(activeTurn?.engine==='web')await webBrowser?.stop();sendUI('settings-changed',store.data.settings);sendUI('activity',{text:'Emergency stop: Windows controls disabled'});updateTrayMenu();return {stopped:true}});
   ipcMain.handle('computer-permissions',e=>{fromCody(e);return controller.permissions()});
   ipcMain.handle('computer-configure',async(e,settings)=>{
@@ -590,6 +597,8 @@ if(!singleInstance)app.quit();
 else app.whenReady().then(()=>{
   nativeTheme.themeSource='dark';app.setAppUserModelId(branding.appId);
   store=new StateStore(app.getPath('userData'));
+  assistantModes=new AssistantModes({file:path.join(app.getPath('userData'),'assistant-modes.json'),island,store,
+    onChange:()=>sendUI('settings-changed',store.data.settings)});
   updates=new UpdateService({version:app.getVersion(),packaged:app.isPackaged,
     createUpdater:()=>require('electron-updater').autoUpdater,
     enabled:store.data.settings.checkForUpdates!==false,
@@ -633,12 +642,13 @@ else app.whenReady().then(()=>{
   firefoxBridge=new FirefoxBridge({sessionId:firefoxSessionId});
   firefoxBridge.on('status',status=>{sendUI('firefox-status',status);sendUI('activity',{text:status.connected?'Firefox extension connected':'Firefox extension offline'+(status.error?': '+status.error:'')});});
   try{firefoxBridge.start()}catch(e){sendUI('diagnostic','Firefox bridge: '+e.message);}
+  actionAudit=new ActionAudit(path.join(app.getPath('userData'),'control-audit.jsonl'));
   controller=new ComputerController({
     readPermissions:()=>store.data.settings.computerControl,
     writePermissions:settings=>{store.settings({computerControl:settings});if(nativeEngine.connected&&(store.data.settings.nativePermissions?.enabled!==settings.enabled||store.data.settings.nativePermissions?.level!==settings.level))void nativeEngine.request("permissions-configure",{enabled:settings.enabled,level:settings.level}).catch(error=>sendUI("diagnostic",error.message));},
     getWorkingFolder:()=>store.data.settings.workingFolder,
     clipboard,desktopCapturer,browserBridge:firefoxBridge,spotify,annotations,scene,captures,visualLedger,
-    logAction:event=>{backendCapabilities.observe(event);const fs=require('node:fs');const file=path.join(app.getPath('userData'),'control-audit.jsonl');try{fs.appendFileSync(file,JSON.stringify({at:new Date().toISOString(),...event})+'\n',{encoding:'utf8'});}catch{}},
+    logAction:event=>{backendCapabilities.observe(event);actionAudit.append(event);},
     confirm:async({action,summary})=>{
       const id='local-'+require('node:crypto').randomUUID();
       return new Promise(resolve=>{pendingApprovals.set(id,{id,resolve});sendUI('approval',{id,reason:`Allow C.O.D.Y to perform ${action}?`,command:summary});island.show();});
@@ -657,7 +667,7 @@ else app.whenReady().then(()=>{
   let lastSavedCapture=null;screenCapture.on('change',state=>{sendUI('capture-state',state);refreshIslandCards();if(state.status==='starting')island.collapse();if(state.status==='saved'&&state.savedPath!==lastSavedCapture){lastSavedCapture=state.savedPath;showQuickCard({kind:'utility',text:'Recording saved',detail:'Click to open',icon:'camera',captureKind:'recording'});}if(state.status==='error')showQuickCard({kind:'utility',text:'Recording error',detail:state.error,icon:'circle-alert'});});
   monitors=new IslandMonitors({settingsFile:path.join(app.getPath('userData'),'island-monitors.json'),weather,readDesktopFrames:()=>nativeEngine.request('desktop-frames'),fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact({automatic:true});lastMonitorActive=state.active;});
-  const islandUtilities=new IslandUtilities({tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,appSettings:{show:island.showSettings,update:island.updatePreferences},showCompact:()=>{island.showCompact({automatic:true});if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
+  const islandUtilities=new IslandUtilities({modes:assistantModes,tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,appSettings:{show:island.showSettings,update:island.updatePreferences},showCompact:()=>{island.showCompact({automatic:true});if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
   attachments=new Attachments({store,onChange:state=>sendUI('attachments-state',state),encodeImage:bytes=>{
     const image=nativeImage.createFromBuffer(bytes);
     if(image.isEmpty())return null;
@@ -694,6 +704,9 @@ else app.whenReady().then(()=>{
   if(!store.data.settings.nativeHeyClickyGui){store.data.settings.nativeHeyClickyGui=true;store.settings({voiceAutoSpeak:true,assistantProvider:"heyclicky"});}
   setPersonalCodexEnabled(store.data.settings.assistantProvider==='codex');
   createWindow();createTray();
+  const syncWeather=({weatherUnit,weatherCity})=>weather.configure({unit:weatherUnit,city:weatherCity});
+  island.onPreferencesChanged(syncWeather);
+  syncWeather(island.preferences());
   // Subscribe to Windows monitor brightness notifications instead of polling.
   // Unsupported external monitors fail quietly; brightness controls still work.
   const brightnessMonitor=new BrightnessMonitor();
