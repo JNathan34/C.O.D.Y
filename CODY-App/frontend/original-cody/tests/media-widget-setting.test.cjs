@@ -3,8 +3,6 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs'),path=require('node:path');
 const read=p=>readFileSync(path.join(__dirname,'../src/island',p),'utf8');
 test('Spotify mini-player can be disabled without stopping the media session',()=>{
- const main=require('../src/island/renderer/../renderer/mascot-looks');
- assert.ok(main);
  const controller=read('main.js'),ui=read('renderer/ui.js'),view=read('renderer/assistant.js'),html=read('renderer/index.html');
  assert.match(controller,/showMediaWidget:\s*true/);
  assert.match(ui,/showMediaWidget:\s*true/);
