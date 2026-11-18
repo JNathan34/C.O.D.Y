@@ -142,7 +142,7 @@ class ComputerController {
     clean=scope.args;
     const policy=ACTIONS[action];
     if(!['gui','chat','ai-chat'].includes(context.origin))throw Error('Invalid action origin');
-    if(policy.directOnly&&context.origin!=='chat')throw Error('Use a direct C.O.D.Y. command for Discord control.');
+    if(policy.directOnly&&context.origin!=='chat')throw Error('Use a direct C.O.D.Y. command for this action.');
     if(context.origin==='ai-chat'&&context.verifiedUserIntent!==true)throw Error('AI-origin control requires a verified human request');
     const human=context.humanTask||'';
     const explicitPaste=/^\s*(?:(?:please|can you|could you|would you)\s+)*(?:paste|(?:press|use|hit)\s+(?:ctrl|control)\s*\+\s*v)\b/i.test(human);
@@ -154,7 +154,7 @@ class ComputerController {
     if(action==='browser.keypress'&&((clean.key.toLowerCase()==='v'&&clean.modifiers.some(key=>key==='ctrl'||key==='meta'))||
       (clean.key.toLowerCase()==='insert'&&clean.modifiers.includes('shift'))))
       throw Error('Use foreground Computer Use for an explicitly requested paste into Firefox.');
-    if(context.origin==='chat' && policy.risk!=='low'&&!['full','custom'].includes(this.permissions().level))throw Error('This action requires the dedicated controls in the C.O.D.Y GUI');
+    if(context.origin==='chat' && policy.risk!=='low'&&action!=='word.edit'&&!['full','custom'].includes(this.permissions().level))throw Error('This action requires the dedicated controls in the C.O.D.Y GUI');
     if(needsApproval(action,this.permissions(),context.origin,{args:clean,humanTask:context.humanTask||''})){
       // Profile is enforced here, not by the renderer or model-generated text.
       if(!await this.confirm({action,summary:actionSummary(action,clean,context)+(context.origin==='ai-chat'&&action==='screen.capture'&&context.deliverImage===true?'\n\nThis screenshot will be attached to the current ChatGPT request in the cloud for visual inspection.':context.origin==='ai-chat'&&(['file.read','files.read','desktop.inspect','clipboard.read'].includes(action))?'\n\nData from this action may be sent to ChatGPT in the cloud.':'')})){try{this.logAction({action,status:'denied',origin:context.origin});}catch{}return {cancelled:true};}
