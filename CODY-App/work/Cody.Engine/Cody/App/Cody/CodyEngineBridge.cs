@@ -32,7 +32,7 @@ public static class CodyEngineBridge
         string target=CodyJobReports.CancellationTarget(host,host.ClickyDrive?.CodyOwningThread,turn,host.ClickyDrive?.ClaimsEscape!=true&&host.Services.Companion.State==VoiceState.Idle);
         if(target!=null)_=StopTask(target);
         host.ClickyDrive?.HandleEscape();
-        CodyProofread.Cancel();StopSpeech();host.Services.Companion.Cancel();
+        CodyProofread.Cancel();CodyWordPlan.Cancel();StopSpeech();host.Services.Companion.Cancel();
         Emit("operation-cancelled",new{taskId=target,turn});
         escapeWork=false;
     }
@@ -306,6 +306,9 @@ public static class CodyEngineBridge
                     case "text-client": CodyProofread.Client(request.GetProperty("clientPid").GetInt32());return new{registered=true};
                     case "text-capture":return new{target=await CodyProofread.Capture(request.GetProperty("clientPid").GetInt32())};
                     case "proofread":return await CodyProofread.Run(host,Text("target"));
+                    case "word-plan":
+                        if(session.State!=VoiceState.Idle)throw new InvalidOperationException("Finish the current voice session before drafting a Word document.");
+                        return await CodyWordPlan.Generate(host,Text("text"),Text("context"),Text("assets"));
                     case "drive-stop": CancelCurrent();return new {stopped=true};
                     case "approval-state":
                         host.ClickyDriveConsent?.SyncCodyApprovals();Consent.Sweep();return Consent.Snapshot();
@@ -414,7 +417,7 @@ public static class CodyEngineBridge
                         catch(OperationCanceledException) when(routedUtility != null||voiceControlStopped) { }
                         finally { voiceEnding = false; }
                         return new { text = session.ResponseText, utilityText = routedUtility, transcript = lastTranscript,controlStopped=voiceControlStopped };
-                    case "cancel": voiceStartGeneration++;CodyIndependentInput.End();host.ClickyDrive?.HandleEscape();CodyProofread.Cancel();StopSpeech(); session.Cancel(); return new { cancelled = true };
+                    case "cancel": voiceStartGeneration++;CodyIndependentInput.End();host.ClickyDrive?.HandleEscape();CodyProofread.Cancel();CodyWordPlan.Cancel();StopSpeech(); session.Cancel(); return new { cancelled = true };
                     case "fresh": session.StartFreshSession(); return new { fresh = true };
                     case "clear": host.Real.ClearDrawings(); return new { cleared = true };
                     case "clear-2d-drawings": await host.Real.ClearTwoDimensionalDrawings(); return new { cleared = true };

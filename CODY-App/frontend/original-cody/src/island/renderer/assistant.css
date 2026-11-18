@@ -262,6 +262,11 @@ select:open{border-color:var(--ui-accent,#9d9dff);box-shadow:0 0 0 2px #9d9dff1c
   select option:checked{background:#9d9dff21;color:#e3dfff}
   select option:disabled{color:#737988;cursor:default;background:transparent}
   select option::checkmark{content:'';width:13px;height:13px;order:2;margin-left:auto;background:#bcb4ff;mask:url('assets/icons/check.svg') center/contain no-repeat}
+  #preferred-browser>button{min-width:0;font:inherit;color:inherit}
+  #preferred-browser .browser-option{display:flex;align-items:center;min-width:0;gap:8px;text-align:left}
+  #preferred-browser .browser-option-icon{display:grid;place-items:center;flex:0 0 16px;width:16px;height:16px;color:#adb2c1}
+  #preferred-browser .browser-option-icon :is(img,svg){display:block;width:100%;height:100%;object-fit:contain}
+  #preferred-browser selectedcontent .browser-option-label{overflow:hidden;text-overflow:ellipsis}
   #core-mode::picker(select){position-area:top span-right;position-try-fallbacks:flip-block;inset:auto;margin:0 0 6px}
   select[data-picker-ready]::picker(select),#core-mode[data-picker-ready]::picker(select){position:fixed;position-area:none;position-try-fallbacks:none;inset:auto;left:var(--picker-left);top:var(--picker-top);bottom:var(--picker-bottom);width:var(--picker-width);min-width:var(--picker-width);max-width:var(--picker-width);max-height:var(--picker-height);margin:0}
 }

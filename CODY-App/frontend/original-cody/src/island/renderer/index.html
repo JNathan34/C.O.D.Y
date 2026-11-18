@@ -201,7 +201,12 @@
               <div class="settings-group">
                 <label class="setting-row"><span><strong>Launch at login</strong><small>Start C.O.D.Y. when you sign into Windows. Requires a packaged app.</small></span><input type="checkbox" data-pref="launchAtLogin" aria-label="Launch at login"></label>
                 <label class="setting-row"><span><strong>Music mini-player</strong><small>Show playback information, album art and media controls in the Dynamic Island.</small></span><input type="checkbox" data-pref="showMediaWidget" aria-label="Show music mini-player"></label>
-                <label class="setting-row"><span><strong>Preferred browser</strong><small>Choose which browser C.O.D.Y. uses for web links and browser tasks.</small></span><select id="preferred-browser" aria-label="Preferred browser" aria-describedby="preferred-browser-status" disabled><option value="system">Windows default</option></select></label>
+                <label class="setting-row"><span><strong>Preferred browser</strong><small>Choose which browser C.O.D.Y. uses for web links and browser tasks.</small></span>
+                  <select id="preferred-browser" aria-label="Preferred browser" aria-describedby="preferred-browser-status" disabled>
+                    <button type="button"><selectedcontent></selectedcontent></button>
+                    <option value="system">Windows default</option>
+                  </select>
+                </label>
               </div>
               <p class="setting-help" id="preferred-browser-status" role="status" hidden></p>
               <h3 class="group-title">WEATHER</h3>
@@ -376,31 +381,43 @@
               <div class="plugins-filters" role="group" aria-label="Filter plugins"><button type="button" data-plugin-filter="all" aria-pressed="true">All plugins</button><button type="button" data-plugin-filter="connected" aria-pressed="false">Connected</button><span id="plugins-count"></span></div>
               <p id="plugins-status" class="setting-help" role="status">Open Plugins to load the CODY catalog.</p>
               <div id="plugins-list" class="plugins-grid" aria-label="CODY plugins"></div>
-              <h3 class="group-title">YOUR MEDIA SERVERS</h3>
-              <p class="setting-help">Optional connections to your own Plex or Overseerr server. Credentials are encrypted on this Windows account and are never included in settings backups.</p>
-              <div class="settings-group" id="self-hosted-settings">
-                <form class="setting-row" data-self-hosted="plex">
-                  <span><strong>Plex server</strong><small id="self-hosted-plex-state">Not connected</small></span>
-                  <input name="url" type="url" placeholder="http://192.168.0.10:32400" maxlength="350" aria-label="Plex server URL" required autocomplete="off">
-                  <input name="key" type="password" placeholder="Your Plex token" maxlength="1024" aria-label="Plex access token" required autocomplete="new-password">
+              <div id="self-hosted-settings" hidden>
+                <div class="plugin-connection" data-media-panel="plex" hidden>
+                <form data-self-hosted="plex">
+                  <small id="self-hosted-plex-state" class="setting-help">Not connected</small>
+                  <label for="plex-url">Server URL</label>
+                  <input id="plex-url" name="url" type="url" placeholder="http://192.168.0.10:32400" maxlength="350" aria-label="Plex server URL" required autocomplete="off">
+                  <label for="plex-key">Plex token</label>
+                  <input id="plex-key" name="key" type="password" placeholder="Your Plex token" maxlength="1024" aria-label="Plex access token" required autocomplete="new-password">
+                  <div class="plugin-card-actions">
                   <button type="submit" class="light-action">Connect</button>
                   <button type="button" class="light-action" data-self-hosted-disconnect="plex">Disconnect</button>
+                  </div>
                 </form>
-                <div class="setting-row"><span><strong>Media sessions and recently added</strong><small>Read-only; shown only when you explicitly ask.</small></span>
+                <div class="plugin-card-actions">
                   <button type="button" class="light-action" data-self-hosted-read="plex:sessions">View sessions</button>
                   <button type="button" class="light-action" data-self-hosted-read="plex:recent">Recently added</button>
                 </div>
-                <form class="setting-row" data-self-hosted="overseerr">
-                  <span><strong>Overseerr server</strong><small id="self-hosted-overseerr-state">Not connected</small></span>
-                  <input name="url" type="url" placeholder="http://192.168.0.10:5055" maxlength="350" aria-label="Overseerr server URL" required autocomplete="off">
-                  <input name="key" type="password" placeholder="Your Overseerr API key" maxlength="1024" aria-label="Overseerr API key" required autocomplete="new-password">
+                <p class="setting-help">Your token is encrypted on this Windows account and excluded from settings backups.</p>
+                </div>
+                <div class="plugin-connection" data-media-panel="overseerr" hidden>
+                <form data-self-hosted="overseerr">
+                  <small id="self-hosted-overseerr-state" class="setting-help">Not connected</small>
+                  <label for="overseerr-url">Server URL</label>
+                  <input id="overseerr-url" name="url" type="url" placeholder="http://192.168.0.10:5055" maxlength="350" aria-label="Overseerr server URL" required autocomplete="off">
+                  <label for="overseerr-key">API key</label>
+                  <input id="overseerr-key" name="key" type="password" placeholder="Your Overseerr API key" maxlength="1024" aria-label="Overseerr API key" required autocomplete="new-password">
+                  <div class="plugin-card-actions">
                   <button type="submit" class="light-action">Connect</button>
                   <button type="button" class="light-action" data-self-hosted-disconnect="overseerr">Disconnect</button>
+                  </div>
                 </form>
-                <div class="setting-row"><span><strong>Media requests</strong><small>Read request status or search for titles. Creating requests is not enabled yet.</small></span>
+                <div class="plugin-card-actions">
                   <button type="button" class="light-action" data-self-hosted-read="overseerr:requests">View requests</button>
                 </div>
-                <form class="setting-row" id="self-hosted-search-form"><input id="self-hosted-search-query" type="search" placeholder="Movie or TV title" maxlength="100" aria-label="Search Overseerr titles" required><button type="submit" class="light-action">Search Overseerr</button></form>
+                <form id="self-hosted-search-form"><label for="self-hosted-search-query">Movie or TV title</label><input id="self-hosted-search-query" type="search" placeholder="Movie or TV title" maxlength="100" aria-label="Search Overseerr titles" required><button type="submit" class="light-action">Search Overseerr</button></form>
+                <p class="setting-help">Your API key is encrypted on this Windows account and excluded from settings backups.</p>
+                </div>
               </div>
               <p id="self-hosted-status" class="setting-help" role="status"></p>
               <div id="self-hosted-results" class="settings-group" aria-label="Self-hosted media results"></div>

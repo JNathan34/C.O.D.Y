@@ -18,3 +18,13 @@
 
 /* Keep the focus ring inside the scroll pane at its left edge. */
 .plugins-toolbar input:focus-visible{outline-offset:-2px}
+
+.plugin-connection{display:grid;gap:12px;padding-top:12px;border-top:1px solid #353842}
+.plugin-connection[hidden]{display:none}
+.plugin-card:has(.plugin-connection:not([hidden])){grid-column:1/-1}
+.plugin-connection form{display:grid;gap:7px;min-width:0}
+.plugin-connection label{font-size:11px;color:#c6c6d2}
+.plugin-connection input{box-sizing:border-box;width:100%;min-width:0;border:1px solid #454754;border-radius:8px;background:#17191f;color:#eee;padding:9px;font:12px 'Segoe UI',sans-serif}
+.plugin-connection .setting-help{margin:0;font-size:10px;overflow-wrap:anywhere}
+.plugin-connection form>button{justify-self:start;font-size:10px;padding:7px 10px}
+.plugin-card-heading .plugin-logo-fallback img{width:32px;height:32px;object-fit:contain}

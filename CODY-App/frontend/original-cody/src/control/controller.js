@@ -15,7 +15,8 @@ const {validate:validateDrawing}=require('../annotations/schema');
 const {validate:validateScene}=require('../visuals/schema');
 const {splitMetadata}=require('../visuals/ledger');
 const {splitApps,validateSplitApps,appPin,focusOrLaunchApp}=require('./app-layout');
-const {editWord,validateWordArgs}=require('./word-edit');
+const {editWord,validateWordArgs,captureWordTarget}=require('./word-edit');
+const wordDocument=require('./word-document');
 const {normalizeApp}=require('../app-commands');
 const {validateSystemArgs,buildSystemScript}=require('./system-settings');
 const {validateDiscordArgs,runDiscordCommand}=require('./discord');
@@ -38,6 +39,14 @@ function ensureArgs(action,args){
     case 'app.split':return {apps:validateSplitApps(args.apps)};
     case 'text.proofread':if(args.target!==undefined&&(typeof args.target!=='string'||!/^[a-f0-9-]{36}$/i.test(args.target)))throw Error('Invalid text target');return args.target?{target:args.target}:{};
     case 'word.edit':return validateWordArgs(args);
+    case 'word.document':{
+      const plan=wordDocument.validatePlan(args.plan,{images:args.images,paths:args.paths,allowSave:args.allowSave});
+      if(!plan.steps.some(step=>step.type==='open')&&
+        (!args.target||typeof args.target.fullName!=='string'||typeof args.target.fingerprint!=='string'||
+          !/^-?\d+$/.test(args.target.window)||!Number.isInteger(args.target.start)||!Number.isInteger(args.target.end)))
+        throw Error('Choose the Word document before preparing edits.');
+      return {plan,target:args.target};
+    }
     case 'window.pin':{const app=normalizeApp(args.app);if(!app||typeof args.pinned!=='boolean')throw Error('Choose a supported app and pin state.');return {app,pinned:args.pinned};}
     case 'audio.set':return {level:integer(args.level,0,100,'volume')};
     case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':return validateDiscordArgs(action,args);
@@ -99,6 +108,8 @@ function resolveControlledPath(root,userPath,{write=false}={}){
 }
 function actionSummary(action,args,context={}){
   const value=['terminal.run','code.test','code.build'].includes(action)?'This runs a project command/script in the approved working folder. Project scripts can perform additional OS actions: review and trust the project before allowing.\n'+Object.entries(args).map(([k,v])=>k+': '+String(v)).join(', '):
+    action==='word.edit'&&args.operation==='insert'?`Type in ${context.wordTarget.document}\n\n${args.text}`:
+    action==='word.document'?`Update ${args.target?.document||'Word'} using local Word commands.\n\n${args.plan.steps.map(step=>step.type+(step.text?' — '+step.text:step.path?' — '+step.path:'')).join('\n').slice(0,12000)}`:
     action==='keyboard.type'?`Type this text into the currently focused window (review carefully):\n${args.text.slice(0,600)}${args.text.length>600?'…':''}`:
     action==='files.write'?`Write ${Buffer.byteLength(args.text,'utf8')} bytes to ${args.path}\nPreview: ${args.text.slice(0,240)}`:
     action==='clipboard.write'?`Replace clipboard with this text:\n${args.text.slice(0,240)}`:
@@ -136,6 +147,12 @@ class ComputerController {
     throw Error('The observed UI target moved or is ambiguous. Inspect the desktop again');
   }
   catalog(){return availableActions(this.permissions());}
+  async readWord(){
+    if(this.wordApplying)throw Error('Word is finishing its previous edit. Try again when it completes.');
+    const error=permissionError('word.document',this.permissions());if(error)throw Error(error);
+    if(!this.canUseLocalTools())throw Error('Local computer tools are paused in this mode. Switch to Normal or Work mode.');
+    return wordDocument.snapshot({runner:this.runner});
+  }
   async execute(action,args={},context={origin:'gui'}){
     // A mode can deny local quick tools, but cannot grant a permission.
     // Native background agent permissions remain independent.
@@ -159,12 +176,32 @@ class ComputerController {
     if(action==='browser.keypress'&&((clean.key.toLowerCase()==='v'&&clean.modifiers.some(key=>key==='ctrl'||key==='meta'))||
       (clean.key.toLowerCase()==='insert'&&clean.modifiers.includes('shift'))))
       throw Error('Use foreground Computer Use for an explicitly requested paste into Firefox.');
-    if(context.origin==='chat' && policy.risk!=='low'&&action!=='word.edit'&&!['full','custom'].includes(this.permissions().level))throw Error('This action requires the dedicated controls in the C.O.D.Y GUI');
+    if(context.origin==='chat' && policy.risk!=='low'&&!['word.edit','word.document'].includes(action)&&!['full','custom'].includes(this.permissions().level))throw Error('This action requires the dedicated controls in the C.O.D.Y GUI');
+    const wordTarget=action==='word.edit'?await captureWordTarget({runner:this.runner}):undefined;
+    if(wordTarget)context={...context,wordTarget};
+    const overwrite=[];
+    if(action==='word.document'){
+      const permissions=this.permissions();
+      for(const step of clean.plan.steps){
+        if(['open','picture'].includes(step.type)&&!permissions.filesRead)throw Error("Permission 'filesRead' is disabled");
+        if(['save','save-as','export-pdf'].includes(step.type)&&!permissions.filesWrite)throw Error("Permission 'filesWrite' is disabled");
+        if(['save-as','export-pdf'].includes(step.type)){
+          if(!fs.existsSync(path.dirname(step.path)))throw Error('Choose an existing output folder.');
+          if(fs.existsSync(step.path)){
+            if(!await this.confirm({action,summary:`Overwrite ${step.path}? A backup of the existing file will be kept.`}))return {cancelled:true};
+            overwrite.push(step.path);
+          }
+        }
+      }
+    }
     if(needsApproval(action,this.permissions(),context.origin,{args:clean,humanTask:context.humanTask||''})){
       // Profile is enforced here, not by the renderer or model-generated text.
       if(!await this.confirm({action,summary:actionSummary(action,clean,context)+(context.origin==='ai-chat'&&action==='screen.capture'&&context.deliverImage===true?'\n\nThis screenshot will be attached to the current ChatGPT request in the cloud for visual inspection.':context.origin==='ai-chat'&&(['file.read','files.read','desktop.inspect','clipboard.read'].includes(action))?'\n\nData from this action may be sent to ChatGPT in the cloud.':'')})){try{this.logAction({action,status:'denied',origin:context.origin});}catch{}return {cancelled:true};}
     }
     let result;
+    const wordAction=action==='word.edit'||action==='word.document';
+    if(wordAction&&this.wordApplying)throw Error('Word is finishing its previous edit. Try again when it completes.');
+    if(wordAction)this.wordApplying=true;
     try{this.logAction({action,status:'started',origin:context.origin});}catch{}
     try{
     if(action.startsWith('draw.')){
@@ -184,7 +221,8 @@ class ComputerController {
       case 'app.open':result=await focusOrLaunchApp(clean.app,{runner:this.runner});break;
       case 'app.split':result=await splitApps(clean.apps,{runner:this.runner});break;
       case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);if(typeof result?.changed!=='boolean')throw Error('Spelling correction outcome was not verified.');break;
-      case 'word.edit':result=await editWord(clean,{runner:this.runner});break;
+      case 'word.edit':result=await editWord(clean,{runner:this.runner,target:wordTarget});break;
+      case 'word.document':result=await wordDocument.execute(clean.plan,clean.target,{runner:this.runner,signal:context.signal,overwrite});break;
       case 'window.pin':result=await appPin(clean.app,clean.pinned,{runner:this.runner});break;
       case 'audio.set':result=this.nativeAudio?await this.nativeAudio.set(clean.level):await this.runner(windows.audioSet(clean.level));break;
       case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':result=await runDiscordCommand(action,clean,{runner:this.runner,signal:context.signal});break;
@@ -274,6 +312,7 @@ class ComputerController {
     try{this.logAction({action,status:'completed',origin:context.origin});}catch{}
     return {ok:true,action,result};
     }catch(e){try{this.logAction({action,status:'failed',origin:context.origin,error:String(e.message).slice(0,160)});}catch{}throw e;}
+    finally{if(wordAction)this.wordApplying=false;}
   }
 }
 module.exports={ComputerController,ensureArgs,resolveControlledPath,contained};

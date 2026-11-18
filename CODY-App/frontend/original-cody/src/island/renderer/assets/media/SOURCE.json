@@ -3,5 +3,10 @@
   "fallback": "lucide-static@1.62.0/app-window",
   "brands": "Simple Icons",
   "revision": "90646e4bf7f3b89df6c37e65baf3e7bc759a517c",
-  "source": "https://github.com/simple-icons/simple-icons"
+  "source": "https://github.com/simple-icons/simple-icons",
+  "overseerr": {
+    "notes": "ViewBox restricted to the original logo symbol.",
+    "source": "https://github.com/sct/overseerr/blob/98ea135f2d370faba0362d259fccf51d8fd44a16/public/logo_stacked.svg",
+    "license": "LICENSE-overseerr.txt"
+  }
 }

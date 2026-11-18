@@ -1,6 +1,6 @@
 'use strict';
 (()=>{
- const api=window.assistant?.selfHosted,area=document.getElementById('self-hosted-settings');
+ const api=window.assistant?.selfHosted,area=document.querySelector('[data-content="integrations"]');
  const status=document.getElementById('self-hosted-status'),results=document.getElementById('self-hosted-results');
  if(!api||!area||!status||!results)return;
  let state,busy=false;
@@ -20,16 +20,18 @@
    area.querySelector('[data-self-hosted-disconnect="'+service+'"]').disabled=busy||!connected;
    for(const button of area.querySelectorAll('[data-self-hosted-read^="'+service+':"]'))button.disabled=busy||!connected;
   }
+  area.querySelector('#self-hosted-search-form button').disabled=busy||!state.services?.overseerr?.connected;
+  document.dispatchEvent(new CustomEvent('cody:self-hosted', {detail:state}));
  }
  async function load(){
   try{state=await api.status();render();if(!state.available)status.textContent='Windows encrypted credential storage is unavailable. Connections cannot be saved.';}
   catch(error){status.textContent='Cannot load media connections: '+error.message;}
  }
  async function work(action){
-  if(busy)return;busy=true;area.querySelectorAll('button').forEach(button=>button.disabled=true);
+  if(busy)return;busy=true;area.querySelectorAll('[data-media-panel] button').forEach(button=>button.disabled=true);
   try{await action();await load();}
   catch(error){status.textContent=error.message;}
-  finally{busy=false;area.querySelectorAll('button').forEach(button=>button.disabled=false);render();}
+  finally{busy=false;area.querySelectorAll('[data-media-panel] button').forEach(button=>button.disabled=false);render();}
  }
  for(const form of area.querySelectorAll('[data-self-hosted]')){
   form.addEventListener('submit',event=>{
@@ -39,6 +41,7 @@
    void work(async()=>{
     state=await api.connect(service,{url,key});
     form.elements.namedItem('key').value='';
+    form.closest('[data-media-panel]').hidden=true;
     results.replaceChildren();status.textContent='Connected to your '+service+' server. No library contents are loaded automatically.';
    });
   });

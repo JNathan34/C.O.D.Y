@@ -12,19 +12,49 @@
     status.hidden = !message;
   }
 
+  function browserOption(name, id, icon) {
+    const option = new Option('', id);
+    const entry = document.createElement('span');
+    entry.className = 'browser-option';
+    const badge = document.createElement('span');
+    badge.className = 'browser-option-icon';
+    badge.setAttribute('aria-hidden', 'true');
+    if (icon) {
+      const image = document.createElement('img');
+      image.alt = '';
+      image.src = icon;
+      badge.append(image);
+    } else {
+      window.CODYIcons.set(badge, 'globe');
+    }
+    const label = document.createElement('span');
+    label.className = 'browser-option-label';
+    label.textContent = name;
+    entry.append(badge, label);
+    option.append(entry);
+    return option;
+  }
+
+  function replaceOptions(options) {
+    for (const option of [...select.options]) option.remove();
+    select.append(...options);
+  }
+
+  replaceOptions([browserOption('Windows default', 'system')]);
+
   async function update(load) {
     if (busy) return;
     busy = true;
     try {
       const state = await load();
-      const options = [new Option('Windows default', 'system')];
-      for (const browser of state.browsers) options.push(new Option(browser.name, browser.id));
+      const options = [browserOption('Windows default', 'system')];
+      for (const browser of state.browsers) options.push(browserOption(browser.name, browser.id, browser.icon));
       if (!options.some(option => option.value === state.selectedId)) {
-        const missing = new Option(state.selectedName + ' (unavailable)', state.selectedId);
+        const missing = browserOption(state.selectedName + ' (unavailable)', state.selectedId);
         missing.disabled = true;
         options.push(missing);
       }
-      select.replaceChildren(...options);
+      replaceOptions(options);
       select.value = saved = state.selectedId;
       select.disabled = false;
       showStatus(state.message || (saved === 'system' && state.effectiveBrowser

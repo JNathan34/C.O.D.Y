@@ -1,4 +1,5 @@
 'use strict';
+const {parseWordCommand,parseWordInsertion}=require('./control/word-edit');
 
 const localMentions = [
   {id:'tool:weather', name:'Weather', description:'Check the current weather here or in a named city.', icon:'cloud-sun', actions:['weather']},
@@ -6,11 +7,14 @@ const localMentions = [
   {id:'tool:calculator', name:'Calculator', description:'Calculate numbers and percentages.', icon:'calculator', actions:['maths']},
   {id:'tool:settings', name:'Settings', description:'Find, open or change C.O.D.Y. settings.', icon:'settings', actions:['app-settings.open','app-settings.change']}
 ].map(item=>({...item,kind:'tool'}));
+localMentions.push({id:'plugin:word',name:'Word',description:'Draft and format your open Word document, or insert attached pictures. Try “type Hello world”.',icon:'file-text',kind:'plugin',actions:['word.edit']});
 
 function localMentionRoute(id, text, utilities) {
   const capability = localMentions.find(item=>item.id===id);
   if (!capability) return null;
-  const route = utilities?.match(text);
+  const route = id==='plugin:word'
+    ? parseWordCommand(text) || parseWordInsertion(text)
+    : utilities?.match(text);
   if (!route || !capability.actions.includes(route.action))
     return {error:`${capability.name} can’t handle that request. ${capability.description}`};
   return {route};

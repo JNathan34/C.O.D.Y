@@ -70,7 +70,7 @@ public sealed class WindowsBrowserPreference
         selectedName = choice.Name,
         effectiveBrowser = EffectiveBrowser()?.Name,
         message = MissingMessage(),
-        browsers = browsers.Select(browser => new { id = browser.Id, name = browser.Name }).ToArray()
+        browsers = browsers.Select(browser => new { id = browser.Id, name = browser.Name, executable = browser.Executable }).ToArray()
     };
 
     private Browser? Find(string id) => browsers.FirstOrDefault(browser =>
