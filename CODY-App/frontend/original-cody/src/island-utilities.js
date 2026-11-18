@@ -120,7 +120,7 @@ class IslandUtilities {
           reply=current?.protected?'That field appears protected. I won’t inspect, rewrite or fill it.':
             current?.editable?'This is an editable field. I can proofread its spelling, or type text you explicitly give me. I will not fill or replace anything automatically.':
             'Select an ordinary editable text field, then ask me again. No text has been changed.';
-          show({kind:'utility',text:current?.editable?'Text tools':'No editable field',detail:'Only on request',icon:'pencil'});break;
+          show({kind:'utility',text:current?.protected?'Protected field':current?.editable?'Text tools':'No editable field',detail:'Only on request',icon:'pencil'});break;
         }
         case 'self-hosted-plex-sessions':{
           const data=await this.selfHosted.plexSessions();
