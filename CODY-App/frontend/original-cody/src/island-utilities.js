@@ -43,8 +43,15 @@ function matchesApp(window,name){
 }
 
 class IslandUtilities {
-  constructor({tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
+  constructor({modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false}={}){
+    if(this.modes){
+      const text=commandText(input,{preserveShow:true}).toLowerCase();
+      const switchMode=/^(?:switch to|activate|enable|use|set) (normal|focus|work|gaming) mode$|^(?:focus|work|gaming) mode(?: on)?$/.exec(text);
+      if(switchMode)return {kind:'local',action:'assistant-mode',id:switchMode[1]||text.split(' ')[0]};
+      const saveMode=/^save (?:my |the )?current (?:setup|settings) as (.+?) mode$/.exec(text);
+      if(saveMode)return {kind:'local',action:'assistant-mode-save',name:saveMode[1]};
+    }
     const forecast=/^(?:(?:show|check|tell me|what is|what's) (?:me )?(?:the )?)?(?:(?:seven|7)[ -]day|weekly|hourly)? ?(?:weather )?forecast(?: (?:for|in|at) (.+))?$/i.exec(commandText(input,{preserveShow:true}));
     if(forecast)return {kind:'local',action:'weather-forecast',location:(forecast[1]||'').trim()};
     const system=parseSystemCommand(input);if(system)return {kind:'direct',...system,text:input};
@@ -102,6 +109,8 @@ class IslandUtilities {
           }
           reply=route.reply;
           break;
+        case 'assistant-mode':{const result=this.modes.activate(route.id);reply=result.message;show({kind:'utility',text:route.id+' mode',detail:'Assistant mode',icon:'settings'});break;}
+        case 'assistant-mode-save':{this.modes.save(route.name);reply=route.name+' mode saved locally.';show({kind:'utility',text:'Mode saved',detail:route.name,icon:'check'});break;}
         case 'background-tasks':if(!this.tasks)throw Error('Background tasks are unavailable.');this.tasks.open();reply='Here are your background tasks.';confirmation='Here are your tasks.';break;
         case 'island-monitors':{const result=await this.monitors.execute(route.monitor);reply=result.reply;confirmation=result.confirmation;this.clearCard();break;}
         case 'screen-capture':{
