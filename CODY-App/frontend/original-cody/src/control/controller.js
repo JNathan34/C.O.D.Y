@@ -14,7 +14,7 @@ const {accessScope}=require('./access-scope');
 const {validate:validateDrawing}=require('../annotations/schema');
 const {validate:validateScene}=require('../visuals/schema');
 const {splitMetadata}=require('../visuals/ledger');
-const {splitApps,validateSplitApps,appPin}=require('./app-layout');
+const {splitApps,validateSplitApps,appPin,focusOrLaunchApp}=require('./app-layout');
 const {normalizeApp}=require('../app-commands');
 const {validateSystemArgs,buildSystemScript}=require('./system-settings');
 const {validateDiscordArgs,runDiscordCommand}=require('./discord');
@@ -174,7 +174,7 @@ class ComputerController {
         if(!result||typeof result.message!=='string'||!result.message.trim())throw Error('Windows did not return a settings result.');
         break;
       }
-      case 'app.open':result=await this.runner(windows.openApp(clean.app));break;
+      case 'app.open':result=await focusOrLaunchApp(clean.app,{runner:this.runner});break;
       case 'app.split':result=await splitApps(clean.apps,{runner:this.runner});break;
       case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);break;
       case 'window.pin':result=await appPin(clean.app,clean.pinned,{runner:this.runner});break;
