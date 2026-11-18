@@ -1,0 +1,21 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const {AssistantModes}=require('../src/assistant-modes');
+const {ComputerController}=require('../src/control/controller');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+test('Focus and Gaming block local quick computer controls; switching back never enables new OS grants',async t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'cody-mode-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const prefs={},settings={computerControl:{enabled:true,level:'full'},voiceAutoSpeak:true};
+ const island={preferences:()=>({...prefs}),updatePreferences:patch=>Object.assign(prefs,patch)};
+ const store={data:{settings},settings:patch=>Object.assign(settings,patch)};
+ const modes=new AssistantModes({file:path.join(dir,'modes.json'),island,store});
+ const controller=new ComputerController({readPermissions:()=>settings.computerControl,canUseLocalTools:()=>modes.isLocalControlAllowed()});
+ modes.activate('focus');assert.equal(modes.isLocalControlAllowed(),false);
+ await assert.rejects(controller.execute('app.open',{app:'notepad'},{origin:'chat'}),/paused in this mode/);
+ modes.activate('gaming');assert.equal(modes.isLocalControlAllowed(),false);
+ modes.activate('normal');assert.equal(modes.isLocalControlAllowed(),true);
+ assert.strictEqual(settings.computerControl.enabled,true);
+ modes.save('My Quiet Mode',{allowLocalControl:false});modes.activate('custom:my-quiet-mode');
+ assert.equal(modes.isLocalControlAllowed(),false);
+ assert.equal(modes.list().items.find(x=>x.id==='custom:my-quiet-mode').allowLocalControl,false);
+});
