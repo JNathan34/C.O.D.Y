@@ -208,7 +208,7 @@ class IslandUtilities {
           else if(action==='window.pin'){const name=appLabel(args.app);reply=result.result?.wasOpen===false?`${name} isn't open.`:args.pinned?`${name} pinned on top.`:`${name} unpinned.`;confirmation=reply;this.showCompact();show({kind:'utility',text:result.result?.wasOpen===false?'Not open':args.pinned?'Pinned on top':'Unpinned',detail:name,icon:'external-link'});}
           else if(action==='word.edit'){reply=result.result.message;confirmation=reply;show({kind:'utility',text:'Word updated',detail:result.result.document||'Active document',icon:'file-text'});}
           else if(action==='text.proofread'){reply=result.result.changed?'Spelling fixed.':'No spelling mistakes found.';confirmation=reply;this.showCompact();show({kind:'utility',text:result.result.changed?'Spelling fixed':'Spelling checked',detail:result.result.app||'',icon:'check'});}
-          else{reply=action==='app.open'&&result.result?.reused?`Focused the existing ${appLabel(args.app)} window.`:`Opened ${appLabel(args.app)}.`;confirmation=reply;show({kind:'utility',text:action==='app.open'&&result.result?.reused?'Focused':'Opened',detail:appLabel(args.app),icon:'external-link'});}
+          else{reply=action==='app.open'&&result.result?.reused?`Focused the existing ${appLabel(args.app)} window.`:action==='app.open'&&result.result?.focused===true?`Opened ${appLabel(args.app)}.`:`Opening ${appLabel(args.app)}.`;confirmation=reply;show({kind:'utility',text:action==='app.open'&&result.result?.reused?'Focused':result.result?.focused===true?'Opened':'Opening',detail:appLabel(args.app),icon:'external-link'});}
         }
       }
       return {handled:true,reply,confirmation};
