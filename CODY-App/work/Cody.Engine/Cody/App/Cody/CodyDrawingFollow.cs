@@ -116,11 +116,16 @@ internal sealed class CodyDrawingFollow : IDisposable
         scene ??= new CompositionVisualState(visual, visual.Offset, visual.Clip);
         if (!IsOwnerForeground() || !TryClientBounds(owner.WindowHandle, out var viewport))
         {
-            // Preserve the last screen placement while another window has focus.
-            if (!CodyEngineBridge.EngineMode) visual.IsVisible = false;
+            // Hide the overlay while the owner is minimised or behind another app,
+            // even in engine mode. Keep its saved position for restoration.
+            visual.IsVisible = false;
             return;
         }
-        if (CodyEngineBridge.EngineMode && !IntersectsDisplay(viewport)) return;
+        if (!IntersectsDisplay(viewport))
+        {
+            visual.IsVisible = false;
+            return;
+        }
         long now = Environment.TickCount64;
         if (browser && !readingAddress && now >= nextAddress) ReadAddress();
         if (!IsPageCurrent())
