@@ -3,8 +3,8 @@ const {psQuote,runPowerShell}=require('./windows');
 const OPERATIONS=new Set(['heading1','heading2','bold','italic','page-break','save']);
 function parseWordCommand(input){
  const text=String(input||'').trim().replace(/^(?:(?:hey[,\s]+)?cody[,\s]+|(?:could|can|would) you\s+|please\s+)/i,'').replace(/[.!?]+$/,'').toLowerCase();
- if(/^(?:make|turn|format|set) (?:this|the|selected|current) (?:paragraph|text|line) (?:as|into|to) (?:a )?(?:heading(?:\s*1)?|title)$/.test(text))return {action:'word.edit',args:{operation:'heading1'}};
- if(/^(?:make|turn|format|set) (?:this|the|selected|current) (?:paragraph|text|line) (?:as|into|to) (?:a )?(?:subheading|heading\s*2)$/.test(text))return {action:'word.edit',args:{operation:'heading2'}};
+ if(/^(?:make|turn|format|set) (?:this|the|selected|current) (?:paragraph|text|line)(?: (?:as|into|to))? (?:a )?(?:heading(?:\s*1)?|title)$/.test(text))return {action:'word.edit',args:{operation:'heading1'}};
+ if(/^(?:make|turn|format|set) (?:this|the|selected|current) (?:paragraph|text|line)(?: (?:as|into|to))? (?:a )?(?:subheading|heading\s*2)$/.test(text))return {action:'word.edit',args:{operation:'heading2'}};
  if(/^(?:bold|make bold) (?:this|the|selected|current) (?:text|selection|paragraph)$/.test(text))return {action:'word.edit',args:{operation:'bold'}};
  if(/^(?:italicise|italicize|make italic) (?:this|the|selected|current) (?:text|selection|paragraph)$/.test(text))return {action:'word.edit',args:{operation:'italic'}};
  if(/^(?:insert|add|make) (?:a )?page break(?: here| in word)?$|^move (?:this|the|selected) (?:paragraph|text) (?:to|onto) (?:a )?new page$/.test(text))return {action:'word.edit',args:{operation:'page-break'}};
