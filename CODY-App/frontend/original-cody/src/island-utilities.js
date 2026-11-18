@@ -44,8 +44,19 @@ function matchesApp(window,name){
 }
 
 class IslandUtilities {
-  constructor({modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
+  constructor({selfHosted,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false}={}){
+    if(this.selfHosted){
+      const text=commandText(input,{preserveShow:true}).toLowerCase();
+      if(/^(?:show|check|who is|how many people are) (?:my )?(?:watching|viewers on|playing on) plex$|^(?:plex viewers|plex sessions|who is watching plex)$/.test(text))
+        return {kind:'local',action:'self-hosted-plex-sessions'};
+      if(/^(?:show|check) (?:my )?(?:recent|recently added) plex (?:movies|shows|media)$|^(?:what was|what's) recently added to plex$/.test(text))
+        return {kind:'local',action:'self-hosted-plex-recent'};
+      if(/^(?:show|check|list) (?:my )?overseerr requests$|^overseerr requests$/.test(text))
+        return {kind:'local',action:'self-hosted-overseerr-requests'};
+      const search=/^(?:search|find) (?:on |in )?overseerr (?:for )?(.+)$/.exec(text);
+      if(search&&search[1].length>=2&&search[1].length<=100)return {kind:'local',action:'self-hosted-overseerr-search',query:search[1]};
+    }
     if(this.modes){
       const text=commandText(input,{preserveShow:true}).toLowerCase();
       const switchMode=/^(?:switch to|activate|enable|use|set) (normal|focus|work|gaming) mode$|^(?:focus|work|gaming) mode(?: on)?$/.exec(text);
@@ -100,6 +111,26 @@ class IslandUtilities {
     try{
       let reply,confirmation;
       switch(route.action){
+        case 'self-hosted-plex-sessions':{
+          const data=await this.selfHosted.plexSessions();
+          reply=data.count?data.count+' Plex viewing session(s): '+data.sessions.slice(0,5).map(s=>s.viewer+' watching '+s.title+' ('+s.state+')').join('; ')+'.':'Nobody is watching Plex right now.';
+          show({kind:'utility',text:data.count+' Plex viewers',detail:'Your connected server',icon:'play'});break;
+        }
+        case 'self-hosted-plex-recent':{
+          const items=await this.selfHosted.plexRecent();
+          reply=items.length?'Recently added to Plex: '+items.slice(0,8).map(s=>s.title).join('; ')+'.':'No recently added Plex media found.';
+          show({kind:'utility',text:'Recently added',detail:'Plex',icon:'film'});break;
+        }
+        case 'self-hosted-overseerr-requests':{
+          const items=await this.selfHosted.overseerrRequests();
+          reply=items.length?'Overseerr has '+items.length+' recent requests. '+items.slice(0,5).map(x=>x.title).join('; ')+'.':'No recent Overseerr requests found.';
+          show({kind:'utility',text:items.length+' media requests',detail:'Overseerr',icon:'list'});break;
+        }
+        case 'self-hosted-overseerr-search':{
+          const items=await this.selfHosted.overseerrSearch(route.query);
+          reply=items.length?'Overseerr results: '+items.slice(0,5).map(x=>x.title+' ('+x.type+')').join('; ')+'.':'No matching movies or TV shows found.';
+          show({kind:'utility',text:items.length+' results',detail:'Overseerr',icon:'search'});break;
+        }
         case 'app-settings.open':
           this.appSettings.show({tab:route.destination,query:route.query});
           reply=route.query?`Showing Settings results for ${route.query}.`:'Opened C.O.D.Y. settings.';
