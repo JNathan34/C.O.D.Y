@@ -8,6 +8,7 @@ const {isProofreadCommand}=require('./proofread-command');
 const {parseSystemCommand}=require('./control/system-settings');
 const {parseSettingsCommand}=require('./settings-commands');
 const {parseDiscordCommand}=require('./control/discord');
+const {parseWordCommand}=require('./control/word-edit');
 
 const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy'};
 const APP_ALIASES={'google chrome':'chrome','microsoft edge':'edge','mozilla firefox':'firefox','windows explorer':'file explorer'};
@@ -59,6 +60,7 @@ class IslandUtilities {
     const discord=parseDiscordCommand(input,{spoken});if(discord)return {kind:discord.action==='discord.leave-clarify'?'local':'direct',...discord};
     if(/^(?:(?:show|open|view)(?: me)? (?:my |the )?(?:background )?tasks|background tasks)$/i.test(commandText(input,{preserveShow:true})))return {kind:'local',action:'background-tasks'};
     if(isProofreadCommand(input))return {kind:'direct',action:'text.proofread',args:{}};
+    const word=parseWordCommand(input);if(word)return {kind:'direct',...word};
     const appLayout=parseAppCommand(input);if(appLayout)return {kind:'direct',...appLayout,text:input};
     const monitor=this.monitors?.match(input);if(monitor)return {kind:'local',action:'island-monitors',monitor};
     const capture=this.capture?.match(input);if(capture)return {kind:'local',action:'screen-capture',command:capture};
@@ -173,6 +175,7 @@ class IslandUtilities {
           else if(action==='plezy.play'){reply=`Playing ${result.result?.title||args.title} on Plezy.`;confirmation='Playing.';show({kind:'utility',text:'Playing',detail:result.result?.title||args.title,icon:'play'});this.refreshMedia();}
           else if(action==='app.split'){const names=args.apps.map(appLabel);reply=`Opened ${names[0]} on the left and ${names[1]} on the right.`;confirmation='Done.';this.showCompact();show({kind:'utility',text:'Split screen',detail:names.join(' + '),icon:'external-link'});}
           else if(action==='window.pin'){const name=appLabel(args.app);reply=result.result?.wasOpen===false?`${name} isn't open.`:args.pinned?`${name} pinned on top.`:`${name} unpinned.`;confirmation=reply;this.showCompact();show({kind:'utility',text:result.result?.wasOpen===false?'Not open':args.pinned?'Pinned on top':'Unpinned',detail:name,icon:'external-link'});}
+          else if(action==='word.edit'){reply=result.result.message;confirmation=reply;show({kind:'utility',text:'Word updated',detail:result.result.document||'Active document',icon:'file-text'});}
           else if(action==='text.proofread'){reply=result.result.changed?'Spelling fixed.':'No spelling mistakes found.';confirmation=reply;this.showCompact();show({kind:'utility',text:result.result.changed?'Spelling fixed':'Spelling checked',detail:result.result.app||'',icon:'check'});}
           else{reply=action==='app.open'&&result.result?.reused?`Focused the existing ${appLabel(args.app)} window.`:`Opened ${appLabel(args.app)}.`;confirmation=reply;show({kind:'utility',text:action==='app.open'&&result.result?.reused?'Focused':'Opened',detail:appLabel(args.app),icon:'external-link'});}
         }
