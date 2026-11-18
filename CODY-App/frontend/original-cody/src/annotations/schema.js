@@ -1,5 +1,5 @@
 'use strict';
-const DEFAULTS=Object.freeze({enabled:true,color:'#009DFF',glowIntensity:.45,animationMs:350,defaultDurationMs:5000,speechLinkedRemoval:true,automaticClearing:true,maxConcurrent:40,spotlight:true});
+const DEFAULTS=Object.freeze({enabled:true,color:'#009DFF',glowIntensity:.45,animationMs:350,defaultDurationMs:5000,speechLinkedRemoval:false,automaticClearing:false,maxConcurrent:40,spotlight:true});
 const KINDS=['circle','rectangle','arrow','line','text','underline','spotlight','path','card'];
 const ACTIONS=Object.freeze([...KINDS.map(kind=>'draw.'+kind),'draw.clear','draw.remove','draw.update','draw.batch','draw.status']);
 const own=(object,key)=>Object.prototype.hasOwnProperty.call(object,key);

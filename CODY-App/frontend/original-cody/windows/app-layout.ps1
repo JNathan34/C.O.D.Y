@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$AppsJson,[ValidateSet('split','pin','status')][string]$Mode='split',[bool]$Topmost=$true)
+param([Parameter(Mandatory=$true)][string]$AppsJson,[ValidateSet('split','pin','status','focus')][string]$Mode='split',[bool]$Topmost=$true)
 $ErrorActionPreference='Stop'
 [string[]]$layoutApps=ConvertFrom-Json -InputObject $AppsJson
 $processNames=@{
@@ -35,6 +35,7 @@ public static class CodyAppLayout {
   [DllImport("user32.dll")]private static extern bool ShowWindow(IntPtr hwnd,int command);
   [DllImport("user32.dll")]private static extern bool SetWindowPos(IntPtr hwnd,IntPtr after,int x,int y,int width,int height,uint flags);
   [DllImport("user32.dll")]private static extern bool SetForegroundWindow(IntPtr hwnd);
+  [DllImport("user32.dll")]private static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll",EntryPoint="GetWindowLongW")]private static extern int GetWindowLong(IntPtr hwnd,int index);
   [DllImport("user32.dll")]private static extern bool IsIconic(IntPtr hwnd);
   [DllImport("user32.dll")]private static extern bool SetProcessDpiAwarenessContext(IntPtr context);
@@ -70,7 +71,7 @@ public static class CodyAppLayout {
   }
   public static bool Fits(Window window,int left,int top,int width,int height){var bounds=Visible(window);return Math.Abs(bounds.Left-left)<=4&&Math.Abs(bounds.Top-top)<=4&&Math.Abs(bounds.Width-width)<=4&&Math.Abs(bounds.Height-height)<=4;}
   public static void Rollback(Window window){if(window==null)return;try{Check(window);var placement=window.Original;SetWindowPlacement(window.Handle,ref placement);}catch{}}
-  public static void Focus(Window window){Check(window);SetForegroundWindow(window.Handle);}
+  public static bool Focus(Window window){Check(window);SetForegroundWindow(window.Handle);System.Threading.Thread.Sleep(140);return GetForegroundWindow()==window.Handle;}
   public static bool IsPinned(Window window){Check(window);return (GetWindowLong(window.Handle,-20)&8)!=0;}
   public static void Pin(Window window,bool pinned){Check(window);if(pinned&&IsIconic(window.Handle))ShowWindow(window.Handle,9);if(IsPinned(window)==pinned)return;if(!SetWindowPos(window.Handle,new IntPtr(pinned?-1:-2),0,0,0,0,0x213))throw new Exception("Windows refused to change the always-on-top setting.");if(IsPinned(window)!=pinned)throw new Exception("Windows did not confirm the always-on-top setting.");}
 }
@@ -90,6 +91,18 @@ function Resolve-LayoutLaunch([string]$Name){
   $relative=@{firefox='Mozilla Firefox\firefox.exe';chrome='Google\Chrome\Application\chrome.exe';edge='Microsoft\Edge\Application\msedge.exe'}
   if($relative.ContainsKey($Name)){foreach($installRoot in @($env:ProgramFiles,[Environment]::GetEnvironmentVariable('ProgramFiles(x86)'),$env:LOCALAPPDATA)){if($installRoot){$candidate=Join-Path $installRoot $relative[$Name];if(Test-Path -LiteralPath $candidate -PathType Leaf){return $candidate}}}}
   $command=Get-Command $exe -ErrorAction SilentlyContinue;if($command){return $command.Source};throw "$Name is not installed or could not be located."
+}
+if($Mode -eq 'focus'){
+  $app=$layoutApps[0];$window=Find-LayoutWindow $app;$reused=($null -ne $window)
+  if(-not $window){
+    $launchPath=Resolve-LayoutLaunch $app;Start-Process -FilePath $launchPath -ErrorAction Stop
+    $deadline=[DateTime]::UtcNow.AddSeconds(20)
+    do{$window=Find-LayoutWindow $app;if($window){break};Start-Sleep -Milliseconds 150}while([DateTime]::UtcNow -lt $deadline)
+    if(-not $window){throw "$app was launched but no usable window appeared."}
+  }
+  [CodyAppLayout]::Restore($window)
+  if(-not [CodyAppLayout]::Focus($window)){throw "Windows did not confirm that $app was focused. It may require manual activation."}
+  @{app=$app;pid=$window.Pid;focused=$true;reused=$reused;launched=(-not $reused)} | ConvertTo-Json -Compress;return
 }
 if($Mode -ne 'split'){
   $pinApp=$layoutApps[0];$pinWindow=Find-LayoutWindow $pinApp

@@ -8,6 +8,7 @@ const {isProofreadCommand}=require('./proofread-command');
 const {parseSystemCommand}=require('./control/system-settings');
 const {parseSettingsCommand}=require('./settings-commands');
 const {parseDiscordCommand}=require('./control/discord');
+const {parseWordCommand}=require('./control/word-edit');
 
 const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy'};
 const APP_ALIASES={'google chrome':'chrome','microsoft edge':'edge','mozilla firefox':'firefox','windows explorer':'file explorer'};
@@ -43,8 +44,21 @@ function matchesApp(window,name){
 }
 
 class IslandUtilities {
-  constructor({modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
+  constructor({selfHosted,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false}={}){
+    if(this.textContext&&/^(?:what can you do (?:with|in) this (?:text ?box|field|text)|suggest (?:some )?(?:edits|actions) (?:for|in) this (?:text|field)|help me (?:edit|write) (?:this|the) (?:text|field))$/i.test(commandText(input,{preserveShow:true})))
+      return {kind:'local',action:'text-context-help'};
+    if(this.selfHosted){
+      const text=commandText(input,{preserveShow:true}).toLowerCase();
+      if(/^(?:show|check|who is|how many people are) (?:my )?(?:watching|viewers on|playing on) plex$|^(?:plex viewers|plex sessions|who is watching plex)$/.test(text))
+        return {kind:'local',action:'self-hosted-plex-sessions'};
+      if(/^(?:show|check) (?:my )?(?:recent|recently added) plex (?:movies|shows|media)$|^(?:what was|what's) recently added to plex$/.test(text))
+        return {kind:'local',action:'self-hosted-plex-recent'};
+      if(/^(?:show|check|list) (?:my )?overseerr requests$|^overseerr requests$/.test(text))
+        return {kind:'local',action:'self-hosted-overseerr-requests'};
+      const search=/^(?:search|find) (?:on |in )?overseerr (?:for )?(.+)$/.exec(text);
+      if(search&&search[1].length>=2&&search[1].length<=100)return {kind:'local',action:'self-hosted-overseerr-search',query:search[1]};
+    }
     if(this.modes){
       const text=commandText(input,{preserveShow:true}).toLowerCase();
       const switchMode=/^(?:switch to|activate|enable|use|set) (normal|focus|work|gaming) mode$|^(?:focus|work|gaming) mode(?: on)?$/.exec(text);
@@ -59,6 +73,7 @@ class IslandUtilities {
     const discord=parseDiscordCommand(input,{spoken});if(discord)return {kind:discord.action==='discord.leave-clarify'?'local':'direct',...discord};
     if(/^(?:(?:show|open|view)(?: me)? (?:my |the )?(?:background )?tasks|background tasks)$/i.test(commandText(input,{preserveShow:true})))return {kind:'local',action:'background-tasks'};
     if(isProofreadCommand(input))return {kind:'direct',action:'text.proofread',args:{}};
+    const word=parseWordCommand(input);if(word)return {kind:'direct',...word};
     const appLayout=parseAppCommand(input);if(appLayout)return {kind:'direct',...appLayout,text:input};
     const monitor=this.monitors?.match(input);if(monitor)return {kind:'local',action:'island-monitors',monitor};
     const capture=this.capture?.match(input);if(capture)return {kind:'local',action:'screen-capture',command:capture};
@@ -98,6 +113,35 @@ class IslandUtilities {
     try{
       let reply,confirmation;
       switch(route.action){
+        case 'text-context-help':{
+          // Only an explicit user request triggers native field detection.
+          // No field value or selected text is displayed, logged, or sent to a model.
+          const current=await this.textContext();
+          reply=current?.protected?'That field appears protected. I won’t inspect, rewrite or fill it.':
+            current?.editable?'This is an editable field. I can proofread its spelling, or type text you explicitly give me. I will not fill or replace anything automatically.':
+            'Select an ordinary editable text field, then ask me again. No text has been changed.';
+          show({kind:'utility',text:current?.protected?'Protected field':current?.editable?'Text tools':'No editable field',detail:'Only on request',icon:'pencil'});break;
+        }
+        case 'self-hosted-plex-sessions':{
+          const data=await this.selfHosted.plexSessions();
+          reply=data.count?data.count+' Plex viewing session(s): '+data.sessions.slice(0,5).map(s=>s.viewer+' watching '+s.title+' ('+s.state+')').join('; ')+'.':'Nobody is watching Plex right now.';
+          show({kind:'utility',text:data.count+' Plex viewers',detail:'Your connected server',icon:'play'});break;
+        }
+        case 'self-hosted-plex-recent':{
+          const items=await this.selfHosted.plexRecent();
+          reply=items.length?'Recently added to Plex: '+items.slice(0,8).map(s=>s.title).join('; ')+'.':'No recently added Plex media found.';
+          show({kind:'utility',text:'Recently added',detail:'Plex',icon:'film'});break;
+        }
+        case 'self-hosted-overseerr-requests':{
+          const items=await this.selfHosted.overseerrRequests();
+          reply=items.length?'Overseerr has '+items.length+' recent requests. '+items.slice(0,5).map(x=>x.title).join('; ')+'.':'No recent Overseerr requests found.';
+          show({kind:'utility',text:items.length+' media requests',detail:'Overseerr',icon:'list'});break;
+        }
+        case 'self-hosted-overseerr-search':{
+          const items=await this.selfHosted.overseerrSearch(route.query);
+          reply=items.length?'Overseerr results: '+items.slice(0,5).map(x=>x.title+' ('+x.type+')').join('; ')+'.':'No matching movies or TV shows found.';
+          show({kind:'utility',text:items.length+' results',detail:'Overseerr',icon:'search'});break;
+        }
         case 'app-settings.open':
           this.appSettings.show({tab:route.destination,query:route.query});
           reply=route.query?`Showing Settings results for ${route.query}.`:'Opened C.O.D.Y. settings.';
@@ -115,7 +159,7 @@ class IslandUtilities {
         case 'island-monitors':{const result=await this.monitors.execute(route.monitor);reply=result.reply;confirmation=result.confirmation;this.clearCard();break;}
         case 'screen-capture':{
           const result=await this.capture.execute(route.command);reply=result.reply;confirmation=result.confirmation;
-          if(result.path)show({kind:'utility',text:route.command==='screenshot'?'Screenshot saved':'Recording saved',detail:'Click to open',icon:'camera',captureKind:route.command==='screenshot'?'screenshot':'recording'});
+          if(result.path)show({kind:'utility',text:['screenshot','annotated-screenshot'].includes(route.command)?'Screenshot saved':'Recording saved',detail:'Click to open',icon:'camera',captureKind:['screenshot','annotated-screenshot'].includes(route.command)?'screenshot':'recording'});
           else this.clearCard();break;
         }
         case 'rps':{const state=this.rps.act(route.game);reply=state.message;confirmation=this.rps.confirmation(state);this.clearCard();break;}
@@ -173,8 +217,9 @@ class IslandUtilities {
           else if(action==='plezy.play'){reply=`Playing ${result.result?.title||args.title} on Plezy.`;confirmation='Playing.';show({kind:'utility',text:'Playing',detail:result.result?.title||args.title,icon:'play'});this.refreshMedia();}
           else if(action==='app.split'){const names=args.apps.map(appLabel);reply=`Opened ${names[0]} on the left and ${names[1]} on the right.`;confirmation='Done.';this.showCompact();show({kind:'utility',text:'Split screen',detail:names.join(' + '),icon:'external-link'});}
           else if(action==='window.pin'){const name=appLabel(args.app);reply=result.result?.wasOpen===false?`${name} isn't open.`:args.pinned?`${name} pinned on top.`:`${name} unpinned.`;confirmation=reply;this.showCompact();show({kind:'utility',text:result.result?.wasOpen===false?'Not open':args.pinned?'Pinned on top':'Unpinned',detail:name,icon:'external-link'});}
+          else if(action==='word.edit'){reply=result.result.message;confirmation=reply;show({kind:'utility',text:'Word updated',detail:result.result.document||'Active document',icon:'file-text'});}
           else if(action==='text.proofread'){reply=result.result.changed?'Spelling fixed.':'No spelling mistakes found.';confirmation=reply;this.showCompact();show({kind:'utility',text:result.result.changed?'Spelling fixed':'Spelling checked',detail:result.result.app||'',icon:'check'});}
-          else{reply=`Opening ${appLabel(args.app)}.`;confirmation=reply;show({kind:'utility',text:'Opened',detail:appLabel(args.app),icon:'external-link'});}
+          else{reply=action==='app.open'&&result.result?.reused?`Focused the existing ${appLabel(args.app)} window.`:action==='app.open'&&result.result?.focused===true?`Opened ${appLabel(args.app)}.`:`Opening ${appLabel(args.app)}.`;confirmation=reply;show({kind:'utility',text:action==='app.open'&&result.result?.reused?'Focused':result.result?.focused===true?'Opened':'Opening',detail:appLabel(args.app),icon:'external-link'});}
         }
       }
       return {handled:true,reply,confirmation};

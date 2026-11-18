@@ -55,6 +55,7 @@ const ACTIONS = Object.freeze({
   'keyboard.hotkey': {permission:'keyboardMouse',risk:'always',description:'Send an approved keyboard shortcut to active window'},
   'keyboard.type': {permission:'keyboardMouse',risk:'always',description:'Type text into the currently focused application'},
   'text.proofread': {permission:'keyboardMouse',requires:['uiAutomation'],risk:'low',description:'Correct spelling in the selected text or current editable field using HeyClicky, preserving wording'},
+  'word.edit': {permission:'keyboardMouse',requires:['uiAutomation','applications'],risk:'always',directOnly:true,description:'Directly format or save only the currently foreground Microsoft Word document via COM'},
   'mouse.move': {permission:'keyboardMouse',risk:'confirm',description:'Move the Windows mouse cursor'},
   'mouse.click': {permission:'keyboardMouse',risk:'always',description:'Click in the active Windows desktop'},
   'clipboard.read': {permission:'clipboard',risk:'confirm',description:'Read the clipboard locally'},

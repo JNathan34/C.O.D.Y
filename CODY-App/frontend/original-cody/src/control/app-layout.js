@@ -21,4 +21,14 @@ async function appPin(app,pinned,{runner=windows.runPowerShell,readOnly=false}={
   if(result?.app!==clean||typeof result.pinned!=='boolean'||(!readOnly&&result.pinned!==pinned)||(!readOnly&&pinned&&!result.wasOpen))throw Error('Windows did not confirm the requested pin state.');
   return result;
 }
-module.exports={splitApps,validateSplitApps,appPin};
+async function focusOrLaunchApp(app,{runner=windows.runPowerShell}={}){
+  const clean=normalizeApp(app);
+  if(!clean)throw Error('Choose a supported application.');
+  const source=windows.psQuote(path.join(__dirname,'../../windows/app-layout.ps1').replace('app.asar'+path.sep,'app.asar.unpacked'+path.sep));
+  const raw=await runner(`$ProgressPreference='SilentlyContinue'; try { & ${source} -AppsJson ${windows.psQuote(JSON.stringify([clean]))} -Mode focus } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`,{timeout:30000});
+  let result;try{result=typeof raw==='string'?JSON.parse(raw):raw;}catch{throw Error('Windows did not report whether the app was opened or reused.');}
+  if(result?.app!==clean||result.focused!==true||!Number.isInteger(result.pid)||result.pid<1||typeof result.reused!=='boolean')
+    throw Error('Windows could not verify the focused application.');
+  return result;
+}
+module.exports={splitApps,validateSplitApps,appPin,focusOrLaunchApp};

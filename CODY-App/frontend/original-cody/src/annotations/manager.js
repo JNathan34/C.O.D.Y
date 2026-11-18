@@ -68,7 +68,7 @@ class AnnotationManager extends EventEmitter{
   if(context.origin==='ai-chat'&&schema.GEOMETRY[kind].some(key=>key!=='text'&&key!=='fontSize'&&args[key]!==undefined))throw Error('Use the observed targetId without guessed UI coordinates');
   return coordinates.targetGeometry(kind,args,rect,this.displays());
  }
- style(args){return {color:args.color||this.settings.color,strokeWidth:args.strokeWidth||3,glowIntensity:args.glow===false?0:this.settings.glowIntensity,opacity:args.opacity??1,animationMs:args.animationMs??this.settings.animationMs,mode:args.mode||'temporary',durationMs:args.durationMs??this.settings.defaultDurationMs};}
+ style(args){return {color:args.color||this.settings.color,strokeWidth:args.strokeWidth||3,glowIntensity:args.glow===false?0:this.settings.glowIntensity,opacity:args.opacity??1,animationMs:args.animationMs??this.settings.animationMs,mode:args.mode||'persistent',durationMs:args.durationMs??this.settings.defaultDurationMs};}
  scene(){return [...this.items.values()].map(item=>({...item.shape,waitingForSpeech:!!item.waitingForSpeech,paused:!!item.paused,removing:!!item.removeAt}));}
  async render(signal){if(this.overlay)await this.overlay.render(this.scene(),this.displays(),signal);}
  queueRender(){
@@ -141,7 +141,9 @@ class AnnotationManager extends EventEmitter{
  }
  beginScope(scope,{speechExpected=false}={}){
   this.generation++;
-  if(this.settings.automaticClearing){for(const [id,item]of this.items)if(item.shape.mode!=='persistent')this.items.set(id,{...item,removeAt:this.now()+this.fadeMs});void this.queueRender();}
+  // A new conversation must never erase drawn content by default. Explicit
+  // opt-in automatic clearing only applies to temporary, non-persistent marks.
+  if(this.settings.automaticClearing){for(const [id,item]of this.items)if(item.shape.mode==='temporary')this.items.set(id,{...item,removeAt:this.now()+this.fadeMs});void this.queueRender();}
   this.scope=scope;this.speaking=false;this.speechExpected=speechExpected;this.targets.clear();this.schedule();
  }
  finishScope(scope){

@@ -14,7 +14,8 @@ const {accessScope}=require('./access-scope');
 const {validate:validateDrawing}=require('../annotations/schema');
 const {validate:validateScene}=require('../visuals/schema');
 const {splitMetadata}=require('../visuals/ledger');
-const {splitApps,validateSplitApps,appPin}=require('./app-layout');
+const {splitApps,validateSplitApps,appPin,focusOrLaunchApp}=require('./app-layout');
+const {editWord,validateWordArgs}=require('./word-edit');
 const {normalizeApp}=require('../app-commands');
 const {validateSystemArgs,buildSystemScript}=require('./system-settings');
 const {validateDiscordArgs,runDiscordCommand}=require('./discord');
@@ -36,6 +37,7 @@ function ensureArgs(action,args){
     case 'app.open':return {app:str(args.app,60,'application').toLowerCase()};
     case 'app.split':return {apps:validateSplitApps(args.apps)};
     case 'text.proofread':if(args.target!==undefined&&(typeof args.target!=='string'||!/^[a-f0-9-]{36}$/i.test(args.target)))throw Error('Invalid text target');return args.target?{target:args.target}:{};
+    case 'word.edit':return validateWordArgs(args);
     case 'window.pin':{const app=normalizeApp(args.app);if(!app||typeof args.pinned!=='boolean')throw Error('Choose a supported app and pin state.');return {app,pinned:args.pinned};}
     case 'audio.set':return {level:integer(args.level,0,100,'volume')};
     case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':return validateDiscordArgs(action,args);
@@ -106,8 +108,9 @@ function actionSummary(action,args,context={}){
   return `${ACTIONS[action].description}\n\n${value}`;
 }
 class ComputerController {
-  constructor({readPermissions,writePermissions,getWorkingFolder,confirm,runner,clipboard,desktopCapturer,logAction,developerRunner,browserBridge,spotify,annotations,scene,captures,visualLedger}={}){
+  constructor({readPermissions,writePermissions,getWorkingFolder,confirm,runner,clipboard,desktopCapturer,logAction,developerRunner,browserBridge,spotify,annotations,scene,captures,visualLedger,canUseLocalTools=()=>true}={}){
     this.annotations=annotations;
+    this.canUseLocalTools=canUseLocalTools;
     Object.assign(this,{scene,captures,visualLedger});
     this.spotify=spotify;
     this.readPermissions=readPermissions||(()=>DEFAULT_PERMISSIONS);
@@ -134,13 +137,17 @@ class ComputerController {
   }
   catalog(){return availableActions(this.permissions());}
   async execute(action,args={},context={origin:'gui'}){
+    // A mode can deny local quick tools, but cannot grant a permission.
+    // Native background agent permissions remain independent.
+    const restricted=new Set(['applications','windows','keyboardMouse','uiAutomation','browserRead','browserInteract','clipboard','screenshots','filesRead','filesWrite','developerTools']);
+    if(restricted.has(ACTIONS[action]?.permission)&&!this.canUseLocalTools())throw Error('Local computer tools are paused in this mode. Switch to Normal or Work mode.');
     const e=permissionError(action,this.permissions());if(e)throw Error(e);
     let clean=ensureArgs(action,args);
     const scope=accessScope(this.permissions().level,this.getWorkingFolder(),action,clean);
     clean=scope.args;
     const policy=ACTIONS[action];
     if(!['gui','chat','ai-chat'].includes(context.origin))throw Error('Invalid action origin');
-    if(policy.directOnly&&context.origin!=='chat')throw Error('Use a direct C.O.D.Y. command for Discord control.');
+    if(policy.directOnly&&context.origin!=='chat')throw Error('Use a direct C.O.D.Y. command for this action.');
     if(context.origin==='ai-chat'&&context.verifiedUserIntent!==true)throw Error('AI-origin control requires a verified human request');
     const human=context.humanTask||'';
     const explicitPaste=/^\s*(?:(?:please|can you|could you|would you)\s+)*(?:paste|(?:press|use|hit)\s+(?:ctrl|control)\s*\+\s*v)\b/i.test(human);
@@ -152,7 +159,7 @@ class ComputerController {
     if(action==='browser.keypress'&&((clean.key.toLowerCase()==='v'&&clean.modifiers.some(key=>key==='ctrl'||key==='meta'))||
       (clean.key.toLowerCase()==='insert'&&clean.modifiers.includes('shift'))))
       throw Error('Use foreground Computer Use for an explicitly requested paste into Firefox.');
-    if(context.origin==='chat' && policy.risk!=='low'&&!['full','custom'].includes(this.permissions().level))throw Error('This action requires the dedicated controls in the C.O.D.Y GUI');
+    if(context.origin==='chat' && policy.risk!=='low'&&action!=='word.edit'&&!['full','custom'].includes(this.permissions().level))throw Error('This action requires the dedicated controls in the C.O.D.Y GUI');
     if(needsApproval(action,this.permissions(),context.origin,{args:clean,humanTask:context.humanTask||''})){
       // Profile is enforced here, not by the renderer or model-generated text.
       if(!await this.confirm({action,summary:actionSummary(action,clean,context)+(context.origin==='ai-chat'&&action==='screen.capture'&&context.deliverImage===true?'\n\nThis screenshot will be attached to the current ChatGPT request in the cloud for visual inspection.':context.origin==='ai-chat'&&(['file.read','files.read','desktop.inspect','clipboard.read'].includes(action))?'\n\nData from this action may be sent to ChatGPT in the cloud.':'')})){try{this.logAction({action,status:'denied',origin:context.origin});}catch{}return {cancelled:true};}
@@ -174,9 +181,10 @@ class ComputerController {
         if(!result||typeof result.message!=='string'||!result.message.trim())throw Error('Windows did not return a settings result.');
         break;
       }
-      case 'app.open':result=await this.runner(windows.openApp(clean.app));break;
+      case 'app.open':result=await focusOrLaunchApp(clean.app,{runner:this.runner});break;
       case 'app.split':result=await splitApps(clean.apps,{runner:this.runner});break;
-      case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);break;
+      case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);if(typeof result?.changed!=='boolean')throw Error('Spelling correction outcome was not verified.');break;
+      case 'word.edit':result=await editWord(clean,{runner:this.runner});break;
       case 'window.pin':result=await appPin(clean.app,clean.pinned,{runner:this.runner});break;
       case 'audio.set':result=this.nativeAudio?await this.nativeAudio.set(clean.level):await this.runner(windows.audioSet(clean.level));break;
       case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':result=await runDiscordCommand(action,clean,{runner:this.runner,signal:context.signal});break;

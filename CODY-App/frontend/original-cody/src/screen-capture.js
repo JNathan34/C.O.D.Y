@@ -7,6 +7,7 @@ const {finalizeMp4}=require('./screen-recorder/finalize-mp4');
 const {captureScreenshot}=require('./screen-recorder/screenshot');
 function captureCommand(input,{recording=false}={}){
   const text=commandText(input).toLowerCase().replace(/[’']/g,'').replace(/[-,]/g,' ').replace(/\s+/g,' ').trim();
+  if(/^(?:save (?:that|this|the|my) (?:drawing|annotation)|save (?:this|the) annotated (?:screen|screenshot|picture)(?: as (?:a )?picture)?|take (?:a )?screenshot of (?:that|the|my) drawing|capture (?:the|my) annotated screen)$/.test(text))return 'annotated-screenshot';
   if(/^(?:(?:take|capture|save|grab|make) )?(?:a |the )?(?:screenshot|screen shot|screen capture)(?: (?:of )?(?:my |the )?screen)?$/.test(text)||/^(?:take|capture|save|grab) (?:a )?(?:picture|photo) of (?:my |the )?screen$/.test(text))return 'screenshot';
   if(/^(?:capture|screenshot) (?:my|the) screen$/.test(text))return 'screenshot';
   if(/^(?:(?:start|begin) (?:a |the )?)?(?:screen recording|recording (?:my |the )?screen)$/.test(text)||/^record (?:my |the )?screen$/.test(text))return 'start';
@@ -16,8 +17,8 @@ function captureCommand(input,{recording=false}={}){
   return null;
 }
 class ScreenCapture extends EventEmitter{
-  constructor({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,now=Date.now,captureImage=captureScreenshot}){
-    super();Object.assign(this,{BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,now,captureImage});
+  constructor({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,annotations,now=Date.now,captureImage=captureScreenshot}){
+    super();Object.assign(this,{BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,annotations,now,captureImage});
     this.status='idle';this.elapsed=0;this.bytes=0;this.pending=new Map();this.tail=Promise.resolve();
     const authorize=event=>{if(event.sender!==this.worker?.webContents||event.senderFrame!==event.sender.mainFrame)throw Error('Untrusted screen recorder');};
     ipcMain.handle('screen-recorder-chunk',async(event,value)=>{
@@ -42,16 +43,22 @@ class ScreenCapture extends EventEmitter{
     if(!source)throw Error('Primary screen is unavailable.');return {source,display};
   }
   filename(prefix,extension){return `${prefix} ${new Date(this.now()).toISOString().replace(/[:.]/g,'-')} ${randomUUID().slice(0,6)}.${extension}`;}
-  async screenshot(){
+  async screenshot({annotated=false}={}){
     const {source,display}=await this.source(),scale=display.scaleFactor||1;
-    const png=await this.captureImage({BrowserWindow:this.BrowserWindow,sourceId:source.id,width:Math.round(display.size.width*scale),height:Math.round(display.size.height*scale)});
+    // The overlay's render queue must finish before capturing the live screen.
+    // A normal screenshot hides C.O.D.Y's ink, whereas explicit annotated
+    // capture keeps it visible and never alters the underlying document.
+    await this.annotations?.serial;
+    const capture=()=>this.captureImage({BrowserWindow:this.BrowserWindow,sourceId:source.id,width:Math.round(display.size.width*scale),height:Math.round(display.size.height*scale)});
+    const png=this.annotations?.overlay?await this.annotations.overlay.withoutAnnotations(capture,{includeAnnotations:annotated}):await capture();
     const image=this.nativeImage.createFromBuffer(png);if(image.isEmpty())throw Error('Windows returned an empty screenshot.');
-    await fs.mkdir(this.pictures,{recursive:true});const file=path.join(this.pictures,this.filename('Screenshot','png'));
+    await fs.mkdir(this.pictures,{recursive:true});const file=path.join(this.pictures,this.filename(annotated?'Annotated Screenshot':'Screenshot','png'));
     await fs.writeFile(file,png,{flag:'wx'});this.lastScreenshot=file;
-    this.clipboard?.writeImage(image);this.publish();return {path:file,reply:'Screenshot saved and copied to the clipboard.',confirmation:'Done.'};
+    this.clipboard?.writeImage(image);this.publish();return {path:file,reply:annotated?'Annotated screenshot saved and copied to the clipboard.':'Screenshot saved and copied to the clipboard.',confirmation:'Done.',annotated};
   }
   execute(action){
     if(action==='screenshot')return this.screenshot();
+    if(action==='annotated-screenshot')return this.screenshot({annotated:true});
     const operation=this.tail.then(()=>this.perform(action));this.tail=operation.catch(()=>{});return operation;
   }
   async request(action,args={}){
