@@ -48,6 +48,24 @@
    ink=entry.node.querySelector('path.ink');
    if(!ink)return false;
    ink.setAttribute('d',path(shape));
+  }else if(shape.kind==='text'){
+   ink=entry.node.querySelector('text.caption');
+   if(!ink)return false;
+   const size=shape.fontSize||16;
+   ink.setAttribute('x',shape.x);ink.setAttribute('y',shape.y+size);
+   ink.setAttribute('font-size',size);ink.setAttribute('fill',shape.color);
+   ink.replaceChildren(...shape.text.split('\\n').slice(0,12).map((line,index)=>{
+    const row=element('tspan',{x:shape.x,dy:index?'1.3em':0});
+    row.textContent=line;
+    return row;
+   }));
+   return true;
+  }else if(shape.kind==='spotlight'){
+   const rectangles=entry.node.querySelectorAll('rect');
+   if(rectangles.length!==3)return false;
+   rectangles[1].setAttribute('x',shape.x);rectangles[1].setAttribute('y',shape.y);
+   rectangles[1].setAttribute('width',shape.width);rectangles[1].setAttribute('height',shape.height);
+   return true;
   }else return false;
   ink.setAttribute('stroke',shape.color);
   ink.setAttribute('stroke-width',shape.strokeWidth);
