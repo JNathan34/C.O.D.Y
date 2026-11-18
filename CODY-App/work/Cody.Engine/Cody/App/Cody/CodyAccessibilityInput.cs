@@ -1,11 +1,14 @@
 using System;
 using System.Drawing;
+using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using HeyClicky.Platform.Input;
 using HeyClicky.Platform.Win32;
 namespace HeyClicky.App.Cody;
 internal static class CodyAccessibilityInput
@@ -14,8 +17,8 @@ internal static class CodyAccessibilityInput
     private static UiaElement lastEdit;
     private static nint lastRoot;
     private static readonly MethodInfo run=typeof(UIAutomationHelpers).GetMethods(BindingFlags.Static|BindingFlags.NonPublic).Single(m=>m.Name=="RunAsync"&&m.IsGenericMethodDefinition).MakeGenericMethod(typeof(Result));
-    internal static async Task<Result> Run(Func<Uia,Func<bool>,Result> query,Func<bool> valid){
-        using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(3));bool attempted=false;
+    internal static async Task<Result> Run(Func<Uia,Func<bool>,Result> query,Func<bool> valid,TimeSpan? budget=null){
+        using var timeout=new CancellationTokenSource(budget??TimeSpan.FromSeconds(3));bool attempted=false;
         try{
             Func<object,Result> bridge=value=>{
                 bool Allowed()=>!timeout.IsCancellationRequested&&valid();
@@ -106,12 +109,116 @@ internal static class CodyAccessibilityInput
         var before=prefix.GetText(200001);var middle=selected.GetText(200001);if(before.Length+middle.Length>current.Length||!current.StartsWith(before,StringComparison.Ordinal)||current.Substring(before.Length,middle.Length)!=middle)return null;
         return(before,middle,current[(before.Length+middle.Length)..]);
     }
-    internal static Task<Result> Type(nint root,string text,Func<bool> valid)=>Run((automation,act)=>{
-        var element=Edit(automation,root);if(element==null)return new();var selection=Selection(element);if(selection==null)return new();var value=Pattern<UiaValue>(element,10002);act();value.SetValue(selection.Value.Before+text+selection.Value.After);
-        // Put the caret after the inserted text when the provider supports text ranges.
-        try{var pattern=Pattern<UiaText>(element,10014);var range=pattern?.DocumentRange.Clone();if(range!=null){range.MoveEndpointByRange(1,range,0);range.MoveEndpointByUnit(0,0,selection.Value.Before.Length+text.Length);range.MoveEndpointByRange(1,range,0);act();range.Select();}}catch{}
-        return new(true,true,"accessibility/type");
-    },valid);
+    internal static Task<Result> EnterText(nint root,string text,bool replace,Func<bool> valid,
+        string pasteShortcut=null,CancellationToken cancellation=default)
+    {
+        if(text.Length>4000||text.Any(character=>char.IsControl(character)&&character!='\n'&&character!='\r'))
+            return Task.FromResult(new Result(Reason:"This text contains unsupported control characters or exceeds 4,000 characters. Use a shorter plain-text request."));
+        if(pasteShortcut==null&&(text.Contains('\n')||text.Contains('\r')))
+            return Task.FromResult(new Result(Reason:"Keyboard entry of multiple lines is unavailable for this field. Specify a single line or explicitly request paste."));
+        return Run((automation,act)=>{
+            var field=automation.GetFocusedElement();
+            var top=automation.ElementFromHandle(root);
+            var match=field;
+            for(int i=0;match!=null&&i<128&&!automation.CompareElements(match,top);i++)
+                match=automation.RawViewWalker.GetParentElement(match);
+            if(match==null||!automation.CompareElements(match,top)||!Flag(field,30008)||!Flag(field,30010))
+                return new(Reason:"Click the intended editable text field before entering text.");
+            if(field.GetCurrentPropertyValue(30019) is not false)
+                return new(Reason:"This field is protected. Enter its text yourself.");
+            var value=Pattern<UiaValue>(field,10002);
+            var pattern=Pattern<UiaText>(field,10014);
+            if(value?.CurrentIsReadOnly==true || Int(field,30003)!=50004 && (Int(field,30003)!=50030||pattern==null))
+                return new(Reason:"The focused control is not a supported editable text field.");
+            bool SameField()=>valid()&&Flag(field,30008)&&!Flag(field,30019)&&automation.CompareElements(field,automation.GetFocusedElement());
+            string original=value?.CurrentValue;
+            var selection=Selection(field);
+            if(!SameField())return new(Reason:"The focused field changed before text entry.");
+            if(!replace&&pattern!=null)
+            {
+                var ranges=pattern.GetSelection();
+                if(ranges==null||ranges.Length!=1)return new(Reason:"This app did not expose a single editable selection.");
+                var range=ranges.GetElement(0);
+                if(range.CompareEndpoints(0,range,1)!=0)
+                {
+                    act();
+                    range.MoveEndpointByRange(0,range,1);
+                    range.Select();
+                }
+            }
+            else if(pattern==null&&original!=null)
+            {
+                nint handle=new(Int(field,30020));
+                if(TryReadEditSelection(handle,original,out int start,out int end))
+                {
+                    selection=(original[..start],original[start..end],original[end..]);
+                    if(!replace&&start!=end)
+                    {
+                        if(!SameField())return new(Reason:"The focused field changed before typing.");
+                        act();
+                        if(SendEditSelection(handle,0xB1,end,end,2,300,out _)==0)
+                            return new(Attempted:true,Reason:"The app refused to preserve the selected text.");
+                    }
+                }
+                else if(!replace&&original!="")
+                    return new(Reason:"This app did not expose the selection needed to preserve its existing text.");
+            }
+            else if(!replace&&pattern==null)
+                return new(Reason:"This app did not expose its current text or selection.");
+
+            if(pasteShortcut!=null)
+            {
+                if(!SameField())return new(Reason:"The focused field changed before paste.");
+                if(text.Length>0)
+                {
+                    act();
+                    if(!TextInsertion.CopyTextAsync(text).GetAwaiter().GetResult())
+                        return new(Attempted:true,Reason:"Windows could not stage the explicitly requested paste.");
+                    if(!SameField())return new(Attempted:true,Reason:"The field lost focus before paste.");
+                }
+                act();
+                return ClickyScreenActuator.PressAsync(pasteShortcut).GetAwaiter().GetResult()==ClickyActuation.Done
+                    ? new(true,true,"keyboard/paste") : new(Attempted:true,Reason:"The field refused the paste shortcut.");
+            }
+            var elements=StringInfo.GetTextElementEnumerator(text);
+            while(elements.MoveNext())
+            {
+                if(!SameField())return new(Attempted:true,Reason:"The focused field changed; typing stopped. Check the partial text before retrying.");
+                act();
+                if(ClickyScreenActuator.TypeAsync(elements.GetTextElement(),cancellation).GetAwaiter().GetResult()!=ClickyActuation.Done)
+                    return new(Attempted:true,Reason:"The app refused a key event. Check the field before retrying.");
+            }
+            if(!SameField())return new(Attempted:true,Reason:"The field lost focus before its text could be checked.");
+            if(selection is {} parts&&value!=null)
+            {
+                string expected=parts.Before+(replace?"":parts.Selected)+text+parts.After;
+                if(value.CurrentValue!=expected)
+                    return new(Attempted:true,Reason:"The app did not confirm the requested text. Check the field before retrying.");
+            }
+            return new(true,true,"keyboard/type");
+        },valid,TimeSpan.FromSeconds(8)+TimeSpan.FromMilliseconds(text.Length*75));
+    }
+
+    private static bool TryReadEditSelection(nint window,string value,out int start,out int end)
+    {
+        start=end=0;
+        if(window==0)return false;
+        var name=new StringBuilder(128);
+        GetClassName(window,name,name.Capacity);
+        string control=name.ToString();
+        if(!control.Equals("Edit",StringComparison.OrdinalIgnoreCase) &&
+           !control.StartsWith("WindowsForms10.EDIT.",StringComparison.OrdinalIgnoreCase) &&
+           !control.StartsWith("RichEdit",StringComparison.OrdinalIgnoreCase))return false;
+        return ReadEditSelection(window,0xB0,out start,out end,2,300,out _)!=0 &&
+            start>=0&&end>=start&&end<=value.Length;
+    }
+
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)]
+    private static extern int GetClassName(nint window,StringBuilder name,int capacity);
+    [DllImport("user32.dll",EntryPoint="SendMessageTimeoutW")]
+    private static extern nint ReadEditSelection(nint window,uint message,out int start,out int end,uint flags,uint timeout,out nint result);
+    [DllImport("user32.dll",EntryPoint="SendMessageTimeoutW")]
+    private static extern nint SendEditSelection(nint window,uint message,nint start,nint end,uint flags,uint timeout,out nint result);
     internal static Task<Result> Shortcut(nint root,string chord,Func<bool> valid)=>Run((automation,act)=>{
         if(chord is "ctrl+l" or "control+l" or "f6"){
             var edits=automation.ElementFromHandle(root).FindAll(4,automation.CreatePropertyCondition(30003,50004));

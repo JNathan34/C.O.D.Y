@@ -6,5 +6,7 @@ namespace HeyClicky.Core.Tools;
 
 public sealed record CompanionToolContext(string? UserWords, bool Typed, IReadOnlyList<string> AttachedFilePaths, byte[]? ScreenshotJpeg = null, string? HighlightGesture = null, PageReference? Page = null, IReadOnlyList<(string Role, string Text)>? RecentConversation = null)
 {
+	public CompanionCapability? Capability { get; init; }
+
 	public static readonly CompanionToolContext None = new CompanionToolContext(null, Typed: false, Array.Empty<string>());
 }

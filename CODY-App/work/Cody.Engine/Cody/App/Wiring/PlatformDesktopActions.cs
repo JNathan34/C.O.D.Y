@@ -1,8 +1,12 @@
 using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using HeyClicky.Core.Browser;
 using HeyClicky.Core.Platform;
 using HeyClicky.Platform.Win32;
+using HeyClicky.App.Cody;
 
 namespace HeyClicky.App.Wiring;
 
@@ -45,6 +49,7 @@ public sealed class PlatformDesktopActions : IDesktopActions
 
 	public async Task<TextInsertOutcome> InsertIntoFocusedFieldAsync(string text)
 	{
+		if (CodyEngineBridge.EngineMode) return await EnterTextAsync(text, null, CancellationToken.None, requireAutomatic:true);
 		UiaPageText.FocusTarget target = await UiaPageText.FocusedTargetAsync().ConfigureAwait(continueOnCapturedContext: false);
 		if ((object)target == null || !target.HasFocus)
 		{
@@ -66,6 +71,29 @@ public sealed class PlatformDesktopActions : IDesktopActions
 		Log.Info("Desktop", $"insert into {target.AppName ?? "?"} ({target.ControlType}): {(flag ? "pasted" : "clipboard write failed")}");
 		return flag ? new TextInsertOutcome("inserted", null, ForegroundAppInfo.CaptureUserApp()?.AppName ?? target.AppName) : new TextInsertOutcome("failed", "clipboard_unavailable");
 	}
+
+	internal static async Task<TextInsertOutcome> EnterTextAsync(string text, string? words, CancellationToken ct, bool requireAutomatic=false)
+	{
+		if (!CodyPermissions.CanUseComputer) return new("refused", "Computer control is disabled in Settings > Permissions.");
+		if (requireAutomatic && !CodyPermissions.Automatic)
+			return new("refused", "Use the normal Computer Use approval flow to type into this field.");
+		nint window = GetForegroundWindow();
+		GetWindowThreadProcessId(window, out uint pid);
+		if (window == 0 || pid == Environment.ProcessId) return new("refused", "no_focused_text_field");
+		try
+		{
+			using var process=Process.GetProcessById((int)pid);
+			if (process.ProcessName.Equals("C.O.D.Y",StringComparison.OrdinalIgnoreCase)) return new("refused","own_window");
+		}
+		catch (ArgumentException) { return new("refused","no_focused_text_field"); }
+		var result = await CodyAccessibilityInput.EnterText(window, text, CodyTextEntryIntent.Replace(words),
+			() => window == GetForegroundWindow() && !ct.IsCancellationRequested && CodyPermissions.CanUseComputer,
+			CodyTextEntryIntent.Paste(words) ? "ctrl+v" : null, ct).ConfigureAwait(false);
+		return result.Handled ? new("inserted") : new(result.Attempted ? "failed" : "refused", result.Reason);
+	}
+
+	[DllImport("user32.dll")] private static extern nint GetForegroundWindow();
+	[DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint window,out uint pid);
 
 	public (string? DisplayName, string? ProcessName) FrontApplication()
 	{

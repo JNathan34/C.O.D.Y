@@ -54,6 +54,45 @@ public sealed class RealStack : IAsyncDisposable
 
 	public ScreenDrawingCanvas Canvas { get; private set; }
 
+	private readonly List<ScreenDrawingCanvas> retainedDrawings = new();
+	private Func<ScreenDrawingCanvas> makeDrawingCanvas;
+	public event EventHandler DrawingCleared;
+
+	internal ScreenDrawingCanvas[] DrawingCanvases => retainedDrawings.Append(Canvas).ToArray();
+
+	private ScreenDrawingCanvas PrepareDrawingCanvas()
+	{
+		if (!CodyDrawingControls.HasVisibleDrawing(Canvas)) return Canvas;
+		var next = makeDrawingCanvas();
+		next.PlaysSounds = Canvas.PlaysSounds;
+		next.PlaysPenSounds = Canvas.PlaysPenSounds;
+		next.ShowsSubtitles = Canvas.ShowsSubtitles;
+		retainedDrawings.Add(Canvas);
+		Canvas = next;
+		return next;
+	}
+
+	internal void ClearDrawings()
+	{
+		foreach (var drawing in retainedDrawings)
+		{
+			drawing.Clear(animated: false);
+			drawing.Dispose();
+		}
+		retainedDrawings.Clear();
+		Canvas.Clear();
+	}
+
+	internal async Task ClearTwoDimensionalDrawings()
+	{
+		foreach (var canvas in DrawingCanvases)
+		{
+			await CodyDrawingControls.ClearTwoDimensional(canvas);
+			if (canvas != Canvas && !CodyDrawingControls.HasVisibleDrawing(canvas) && retainedDrawings.Remove(canvas))
+				canvas.Dispose();
+		}
+	}
+
 	public AgentService Agents { get; private set; }
 
 	public CompanionSession Companion { get; private set; }
@@ -224,23 +263,22 @@ public sealed class RealStack : IAsyncDisposable
 		double value = Lap();
 		DeferredCursorOverlay cursor = new DeferredCursorOverlay();
 		DeferredHighlightOverlay highlight = new DeferredHighlightOverlay();
-		ScreenDrawingCanvas screenDrawingCanvas = new ScreenDrawingCanvas((CancellationToken ct) => core.Auth.GetValidAccessTokenAsync(ct), core.Endpoints.WorkerBaseUrl, ui, (HttpRequestMessage request) =>
+		makeDrawingCanvas = () =>
 		{
-			ClickyClientHeadersHandler.Apply(request.Headers, core.Identity);
-		});
-		screenDrawingCanvas.PenStrokes += (object? _, IReadOnlyList<PenStrokePath> strokes) =>
-		{
-			cursor.RidePen(strokes);
+			var drawing = new ScreenDrawingCanvas(ct => core.Auth.GetValidAccessTokenAsync(ct),
+				core.Endpoints.WorkerBaseUrl, ui, request => ClickyClientHeadersHandler.Apply(request.Headers, core.Identity));
+			drawing.PenStrokes += (_, strokes) => cursor.RidePen(strokes);
+			drawing.Cleared += (_, args) =>
+			{
+				cursor.EndPenRide();
+				DrawingCleared?.Invoke(drawing, args);
+			};
+			drawing.PenHandedBack += (_, _) => cursor.EndPenRide();
+			drawing.ScreenChangeWatchFactory = (display, changed) =>
+				CodyDrawingControls.WatchScreen(drawing, display, capture, changed);
+			return drawing;
 		};
-		screenDrawingCanvas.Cleared += (object? _, EventArgs _) =>
-		{
-			cursor.EndPenRide();
-		};
-		screenDrawingCanvas.PenHandedBack += (object? _, EventArgs _) =>
-		{
-			cursor.EndPenRide();
-		};
-		screenDrawingCanvas.ScreenChangeWatchFactory = (DisplayInfo display, Action<string> onChanged) => HeyClicky.App.Cody.CodyDrawingControls.WatchScreen(screenDrawingCanvas, display, capture, onChanged);
+		ScreenDrawingCanvas screenDrawingCanvas = makeDrawingCanvas();
 		double value2 = Lap();
 		AgentRuntimeOptions agentRuntimeOptions = new AgentRuntimeOptions();
 		AppHost.PrepareStoredSettings(core.Settings, agentRuntimeOptions);
@@ -283,6 +321,13 @@ public sealed class RealStack : IAsyncDisposable
 		{
 			UiContext = uiContext,
 			DesktopActions = new PlatformDesktopActions(),
+			EnterText = CodyEngineBridge.EngineMode ? (text,words,ct) => PlatformDesktopActions.EnterTextAsync(text,words,ct,requireAutomatic:true) : null,
+			AllowClipboardCopy = CodyEngineBridge.EngineMode ? CodyTextEntryIntent.Copy : null,
+			UserDriveTool = CodyEngineBridge.EngineMode ? (name,args,words) =>
+				HeyClicky.App.Drive.ClickyTakeOverController.Current?.HandleUserToolAsync(name,args,words)
+				?? Task.FromResult("{\"status\":\"unavailable\"}") : null,
+			BeginPersistentDrawing = CodyEngineBridge.EngineMode ? PrepareDrawingCanvas : null,
+			CanContinuePersistentDrawing = CodyEngineBridge.EngineMode ? frame => CodyDrawingControls.CanContinue(Canvas, frame) : null,
 			StartDrawingCapture = HeyClicky.App.Cody.CodyDrawingFollow.RememberCapture,
 			ToolCallHandler = HeyClicky.App.Cody.CodyEngineBridge.EngineMode ? (call,context,ct)=>HeyClicky.App.Cody.CodyQuickActions.Handle(call,context,ct,companionTools.HandleAsync,agents,()=>{var userContext=brainContext.UserContext();var catalog=HeyClicky.App.Services.ConnectedApps.Catalog;var connected=catalog==null?userContext.ConnectedApps.AsEnumerable():catalog.Integrations.Where(item=>item.IsActiveConnection).SelectMany(item=>new[]{item.Id,item.DisplayName,item.PrimaryToolkitSlug});return connected.Concat(userContext.CustomConnectors.Where(item=>!userContext.NeedsReconnect.Contains(item.Name,StringComparer.OrdinalIgnoreCase)).Select(item=>item.Name)).ToArray();}) : companionTools.HandleAsync,
 			UserContext = brainContext.UserContext,
@@ -560,7 +605,8 @@ public sealed class RealStack : IAsyncDisposable
 		await TryAsync(Agents, "agents");
 		Try(() =>
 		{
-			Canvas?.Dispose();
+			foreach (var drawing in DrawingCanvases) drawing?.Dispose();
+			retainedDrawings.Clear();
 		}, "canvas");
 		Try(() =>
 		{

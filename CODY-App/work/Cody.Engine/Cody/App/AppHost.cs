@@ -997,7 +997,7 @@ public sealed class AppHost : INotchCardActions, IAppActions, INotchActions
 
 	internal void ClearDrawing()
 	{
-		Real?.Canvas.Clear();
+		if (!HeyClicky.App.Cody.CodyEngineBridge.EngineMode) Real?.Canvas.Clear();
 	}
 
 	internal Task<bool> AnnounceLineAsync(string line)

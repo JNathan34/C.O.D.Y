@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('assistant',{
   webStatus:()=>ipcRenderer.invoke('web-status'),
   webSignIn:()=>ipcRenderer.invoke('web-sign-in'),
   sendMessage:args=>ipcRenderer.invoke('send-message',args),
+  mentions:{list:localOnly=>ipcRenderer.invoke('mentions-list',localOnly)},
   stop:()=>ipcRenderer.invoke('stop-turn'),
   wake:{status:()=>ipcRenderer.invoke('wake-word-status')},
   audioOutput:{list:()=>ipcRenderer.invoke('audio-output-devices'),select:deviceId=>ipcRenderer.invoke('audio-output-select',deviceId)},

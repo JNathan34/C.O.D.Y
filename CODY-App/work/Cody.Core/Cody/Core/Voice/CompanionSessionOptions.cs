@@ -16,6 +16,16 @@ public sealed class CompanionSessionOptions
 
 	public IDesktopActions DesktopActions { get; init; } = new WindowsDesktopActions();
 
+	public Func<string,string?,CancellationToken,Task<TextInsertOutcome>>? EnterText { get; init; }
+
+	public Func<string,string,string?,Task<string>>? UserDriveTool { get; init; }
+
+	public Func<string?,bool>? AllowClipboardCopy { get; init; }
+
+	public Func<IScreenDrawingCanvas>? BeginPersistentDrawing { get; init; }
+
+	public Func<ScreenCaptureFrame, bool>? CanContinuePersistentDrawing { get; init; }
+
 	public Func<BrainToolCall, CompanionToolContext, CancellationToken, Task<string>>? ToolCallHandler { get; init; }
 
 	public Func<BrainUserContext>? UserContext { get; init; }

@@ -43,6 +43,7 @@ internal sealed class CodyDrawingFollow : IDisposable
     private bool initialized;
     private bool hasSampled;
     private bool needsMatch;
+    private bool keepUnmatched;
 
     internal CodyDrawingFollow(ScreenCaptureService capture, DisplayInfo display, byte[] screenshot,
         Vector2 imageSize, Action<Action> post)
@@ -80,18 +81,33 @@ internal sealed class CodyDrawingFollow : IDisposable
         return (frame, original) => origins.GetValue(frame.Jpeg, _ => new CaptureOrigin(foreground, bounds, original));
     }
 
-    internal bool Available => origin.Right > display.BoundsPx.X && origin.Bottom > display.BoundsPx.Y &&
-        origin.Left < display.BoundsPx.Right && origin.Top < display.BoundsPx.Bottom && origin.Right > origin.Left && origin.Bottom > origin.Top;
+    internal bool Available => IntersectsDisplay(origin);
     internal bool Hidden => scene != null && !scene.Visual.IsVisible;
     internal bool Moved => scene != null && scene.Visual.Offset != scene.Offset;
     internal bool OwnerForeground => Available && IsOwnerForeground();
+
+    internal bool CanContinue(ScreenCaptureFrame frame)
+    {
+        if (!Available) return true;
+        bool sameWindow = frame.Jpeg != null && origins.TryGetValue(frame.Jpeg, out var source)
+            ? source.App.WindowHandle == owner.WindowHandle
+            : IsOwnerForeground();
+        return sameWindow && IsPageCurrent();
+    }
 
     internal object Inspect() => new { ownerForeground = OwnerForeground, pageCurrent = Available && IsPageCurrent(),
         owner = owner?.WindowHandle.ToString(), foreground = GetAncestor(GetForegroundWindow(), 3).ToString(),
         sampling, hasSampled, previous = previous.ToString() };
     internal void ScreenChanged(string reason)
     {
-        if (browser && (reason is "scroll" or "window moved") && IsOwnerForeground() && IsPageCurrent()) needsMatch = true;
+        if (!browser) return;
+        if (CodyEngineBridge.EngineMode && reason is ("click" or "app switch" or "space change"))
+            keepUnmatched = true;
+        if (reason is ("scroll" or "window moved") && IsOwnerForeground() && IsPageCurrent())
+        {
+            keepUnmatched = false;
+            needsMatch = true;
+        }
     }
 
     internal void Tick(Visual visual, (double X, double Y, double Width, double Height) mark, Vector2 imageSize)
@@ -100,9 +116,11 @@ internal sealed class CodyDrawingFollow : IDisposable
         scene ??= new CompositionVisualState(visual, visual.Offset, visual.Clip);
         if (!IsOwnerForeground() || !TryClientBounds(owner.WindowHandle, out var viewport))
         {
-            visual.IsVisible = false;
+            // Preserve the last screen placement while another window has focus.
+            if (!CodyEngineBridge.EngineMode) visual.IsVisible = false;
             return;
         }
+        if (CodyEngineBridge.EngineMode && !IntersectsDisplay(viewport)) return;
         long now = Environment.TickCount64;
         if (browser && !readingAddress && now >= nextAddress) ReadAddress();
         if (!IsPageCurrent())
@@ -188,10 +206,12 @@ internal sealed class CodyDrawingFollow : IDisposable
             {
                 hasSampled = true;
                 needsMatch = false;
+                if (Math.Abs(position.X - previous.X) > 1 || Math.Abs(position.Y - previous.Y) > 1)
+                    keepUnmatched = false;
                 previous = position;
                 Place(viewport, position.X / sx, position.Y / sy);
             }
-            else if (capturedFrame || hasSampled || needsMatch || dx != 0 || dy != 0)
+            else if (needsMatch || (!keepUnmatched && (capturedFrame || hasSampled || dx != 0 || dy != 0)))
             {
                 scene.Visual.IsVisible = false;
             }
@@ -250,10 +270,15 @@ internal sealed class CodyDrawingFollow : IDisposable
         var title = new StringBuilder(1024);
         GetWindowText(owner.WindowHandle, title, title.Capacity);
         string visibleTitle = title.ToString();
+        if (CodyEngineBridge.EngineMode && pageUrl != null)
+            return currentUrl == pageUrl;
         return pageUrl != null && currentUrlTitle == visibleTitle
             ? currentUrl == pageUrl
             : visibleTitle == owner.WindowTitle;
     }
+
+    private bool IntersectsDisplay(Rect rect) => rect.Right > display.BoundsPx.X && rect.Bottom > display.BoundsPx.Y &&
+        rect.Left < display.BoundsPx.Right && rect.Top < display.BoundsPx.Bottom && rect.Right > rect.Left && rect.Bottom > rect.Top;
 
     private bool IsOwnerForeground()
     {

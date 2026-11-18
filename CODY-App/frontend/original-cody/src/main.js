@@ -650,6 +650,7 @@ else app.whenReady().then(()=>{
   controller.plezy={play:title=>nativeEngine.request('plezy-play',{title})};
   controller.proofread=async target=>{if(!target)target=(await nativeEngine.request('text-capture',{clientPid:process.pid})).target;if(!target)throw Error('Click the text box, then hold your voice shortcut and say “spell check this”. The box must expose editable text.');return nativeEngine.request('proofread',{target});};
   controller.nativeAudio={set:level=>nativeEngine.request("audio-set",{level}),mute:muted=>nativeEngine.request("audio-mute",{muted})};
+  controller.nativeKeyboard=(text,words)=>nativeEngine.request('keyboard-entry',{text,words});
   rps=new RockPaperScissors();rps.on("change",state=>{sendUI("rps-state",state);refreshIslandCards();});
   screenCapture=new ScreenCapture({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures:path.join(app.getPath('pictures'),'C.O.D.Y'),videos:path.join(app.getPath('videos'),'C.O.D.Y')});
   let lastSavedCapture=null;screenCapture.on('change',state=>{sendUI('capture-state',state);refreshIslandCards();if(state.status==='starting')island.collapse();if(state.status==='saved'&&state.savedPath!==lastSavedCapture){lastSavedCapture=state.savedPath;showQuickCard({kind:'utility',text:'Recording saved',detail:'Click to open',icon:'camera',captureKind:'recording'});}if(state.status==='error')showQuickCard({kind:'utility',text:'Recording error',detail:state.error,icon:'circle-alert'});});

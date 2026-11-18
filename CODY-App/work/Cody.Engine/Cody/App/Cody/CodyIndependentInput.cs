@@ -25,10 +25,12 @@ internal static class CodyIndependentInput
     private static ClickyActuation Refuse(string reason){LastReason=reason;return ClickyActuation.Refused;}
     private static volatile int generation;
     private static nint probeRoot;
+    private static nint observedTextWindow;
+    internal static void ObserveTextWindow()=>observedTextWindow=GetForegroundWindow();
     internal static bool Active=>active;
     public static PointD CurrentPointer{get{lock(gate)return CodyEngineBridge.EngineMode&&active&&!systemInput?pointer:ClickyScreenActuator.CurrentPointer;}}
     public static bool IsLeftButtonHeld=>CodyEngineBridge.EngineMode&&!systemInput?left:ClickyScreenActuator.IsLeftButtonHeld;
-    internal static void Begin(bool useSystemInput=true){if(!CodyEngineBridge.EngineMode)return;lock(gate){if(active)return;pointer=ClickyScreenActuator.CurrentPointer;systemInput=useSystemInput;inputCancellation=new CancellationTokenSource();int ticket=++generation;CodyMouseGuard.Start(systemInput,()=>{lock(gate){if(ticket==generation)End();}});active=true;target=hoverTarget=0;LastReason=LastMethod="";CodyAccessibilityInput.Reset();}}
+    internal static void Begin(bool useSystemInput=true){if(!CodyEngineBridge.EngineMode)return;lock(gate){if(active)return;pointer=ClickyScreenActuator.CurrentPointer;systemInput=useSystemInput;inputCancellation=new CancellationTokenSource();int ticket=++generation;CodyMouseGuard.Start(systemInput,()=>{lock(gate){if(ticket==generation)End();}});active=true;observedTextWindow=0;target=hoverTarget=0;LastReason=LastMethod="";CodyAccessibilityInput.Reset();}}
     internal static void End(){if(!CodyEngineBridge.EngineMode)return;lock(gate){CodyMouseGuard.Stop();inputCancellation?.Cancel();ReleaseHeldButton();if(systemInput)ClickyScreenActuator.ReleaseStrandedKeysAfterDrive("control ended");active=false;target=0;generation++;if(hoverTarget!=0)PostMessage(hoverTarget,0x2A3,0,0);hoverTarget=0;}}
     public static async Task GlideAsync(PointD point,double seconds=.45,CancellationToken ct=default){
         if(CodyEngineBridge.EngineMode&&!active)return;
@@ -99,16 +101,36 @@ internal static class CodyIndependentInput
         return Task.FromResult(PostMessage(window,0x20A,(nint)wheel,Pack((int)point.X,(int)point.Y))?ClickyActuation.Done:ClickyActuation.Refused);
     }
     private static nint KeyboardTarget(){if(target==0||!IsWindow(target))return 0;uint thread=GetWindowThreadProcessId(target,out _);var info=new GuiThreadInfo{size=Marshal.SizeOf<GuiThreadInfo>()};return GetGUIThreadInfo(thread,ref info)&&info.focus!=0&&GetAncestor(info.focus,2)==GetAncestor(target,2)?info.focus:target;}
-    public static async Task<ClickyActuation> TypeAsync(string text,CancellationToken ct=default){
+    public static async Task<ClickyActuation> TypeAsync(string text,CancellationToken ct=default,bool replace=false,bool paste=false){
         if(CodyEngineBridge.EngineMode&&!active)return Refuse("Computer control has stopped.");
-        if(UsesSystemInput){using var typing=CancellationTokenSource.CreateLinkedTokenSource(ct,inputCancellation?.Token??CancellationToken.None);return await ClickyScreenActuator.TypeAsync(text,typing.Token);}var window=KeyboardTarget();if(window==0||!active)return Refuse("Click the target text field before typing.");int ticket=generation;var root=GetAncestor(window,2);
-        var result=await CodyAccessibilityInput.Type(root,text,()=>active&&ticket==generation&&!ct.IsCancellationRequested&&IsWindow(root));
-        if(result.Handled){LastMethod=result.Method;LastReason="";return ClickyActuation.Done;}if(result.Attempted)return Refuse(result.Reason??"The app rejected text insertion.");
-        foreach(char ch in text){ct.ThrowIfCancellationRequested();if(!active||ticket!=generation||!PostMessage(window,0x102,(nint)ch,(nint)1))return Refuse("Text insertion stopped or was rejected by the app.");}await Task.Delay(20,ct);LastMethod="window-message/type";return ClickyActuation.Done;
+        if(!CodyEngineBridge.EngineMode)return await ClickyScreenActuator.TypeAsync(text,ct);
+        if(!UsesSystemInput)return Refuse("This text field requires foreground keyboard input.");
+        return await EnterText(text,replace,paste?"ctrl+v":null,ct);
+    }
+
+    private static async Task<ClickyActuation> EnterText(string text,bool replace,string? paste,CancellationToken ct)
+    {
+        using var typing=CancellationTokenSource.CreateLinkedTokenSource(ct,inputCancellation?.Token??CancellationToken.None);
+        nint window=GetForegroundWindow();
+        int ticket=generation;
+        if(window==0)return Refuse("Click the intended text field first.");
+        if(observedTextWindow!=0&&observedTextWindow!=window)
+            return Refuse("The foreground app changed after the last observation. Inspect the intended field again before typing.");
+        var result=await CodyAccessibilityInput.EnterText(window,text,replace,
+            ()=>active&&ticket==generation&&!typing.IsCancellationRequested&&GetForegroundWindow()==window,
+            paste,typing.Token);
+        if(!result.Handled)return Refuse(result.Reason??"The field did not accept the keyboard input.");
+        LastMethod=result.Method;LastReason="";return ClickyActuation.Done;
     }
     private static ushort Key(string text){var key=text.Trim().ToLowerInvariant();if(key.Length==1&&char.IsAsciiLetterOrDigit(key[0]))return(char)char.ToUpperInvariant(key[0]);if(key.StartsWith('f')&&int.TryParse(key[1..],out var number)&&number>=1&&number<=24)return(ushort)(111+number);return key switch{"enter" or "return"=>13,"tab"=>9,"escape" or "esc"=>27,"backspace"=>8,"delete"=>8,"del" or "forwarddelete"=>46,"insert"=>45,"space"=>32,"up" or "arrowup"=>38,"down" or "arrowdown"=>40,"left" or "arrowleft"=>37,"right" or "arrowright"=>39,"home"=>36,"end"=>35,"pageup"=>33,"pagedown"=>34,_=>0};}
-    public static async Task<ClickyActuation> PressAsync(string chord){
+    public static async Task<ClickyActuation> PressAsync(string chord,bool pasteAllowed=false,bool replace=false){
         if(CodyEngineBridge.EngineMode&&!active)return Refuse("Computer control has stopped.");
+        if(CodyEngineBridge.EngineMode&&CodyTextEntryIntent.PasteChord(new[]{chord}))
+        {
+            if(!pasteAllowed)return Refuse("Paste requires an explicit user request.");
+            if(!UsesSystemInput)return Refuse("Paste requires foreground keyboard input.");
+            return await EnterText("",replace,chord,CancellationToken.None);
+        }
         if(UsesSystemInput)return await ClickyScreenActuator.PressAsync(chord);
         chord=chord.Trim().ToLowerInvariant().Replace("control+","ctrl+").Replace("opt+","alt+");if(!active)return Refuse("Computer control has stopped.");
         if(chord is "win" or "windows" or "meta" or "super"){
@@ -120,7 +142,6 @@ internal static class CodyIndependentInput
         var targetWindow=KeyboardTarget();if(targetWindow==0)targetWindow=TargetAt(CurrentPointer,false);var root=targetWindow==0?0:GetAncestor(targetWindow,2);int ticket=generation;
         if(root!=0&&(chord.Contains('+')||chord=="f6")){
             if(chord=="alt+f4"){LastMethod="window-command/close";return PostMessage(root,0x10,0,0)?ClickyActuation.Done:Refuse("The app rejected the close request.");}
-            if(chord=="ctrl+v"){var clipboard=ReadClipboard();if(clipboard==null)return Refuse("The clipboard does not contain text.");target=targetWindow;return await TypeAsync(clipboard);}
             var result=await CodyAccessibilityInput.Shortcut(root,chord,()=>active&&ticket==generation&&IsWindow(root));
             if(result.Handled){target=targetWindow;if(result.Text!=null&&active&&ticket==generation&&!await HeyClicky.Platform.Win32.TextInsertion.CopyTextAsync(result.Text))return Refuse("Windows could not update the clipboard.");LastReason="";LastMethod=result.Method;return ClickyActuation.Done;}
             if(result.Attempted)return Refuse(result.Reason??"The app rejected this shortcut.");
@@ -188,7 +209,6 @@ internal static class CodyIndependentInput
         var hit=SendMessage(root,0x84,0,Pack((int)point.X,(int)point.Y)).ToInt32();
         if(hit==8)return ShowWindowAsync(root,6);if(hit==9||hit==2&&count==2)return ShowWindowAsync(root,IsZoomed(root)?9:3);if(hit==20)return PostMessage(root,0x10,0,0);return false;
     }
-    private static string ReadClipboard(){if(!OpenClipboard(0))return null;try{var handle=GetClipboardData(13);if(handle==0)return null;var data=GlobalLock(handle);if(data==0)return null;try{return Marshal.PtrToStringUni(data);}finally{GlobalUnlock(handle);}}finally{CloseClipboard();}}
     internal static async Task<object> Probe(string handle,double x,double y,string text,string gesture="click",string key="",bool useSystemInput=false){
         var root=(nint)long.Parse(handle);var title=new StringBuilder(256);GetWindowText(root,title,title.Capacity);GetWindowThreadProcessId(root,out uint pid);
         if(!CodyControlFixtures.Owns(root)&&(title.ToString()!="CODY independent cursor verification"||System.Diagnostics.Process.GetProcessById((int)pid).ProcessName!="electron"))throw new InvalidOperationException("Only owned verification windows may receive probe input.");
@@ -231,9 +251,4 @@ internal static class CodyIndependentInput
     [DllImport("user32.dll")]private static extern nint SendMessage(nint window,uint message,nint w,nint l);
     [DllImport("user32.dll")]private static extern bool ShowWindowAsync(nint window,int state);
     [DllImport("user32.dll")]private static extern bool IsZoomed(nint window);
-    [DllImport("user32.dll")]private static extern bool OpenClipboard(nint window);
-    [DllImport("user32.dll")]private static extern bool CloseClipboard();
-    [DllImport("user32.dll")]private static extern nint GetClipboardData(uint format);
-    [DllImport("kernel32.dll")]private static extern nint GlobalLock(nint memory);
-    [DllImport("kernel32.dll")]private static extern bool GlobalUnlock(nint memory);
 }

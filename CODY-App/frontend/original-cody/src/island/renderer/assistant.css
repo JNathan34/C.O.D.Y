@@ -391,3 +391,34 @@ body[data-motion="off"] .microphone-indicator,body[data-motion="off"] .microphon
 body[data-motion="off"][data-microphone="restored"] .microphone-slash,
 body[data-motion="off"][data-microphone="restored"] .microphone-slash-mask{opacity:0}
 @media(prefers-reduced-motion:reduce){.microphone-indicator,.microphone-indicator *{animation:none!important;transition:none!important}body[data-microphone="restored"] .microphone-slash,body[data-microphone="restored"] .microphone-slash-mask{opacity:0}}
+
+.composer{position:relative}
+.mention-picker{
+  position:absolute;z-index:10;inset-inline:0;bottom:calc(100% + 8px);
+  padding:5px;border:1px solid #414247;border-radius:14px;background:#202124;
+  box-shadow:0 10px 30px #0008;color:#f5f5f7;
+}
+.mention-picker[hidden],.mention-chip[hidden]{display:none}
+.mention-results{max-height:min(235px,30vh);overflow:auto;overscroll-behavior:contain}
+.mention-status{padding:8px;font-size:calc(11px * var(--font-scale));color:#c1c3c7}
+.mention-result{
+  display:grid;grid-template-columns:26px minmax(0,1fr) auto;align-items:center;gap:9px;
+  padding:7px 8px;border-radius:8px;cursor:pointer;
+}
+.mention-result:hover,.mention-result[aria-selected="true"]{background:#363c48}
+.mention-icon{display:grid;place-items:center;width:20px;height:20px;color:#a5d6ff}
+.mention-icon img,.mention-icon svg{width:18px;height:18px;object-fit:contain}
+.mention-label{display:grid;gap:2px;min-width:0;font-size:calc(12px * var(--font-scale))}
+.mention-label strong,.mention-label small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mention-label small,.mention-kind{color:#c1c3c7;font-size:calc(10px * var(--font-scale))}
+.mention-kind{text-transform:capitalize}
+.mention-chip{
+  display:inline-flex;align-items:center;gap:4px;max-width:100%;margin:0 0 6px;
+  padding:2px 4px 2px 6px;border:1px solid #3d5d78;border-radius:8px;
+  background:#26364a;color:#dbedff;font-size:calc(11px * var(--font-scale));
+}
+.mention-chip>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mention-chip .mention-icon{width:16px;height:16px}
+.mention-chip .mention-icon svg,.mention-chip .mention-icon img{width:14px;height:14px}
+.mention-remove{display:grid;place-items:center;min-width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:inherit;cursor:pointer}
+.mention-remove:hover,.mention-remove:focus-visible{background:#3b526e;outline:1px solid var(--ui-accent)}

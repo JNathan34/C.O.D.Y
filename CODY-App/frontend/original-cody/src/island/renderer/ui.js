@@ -156,7 +156,7 @@
   }
   function newConversation(){
     if(window.CODYIsland?.backendBusy){note.textContent='Finish or stop the current reply first.';return;}
-    messages.replaceChildren();emptyState.hidden=false;input.value='';
+    messages.replaceChildren();emptyState.hidden=false;input.value='';window.CODYMentions?.clear();
     updateInput();note.textContent='';
     if(typeof window.CODYIsland?.onNewChat==='function') window.CODYIsland.onNewChat();
     input.focus();
@@ -837,7 +837,7 @@
   micButton.addEventListener('click',toggleMic);
   document.getElementById('panel-settings').addEventListener('click',()=>setActiveView(activeView==='settings'?'chat':'settings'));
   document.getElementById('panel-send').addEventListener('click',sendPrompt);
-  document.getElementById('quick-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPrompt();}});
+  document.getElementById('quick-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendPrompt();}});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&panelOpen&&!event.target.closest?.('select:open')){
     if(activeView==='settings'&&!settingsSearchPanel.hidden){event.preventDefault();closeSettingsSearch();settingsSearchButton.focus();}
     else if(activeView!=='chat')setActiveView('chat');else togglePanel(false);

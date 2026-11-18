@@ -142,6 +142,16 @@ class ComputerController {
     if(!['gui','chat','ai-chat'].includes(context.origin))throw Error('Invalid action origin');
     if(policy.directOnly&&context.origin!=='chat')throw Error('Use a direct C.O.D.Y. command for Discord control.');
     if(context.origin==='ai-chat'&&context.verifiedUserIntent!==true)throw Error('AI-origin control requires a verified human request');
+    const human=context.humanTask||'';
+    const explicitPaste=/^\s*(?:(?:please|can you|could you|would you)\s+)*(?:paste|(?:press|use|hit)\s+(?:ctrl|control)\s*\+\s*v)\b/i.test(human);
+    if(action==='keyboard.hotkey'&&clean.hotkey==='ctrl+v'&&context.origin!=='gui'&&!explicitPaste)
+      throw Error('Paste requires an explicit user request.');
+    if(action==='clipboard.write'&&context.origin==='ai-chat'&&!explicitPaste&&!/^\s*(?:please\s+)?(?:copy|write|set|replace)\b.*\bclipboard\b/i.test(human))
+      throw Error('Clipboard changes require an explicit user request.');
+    if(action==='browser.type')throw Error('The Firefox extension does not provide guarded incremental typing. Use foreground Computer Use to type in the intended field.');
+    if(action==='browser.keypress'&&((clean.key.toLowerCase()==='v'&&clean.modifiers.some(key=>key==='ctrl'||key==='meta'))||
+      (clean.key.toLowerCase()==='insert'&&clean.modifiers.includes('shift'))))
+      throw Error('Use foreground Computer Use for an explicitly requested paste into Firefox.');
     if(context.origin==='chat' && policy.risk!=='low'&&!['full','custom'].includes(this.permissions().level))throw Error('This action requires the dedicated controls in the C.O.D.Y GUI');
     if(needsApproval(action,this.permissions(),context.origin,{args:clean,humanTask:context.humanTask||''})){
       // Profile is enforced here, not by the renderer or model-generated text.
@@ -183,8 +193,17 @@ class ComputerController {
       case 'window.minimize':result=await this.runner(windows.showWindow(clean.pid,6));break;
       case 'window.maximize':result=await this.runner(windows.showWindow(clean.pid,3));break;
       case 'app.close':result=await this.runner(windows.closeApp(clean.pid));break;
-      case 'keyboard.hotkey':result=await this.runner(windows.hotkey(clean.hotkey));break;
-      case 'keyboard.type':result=await this.runner(windows.typeText(clean.text));break;
+      case 'keyboard.hotkey':
+        if(clean.hotkey!=='ctrl+v'){result=await this.runner(windows.hotkey(clean.hotkey));break;}
+        if(!this.nativeKeyboard)throw Error('Guarded paste is unavailable.');
+        result=await this.nativeKeyboard('','paste');
+        if(result.status!=='inserted')throw Error(result.reason||'The field refused paste.');
+        break;
+      case 'keyboard.type':
+        if(!this.nativeKeyboard)throw Error('Guarded keyboard typing is unavailable.');
+        result=await this.nativeKeyboard(clean.text,human);
+        if(result.status!=='inserted')throw Error(result.reason||'The field refused typing.');
+        break;
       case 'mouse.move':result=await this.runner(windows.mouseMove(clean.x,clean.y));break;
       case 'mouse.click':result=await this.runner(windows.mouseClick(clean.button));break;
       case 'clipboard.read':if(!this.clipboard)throw Error('Clipboard unavailable');result=this.clipboard.readText().slice(0,4096);break;

@@ -6,6 +6,7 @@ const {taskState}=require('./background-tasks');
 const {selection,providerPatch}=require('./agent-provider');
 const {setPersonalCodexEnabled}=require('./usage-policy');
 const {localMemoryText,SHARED_PAUSED}=require('./memory/commands');
+const {localMentions,localMentionRoute}=require('./mentions');
 const NATIVE_VOICES=Object.freeze(['cedar','marin','alloy','ash','ballad','coral','echo','sage','shimmer','verse']);
 const {attachmentNames}=require('./attachments');
 function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExternal=async()=>{},externalBusy=()=>false,connectProvider,codexUsage,getState,getWindow,utilities,rps,capture,attachments,chooseFiles,controller,chooseWorkingFolder,captureTextEnabled=()=>false,onTasks=()=>{},showFiles=()=>{},fileDragging=()=>{},showApprovals=()=>{},cancelLocalApprovals=()=>{},isMicrophoneMuted=()=>false,localMemoryOnly=()=>false,saveLocalMemory,onMemoryModeChange=()=>{}}){
@@ -44,6 +45,12 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     return engine.request('audio-output-select',{deviceId});
   });
   handle('plugins-list',()=>engine.request('plugins-list'));
+  handle('mentions-list',async localOnly=>{
+    const items=utilities?localMentions:[];
+    if(localOnly===true||localMemoryOnly()||selection(store.data.settings).provider!=='heyclicky')return {items};
+    try{return {items:[...items,...await engine.request('mentions-list')]};}
+    catch{return {items,error:'Could not load connected capabilities.'};}
+  });
   handle('agents-state',()=>engine.request('agents-state'));
   handle('heyclicky-usage',()=>engine.request('heyclicky-usage'));
   handle('codex-usage',()=>codexUsage?codexUsage():{available:false,signedIn:false,error:'Codex usage is unavailable.'});
@@ -240,13 +247,14 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     return state;
   });
   handle('state',()=>({...getState(),busy:Boolean(active||externalBusy()),nativeEngine:true,connected:engine.connected}));
-  const submit=async({chatId,text,voice=false})=>{
+  const submit=async({chatId,text,voice=false,capabilityId=''})=>{
     if(active||externalBusy())return {error:'Another reply is in progress'};
     text=String(text||'').trim();if(text.length>25000)return {error:'Enter a message under 25,000 characters'};
     if(!store.chat(chatId))return {error:'Select a conversation'};
+    if(typeof capabilityId!=='string'||capabilityId.length>300)return {error:'Invalid capability selection.'};
     if(gameVoice?.running)await gameVoice.cancel();
     if(changingMemoryMode)return {error:'Wait for C.O.D.Y. to finish changing memory mode.'};
-    const note=localMemoryText(text,localMemoryOnly());
+    const note=capabilityId?null:localMemoryText(text,localMemoryOnly());
     if(note!==null){
       if(!saveLocalMemory)return {error:'Local memory is unavailable.'};
       const result=saveLocalMemory(note);
@@ -258,7 +266,10 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     const files=batch.paths;
     if(active||changingMemoryMode)return {error:'Another operation is in progress'};
     if(!text&&!files.length)return {error:'Enter a message or attach a file.'};
-    const route=files.length?null:utilities?.match(text);
+    const selected=capabilityId?localMentionRoute(capabilityId,text,utilities):null;
+    if(selected?.error)return selected;
+    if(selected&&files.length)return {error:'Remove attached files before using this tool.'};
+    const route=capabilityId?selected?.route:files.length?null:utilities?.match(text);
     if(route){
       active={turn:randomUUID(),chatId,utility:true,quietUtility:usesUtilityCard(route)};active.user=sendMessage('user',text);sendUI('busy',{busy:true});
       publishProgress(active,'Working…');
@@ -270,6 +281,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     const chosen=selection(store.data.settings);
     if(chosen.provider==='heyclicky'&&localMemoryOnly())return {error:SHARED_PAUSED};
     if(chosen.provider!=='heyclicky'){
+      if(capabilityId)return {error:'This capability requires the native Claude Code connection.'};
       if(!submitExternal)return {error:'This AI connection is unavailable.'};
       return submitExternal({chatId,text,voice,mode:chosen.provider,...(files.length?{attachmentBatch:batch}:{})});
     }
@@ -277,11 +289,15 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(changingMemoryMode||active)return {error:'Another operation is in progress'};
     if(localMemoryOnly())return {error:SHARED_PAUSED};
     if(!status.signedIn)return {error:'Sign in to the existing AI connection in Settings → Plugins.'};
+    if(capabilityId){
+      try{await engine.request('mentions-check',{capabilityId});}catch(error){return {error:error.message};}
+      if(active||externalBusy()||changingMemoryMode||localMemoryOnly())return {error:'Another operation is in progress. Try again.'};
+    }
     active={turn:randomUUID(),chatId,files,attachmentBatch:batch};active.user=sendMessage('user',text);active.answer=sendMessage('assistant','');sendUI('busy',{busy:true});
     sendUI('native-turn-status',{id:active.turn,text:'Working…'});
     remember(active);
     const operation=active;
-    void engine.request('submit',{turn:active.turn,text,speak:voice||store.data.settings.voiceAutoSpeak===true,...(files.length?{files}:{})}).then(result=>{if(active!==operation)return;if(!active.answer?.text&&result.text)replace(active.answer,result.text);finish();if(!files.length)void utilities?.observe(text);}).catch(error=>{if(active===operation)finish(error.message);});
+    void engine.request('submit',{turn:active.turn,text,speak:voice||store.data.settings.voiceAutoSpeak===true,...(files.length?{files}:{}),...(capabilityId?{capabilityId}:{})}).then(result=>{if(active!==operation)return;if(!active.answer?.text&&result.text)replace(active.answer,result.text);finish();if(!files.length&&!capabilityId)void utilities?.observe(text);}).catch(error=>{if(active===operation)finish(error.message);});
     if(batch.ids.length)await attachments.clearSent(chatId,batch.ids);
     return {started:true,provider:'heyclicky'};
   };

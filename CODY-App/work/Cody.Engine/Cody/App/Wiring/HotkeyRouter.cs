@@ -118,7 +118,7 @@ public sealed class HotkeyRouter : IDisposable
 		{
 			return true;
 		}
-		if (real.Canvas.IsShowing)
+		if (!HeyClicky.App.Cody.CodyEngineBridge.EngineMode && real.Canvas.IsShowing)
 		{
 			return true;
 		}
@@ -298,11 +298,12 @@ public sealed class HotkeyRouter : IDisposable
 				NotchPresentation presentation = s.Presenter.Presentation;
 				flag = ((presentation is NotchPresentation.TextInput || presentation is NotchPresentation.TextResponse) ? true : false);
 				bool flag4 = flag;
-				if (!flag3 && !flag4 && !real.Canvas.IsShowing)
+				bool clearOnEscape = !HeyClicky.App.Cody.CodyEngineBridge.EngineMode;
+				if (!flag3 && !flag4 && (!clearOnEscape || !real.Canvas.IsShowing))
 				{
 					break;
 				}
-				real.Canvas.PlayClearSoundIfShowingDrawing();
+				if (clearOnEscape) real.Canvas.PlayClearSoundIfShowingDrawing();
 				s.Companion.Cancel();
 				real.Highlight.Clear();
 				if (flag4)

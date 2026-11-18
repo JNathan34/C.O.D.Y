@@ -107,7 +107,7 @@ public sealed class LessonService
 				}
 			});
 		};
-		real.Canvas.Cleared += (object? _, EventArgs _) =>
+		real.DrawingCleared += (object? _, EventArgs _) =>
 		{
 			dq.TryEnqueue(() =>
 			{
@@ -151,9 +151,10 @@ public sealed class LessonService
 
 	internal void HideDrawingControls() => offer?.Hide();
 
-	internal void ShowGeneratingControls(bool force)
+	internal void ShowGeneratingControls(bool force, ScreenDrawingCanvas drawing = null)
 	{
-		if (!replaying && (force || offer?.IsShown != true) && real.Canvas.DrawingDisplay is DisplayInfo display)
+		drawing ??= real.Canvas;
+		if (!replaying && (force || offer?.IsShown != true) && drawing.DrawingDisplay is DisplayInfo display)
 		{
 			ShowOffer(display, null);
 		}
@@ -161,7 +162,7 @@ public sealed class LessonService
 
 	private void ShowOffer(DisplayInfo display, Recent? entry)
 	{
-		if (!DrawnOnboardingTour.IsRunning && HeyClicky.App.Cody.CodyDrawingControls.HasVisibleDrawing(real.Canvas))
+		if (!DrawnOnboardingTour.IsRunning && real.DrawingCanvases.Any(HeyClicky.App.Cody.CodyDrawingControls.HasVisibleDrawing))
 		{
 			if (offer == null)
 			{
@@ -174,7 +175,7 @@ public sealed class LessonService
 			{
 				Log.Info("lessons", "drawing cleared with the Clear button");
 				real.Canvas.PlayClearSoundIfShowingDrawing();
-				real.Canvas.Clear();
+				real.ClearDrawings();
 			});
 		}
 	}

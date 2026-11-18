@@ -30,7 +30,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 		Driving
 	}
 
-	public readonly record struct Phase(PhaseKind Kind, string Goal = "", int Step = 0);
+	public readonly record struct Phase(PhaseKind Kind, string Goal = "", int Step = 0, bool Paste = false, bool Replace = false, bool Copy = false);
 
 	public static readonly IReadOnlySet<string> ToolNames = new HashSet<string> { "offer_screen_takeover", "start_screen_takeover", "end_screen_takeover" };
 
@@ -323,7 +323,10 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 		return InvokeOnUi(() => HandleTool(name, argumentsJson));
 	}
 
-	private string HandleTool(string name, string argumentsJson)
+	internal Task<string> HandleUserToolAsync(string name,string argumentsJson,string? words) =>
+		InvokeOnUi(() => HandleTool(name,argumentsJson,CodyTextEntryIntent.Paste(words),CodyTextEntryIntent.Replace(words),CodyTextEntryIntent.Copy(words)));
+
+	private string HandleTool(string name, string argumentsJson, bool paste = false, bool replace = false, bool copy = false)
 	{
         if(!CodyAgentUsage.Enabled&&name!="end_screen_takeover")return Result("blocked",CodyAgentUsage.DisabledMessage);
         if(HeyClicky.App.Cody.CodyEngineBridge.EngineMode&&!HeyClicky.App.Cody.CodyPermissions.CanUseComputer&&name!="end_screen_takeover")return Result("blocked","Computer control is disabled in C.O.D.Y. Settings > Permissions.");
@@ -359,7 +362,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 			bool flag;
 			lock (gate)
 			{
-				this.phase = new Phase(PhaseKind.Offered, offeredGoal);
+				this.phase = new Phase(PhaseKind.Offered, offeredGoal, Paste:paste, Replace:replace, Copy:copy);
 				string text2 = currentTurnToken;
 				List<string> list;
 				if (text2 == null)
@@ -405,7 +408,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 				{
 					pendingAnalyticsOrigin = "offer_card";
 				}
-				Begin(offeredGoal);
+				Begin(offeredGoal,paste,replace,copy);
 			}, () =>
 			{
 				Declined("no_card");
@@ -424,7 +427,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 		}
 		case "start_screen_takeover":
 		{
-            if(HeyClicky.App.Cody.CodyEngineBridge.EngineMode&&HeyClicky.App.Cody.CodyPermissions.Automatic&&!IsDriving&&!string.IsNullOrWhiteSpace(text)){Begin(text);return Result("started");}
+            if(HeyClicky.App.Cody.CodyEngineBridge.EngineMode&&HeyClicky.App.Cody.CodyPermissions.Automatic&&!IsDriving&&!string.IsNullOrWhiteSpace(text)){var approval=CurrentPhase;Begin(text,paste||approval.Paste,replace||approval.Replace,copy||approval.Copy);return Result("started");}
 			Phase phase;
 			DateTimeOffset dateTimeOffset;
 			lock (gate)
@@ -444,7 +447,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 				{
 					pendingAnalyticsOrigin = "offer_spoken";
 				}
-				Begin(string.IsNullOrEmpty(text) ? phase.Goal : text);
+				Begin(string.IsNullOrEmpty(text) ? phase.Goal : text,paste||phase.Paste,replace||phase.Replace,copy||phase.Copy);
 				return Result("started");
 			}
 			if (phase.Kind != PhaseKind.Driving && DateTimeOffset.Now - dateTimeOffset < TimeSpan.FromSeconds(600L) && !string.IsNullOrEmpty(text))
@@ -454,7 +457,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 				{
 					pendingAnalyticsOrigin = "recent_yes";
 				}
-				Begin(text);
+				Begin(text,paste,replace,copy);
 				return Result("started");
 			}
 			if (phase.Kind != PhaseKind.Driving && !string.IsNullOrEmpty(text))
@@ -688,13 +691,18 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 
 	public void Begin(string goal)
 	{
+		Begin(goal,false,false,false);
+	}
+
+	private void Begin(string goal,bool paste,bool replace,bool copy)
+	{
         if(!CodyAgentUsage.Enabled)return;
         if(HeyClicky.App.Cody.CodyEngineBridge.EngineMode&&!HeyClicky.App.Cody.CodyPermissions.CanUseComputer)return;
 		if (!ui.HasThreadAccess)
 		{
 			ui.TryEnqueue(() =>
 			{
-				Begin(goal);
+				Begin(goal,paste,replace,copy);
 			});
 		}
 		else
@@ -737,7 +745,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 				driveBillingSent = false;
 				driveThen = ((agentDriveEnded == null) ? offeredThen : null);
 				offeredThen = null;
-				phase = new Phase(PhaseKind.Driving, goal);
+				phase = new Phase(PhaseKind.Driving, goal, Paste:paste, Replace:replace, Copy:copy);
 				endSummary = null;
 				actionLog.Clear();
 				overlayStatus = "Getting started";
@@ -808,6 +816,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 		IReadOnlyList<ScreenCaptureFrame> captures;
 		try
 		{
+			ClickyScreenActuator.ObserveTextWindow();
 			captures = await capture.CaptureAllAtDisplayPointSizeAsync().ConfigureAwait(continueOnCapturedContext: false);
 		}
 		catch (Exception ex)
@@ -1000,6 +1009,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 	{
 		try
 		{
+			ClickyScreenActuator.ObserveTextWindow();
 			return await capture.CaptureAllAtDisplayPointSizeAsync().ConfigureAwait(continueOnCapturedContext: false);
 		}
 		catch (Exception ex)
@@ -1114,6 +1124,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 				else
 				{
 					AddToActionLog(ClickyDriveActions.ClickLogLine(type, action));
+					ClickyScreenActuator.ObserveTextWindow();
 				}
 			}
 			break;
@@ -1168,7 +1179,8 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 			if (text2 != null && text2.Length > 0)
 			{
 				CancellationToken ct = loopCancellation?.Token ?? new CancellationToken(canceled: true);
-				if (await ClickyScreenActuator.TypeAsync(text2, ct).ConfigureAwait(continueOnCapturedContext: false) == ClickyActuation.Refused)
+				var typingPhase=CurrentPhase;
+				if (await ClickyScreenActuator.TypeAsync(text2, ct, typingPhase.Replace, typingPhase.Paste).ConfigureAwait(continueOnCapturedContext: false) == ClickyActuation.Refused)
 				{
 					NoteRefused(action);
 				}
@@ -1182,8 +1194,19 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 		case "keypress":
 		{
 			List<string> list2 = ClickyDriveActions.Keys(action);
+			bool pasteKey=CodyEngineBridge.EngineMode&&CodyTextEntryIntent.PasteChord(list2);
+			if(CodyEngineBridge.EngineMode&&!CurrentPhase.Copy&&!CurrentPhase.Paste&&CodyTextEntryIntent.CopyChord(list2))
+			{
+				NoteCallResult(action,new JsonObject{["text"]="Changing the clipboard requires an explicit user request."});
+				return;
+			}
+			if(pasteKey&&!CurrentPhase.Paste)
+			{
+				NoteCallResult(action,new JsonObject{["text"]="Paste requires an explicit request. Use incremental type on the focused field."});
+				return;
+			}
 			string chord = string.Join("+", list2);
-			switch ((list2.Count <= 0) ? ClickyActuation.UnknownKey : (await ClickyScreenActuator.PressAsync(chord).ConfigureAwait(continueOnCapturedContext: false)))
+			switch ((list2.Count <= 0) ? ClickyActuation.UnknownKey : (await ClickyScreenActuator.PressAsync(chord,pasteKey,CurrentPhase.Replace).ConfigureAwait(continueOnCapturedContext: false)))
 			{
 			case ClickyActuation.Done:
 				AddToActionLog("pressed " + chord);
@@ -1218,6 +1241,11 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 		case "hold_key":
 		{
 			List<string> list = ClickyDriveActions.Keys(action);
+			if(CodyEngineBridge.EngineMode&&(CodyTextEntryIntent.PasteChord(list)||CodyTextEntryIntent.CopyChord(list)))
+			{
+				NoteCallResult(action,new JsonObject{["text"]="Paste cannot be performed by holding keys. Use a single paste shortcut when the user explicitly requests it."});
+				return;
+			}
 			string chord = string.Join("+", list);
 			switch (await ClickyScreenActuator.HoldAsync(list, ClickyDriveActions.Number(action, "seconds") ?? 1.0).ConfigureAwait(continueOnCapturedContext: false))
 			{

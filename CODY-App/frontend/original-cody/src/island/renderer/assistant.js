@@ -259,15 +259,16 @@
   async function sendRequest({voice:voiceRequest=false,quickMessage}={}){
     if(app.busy)return;
     const text=(quickMessage??$('quick-input').value).trim();
+    const capabilityId=quickMessage===undefined?window.CODYMentions?.selected():undefined;
     await window.CODYAttachments?.ready();if(app.busy)return;
     if(!text&&!window.CODYAttachments?.state().items.length)return;
     voice?.stopSpeech(); // a new request owns a new utterance and visual timeline
     if(!app.data.activeChatId){
       const chat=await api.newChat();if(!app.data.chats.some(item=>item.id===chat.id))app.data.chats.unshift(chat);app.data.activeChatId=chat.id;
     }
-    const result=await api.sendMessage({chatId:app.data.activeChatId,text,mode:app.mode,voice:voiceRequest});
+    const result=await api.sendMessage({chatId:app.data.activeChatId,text,mode:app.mode,voice:voiceRequest,...(capabilityId?{capabilityId}:{})});
     if(result?.error||result?.blocked){note(result.error||'Request blocked');return result;}
-    if(!result?.cancelled&&quickMessage===undefined){$('quick-input').value='';island.updateInput();}
+    if(!result?.cancelled&&quickMessage===undefined){$('quick-input').value='';window.CODYMentions?.clear();island.updateInput();}
     return result;
   }
   island.onQuickMessage=async text=>{
@@ -282,7 +283,10 @@
     try{await voice?.cancel();const chat=await api.newChat();app.data.activeChatId=chat.id;if(!app.data.chats.some(item=>item.id===chat.id))app.data.chats.unshift(chat);renderMessages();}
     catch(error){note(error.message);renderMessages();}
   };
-  api.on('chats-changed',data=>{app.data=data;renderMessages();renderPermissions();});
+  api.on('chats-changed',data=>{
+    if(app.data.activeChatId&&app.data.activeChatId!==data.activeChatId)window.CODYMentions?.clear();
+    app.data=data;renderMessages();renderPermissions();
+  });
   api.on('settings-changed',settings=>{app.data.settings=settings;selectedMode(settings.assistantProvider);renderPermissions();voice?.render();});
   api.on('message-added',({chatId,message})=>{
     const chat=app.data.chats.find(item=>item.id===chatId);

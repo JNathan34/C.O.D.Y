@@ -213,6 +213,10 @@ public static class CodyEngineBridge
                     case "control-fixtures-close":CodyControlFixtures.Close();return new{closed=true};
                     case "permissions-state":return PermissionState();
                     case "plugins-list":return await CodyPlugins.List(host);
+                    case "mentions-list":return await CodyMentions.List(host);
+                    case "mentions-check":
+                        await CodyMentions.Resolve(host,Text("capabilityId"),refresh:true);
+                        return new{available=true};
                     case "agents-state":return CodyAgents.State(host);
                     case "heyclicky-usage":return await CodyAgents.Usage(host);
                     case "agents-configure":return await CodyAgents.Configure(host,request);
@@ -248,12 +252,23 @@ public static class CodyEngineBridge
                     case "drawing-controls-test-empty":
                         if(host.Real.Canvas.IsShowingDrawing&&!zoomFixture)throw new InvalidOperationException("Keep the existing drawing; this check requires an empty canvas.");
                         var emptyCaptures=await host.Real.Capture.CaptureAllAsync();
-                        host.Real.Canvas.BeginProgram(emptyCaptures.First(),host.Services.Settings.CursorColorHex);
+                        int testDisplay=request.TryGetProperty("displayIndex",out var selectedDisplay)?selectedDisplay.GetInt32():0;
+                        if(testDisplay<0||testDisplay>=emptyCaptures.Count)throw new ArgumentOutOfRangeException("displayIndex");
+                        var testFrame=emptyCaptures[testDisplay];
+                        if(zoomFixture&&request.TryGetProperty("alternateLayout",out var alternate)&&alternate.ValueKind==JsonValueKind.True)
+                        {
+                            var bounds=testFrame.Display.BoundsPx;
+                            var viewport=new RectD(bounds.X+bounds.Width/2,bounds.Y,bounds.Width/2,bounds.Height);
+                            testFrame=testFrame with {Display=testFrame.Display with{Index=-1,BoundsPx=viewport,WorkAreaPx=viewport,Scale=1.5,IsPrimary=false}};
+                        }
+                        if(request.TryGetProperty("append",out var appendProgram)&&appendProgram.ValueKind==JsonValueKind.True)
+                            session.BeginDrawingProgram(testFrame,host.Services.Settings.CursorColorHex);
+                        else host.Real.Canvas.BeginProgram(testFrame,host.Services.Settings.CursorColorHex);
                         host.Real.Canvas.IsStreamingNarration=true;
                         bool testCard=command=="drawing-controls-test-card";
                         var testDrawingFeed=host.Real.Canvas.Feed(testCard?"say('A test drawing.');paper(160,120,460,380,{title:'Drawing control test',board:'plain'});ring(220,220,100,100);say('Done.');":"say('No drawing in this response.');",false);
                         for(int testLine=0;testLine<Math.Max(1,testDrawingFeed.Lines.Count);testLine++)host.Real.Canvas.ReleaseLine(testLine);
-                        zoomFixture=true;return new{created=true,empty=!testCard};
+                        zoomFixture=true;return new{created=true,empty=!testCard,displayCount=emptyCaptures.Count};
                     case "model-zoom-test":return new{accepted=CodyModelZoom.WheelForTest(Text("handle"),request.GetProperty("delta").GetInt32())};
                     case "model-zoom-point-test":return new{accepted=CodyModelZoom.WheelAtPointForTest(request.GetProperty("x").GetInt32(),request.GetProperty("y").GetInt32(),request.GetProperty("delta").GetInt32())};
                     case "model-zoom-image":return new{png=Convert.ToBase64String(host.Real.Canvas.RenderDrawingPng(overScreenshot:false)??Array.Empty<byte>())};
@@ -312,13 +327,22 @@ public static class CodyEngineBridge
                         if (session.State != VoiceState.Idle) throw new InvalidOperationException("A native turn is already active.");
                         string text = Text("text").Trim();
                         if (text.Length == 0 || text.Length > 25000) throw new ArgumentException("Enter a message under 25,000 characters.");
+                        string capabilityId = Text("capabilityId");
+                        var capability = capabilityId.Length == 0 ? null : await CodyMentions.Resolve(host, capabilityId);
+                        if (session.State != VoiceState.Idle) throw new InvalidOperationException("A native turn is already active.");
+                        if (CodyMemoryPolicy.LocalOnly) throw new InvalidOperationException(CodyMemoryPolicy.BlockedMessage);
                         turn = Text("turn", id);
                         bool speak = request.TryGetProperty("speak", out var speakValue) ? speakValue.GetBoolean() : host.Services.Settings.LibraryModeEnabled;
-                        await session.SubmitTextAsync(text,speak,CodyAttachments.Paths(request));
+                        if (capability == null) await session.SubmitTextAsync(text,speak,CodyAttachments.Paths(request));
+                        else await session.SubmitTextWithCapabilityAsync(text,speak,CodyAttachments.Paths(request),capability);
                         return new { text = session.ResponseText, audioPlaybackStarts = session.AudioPlaybackBeganCount };
                     case "speak":
                         turn = Text("turn", id);
                         return await SpeakFast(Text("text"));
+                    case "keyboard-entry":
+                        var entryResult=await HeyClicky.App.Wiring.PlatformDesktopActions.EnterTextAsync(
+                            Text("text"),Text("words"),CancellationToken.None);
+                        return new{status=entryResult.Status,reason=entryResult.Reason};
                     case "plezy-play":
                         return await CodyPlezy.Play(Text("title"));
                     case "game-prepare":
@@ -386,8 +410,8 @@ public static class CodyEngineBridge
                         return new { text = session.ResponseText, utilityText = routedUtility, transcript = lastTranscript,controlStopped=voiceControlStopped };
                     case "cancel": voiceStartGeneration++;CodyIndependentInput.End();host.ClickyDrive?.HandleEscape();CodyProofread.Cancel();StopSpeech(); session.Cancel(); return new { cancelled = true };
                     case "fresh": session.StartFreshSession(); return new { fresh = true };
-                    case "clear": host.Real.Canvas.Clear(); return new { cleared = true };
-                    case "clear-2d-drawings": await CodyDrawingControls.ClearTwoDimensional(host.Real.Canvas); return new { cleared = true };
+                    case "clear": host.Real.ClearDrawings(); return new { cleared = true };
+                    case "clear-2d-drawings": await host.Real.ClearTwoDimensionalDrawings(); return new { cleared = true };
                     case "audio-state": return JsonSerializer.Deserialize<JsonElement>(NativeAudioControl.State());
                     case "desktop-frames": return CodyDesktopFrames.Snapshot();
                     case "audio-set":
