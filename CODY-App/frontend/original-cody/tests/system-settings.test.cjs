@@ -117,7 +117,7 @@ test('typed and spoken quick commands show the result without generic Island ban
   else {await invoke('send-message',{chatId:'chat',text});await new Promise(resolve=>setImmediate(resolve));}
   assert.deepEqual(actions,action?[action]:[]);assert.equal(calls.some(call=>call.command==='submit'),false);
   assert.equal(messages.at(-1).text,reply);
-  if(brightness)assert.deepEqual(cards.at(-1),{kind:'brightness',icon:'sun',text:brightness.text,detail:brightness.detail});
+  if(brightness)assert.deepEqual(cards.at(-1),{kind:'brightness',icon:'sun',text:brightness.text,detail:brightness.detail,level:brightness.levels.length===1?brightness.levels[0]:null});
   else assert.equal(cards.at(-1).text,reply);
   assert.deepEqual(updates.map(({finished,text,answered})=>({finished,text,answered})),[{finished:true,text:undefined,answered:false}]);
   if(voice)assert.equal(calls.find(call=>call.command==='speak')?.args.text,reply);

@@ -21,7 +21,7 @@ function brightnessCard(result,delta){
   const low=Math.min(...levels),high=Math.max(...levels);
   const text=levels.length?(low===high?`${low}%`:`${low}–${high}%`):'Brightness';
   const detail=result.changed&&delta?(delta>0?'Brightness up':'Brightness down'):'Brightness';
-  return {kind:'brightness',text,detail,icon:'sun'};
+  return {kind:'brightness',text,detail,icon:'sun',level:levels.length&&low===high?low:null};
 }
 function requestedApp(input){
   const query=commandText(input,{preserveShow:true});

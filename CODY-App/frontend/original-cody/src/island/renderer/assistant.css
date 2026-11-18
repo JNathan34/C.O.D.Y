@@ -130,6 +130,8 @@ body:is(.weather-layout,.brightness-layout) #island-info-icon{color:#f6d48b}
 body:is(.weather-layout,.brightness-layout) #island-info-icon .lucide-control{width:19px;height:19px}
 body:is(.weather-layout,.brightness-layout) #island-info-text{font-size:12px;color:#e2f3ff}
 body.brightness-layout #island-info-icon[data-icon="circle-alert"]{color:#ffa1aa}
+body.brightness-layout #island-update-progress{height:4px;transition:width 180ms ease-out}
+body.brightness-layout #island-update-progress::-webkit-progress-value{background:#f6d48b}
 body.utility-layout:not(.panel-open) .mascot{left:calc(100% - 52px)}
 body.utility-layout:not(.panel-open) .island-info{left:34px;right:80px;width:auto;gap:6px}
 body.utility-layout:not(.panel-open) .island-info[data-discord="true"]{left:28px;right:60px}

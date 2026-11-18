@@ -43,12 +43,12 @@
       return;
     }
     if(visibleTaskStatus?.kind==='progress')island.wakeUp();
-    island.setMediaPlaying(Boolean(media.available&&media.playing));
+    island.setMediaPlaying(Boolean((typeof preferences==='undefined'||preferences.showMediaWidget!==false)&&media.available&&media.playing));
     const quick=Boolean(!recording&&!game.active&&activeCard&&(visibleTaskStatus||discord||timer?.status!=='finished'));
     const updateCard=window.CODYUpdateStatus?.card();
     const showUpdate=Boolean(updateCard&&!recording&&!game.active&&!quick&&timer?.status!=='finished');
     const showMonitors=monitors.items.length>0&&!recording&&!game.active&&!quick&&!showUpdate&&timer?.status!=='finished';
-    const showGame=game.active&&!recording,showTimer=Boolean(timer)&&!showMonitors&&!quick&&!showGame&&!recording&&!showUpdate,showMedia=!showUpdate&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame&&media.available&&Boolean(media.title);
+    const showGame=game.active&&!recording,showTimer=Boolean(timer)&&!showMonitors&&!quick&&!showGame&&!recording&&!showUpdate,showMedia=!showUpdate&&!showMonitors&&!recording&&!showTimer&&!quick&&!showGame&&(typeof preferences==='undefined'||preferences.showMediaWidget!==false)&&media.available&&Boolean(media.title);
     const showTasks=visibleTaskStatus?.target==='tasks';
     document.body.classList.toggle('task-layout',Boolean(showTasks&&visibleTaskStatus.kind==='progress'));
     document.body.classList.toggle('recording-layout',recording);document.body.dataset.recording=capture.status;
@@ -93,6 +93,12 @@
         const icon=$('island-info-icon'),name=discordMic?'discord-mic':activeCard.icon||'calculator';
         $('island-info-text').textContent=activeCard.text;
         $('island-info-detail').textContent=activeCard.detail||'';
+        if(activeCard.kind==='brightness'&&Number.isInteger(activeCard.level)){
+          const bar=$('island-update-progress');
+          bar.value=Math.max(0,Math.min(100,activeCard.level));
+          bar.hidden=false;
+          bar.setAttribute('aria-label','Brightness level');
+        }
         icon.hidden=false;
         if(icon.dataset.icon!==name)window.CODYIcons.set(icon,name);
       }else{
@@ -398,6 +404,8 @@
     const speedChanged=next.voiceRate!==preferences.voiceRate;preferences=next;
     if(next.microphoneMuted&&['starting','listening'].includes(voice.getPhase()))void voice.cancel();
     if(speedChanged)void api.voice.configure({speed:next.voiceRate}).catch(error=>note(error.message));
+    // Apply music visibility immediately when the preference changes.
+    renderTimer();
   });
   busy(app.data.busy);renderMessages();renderPermissions();
   await voice.initialized;
