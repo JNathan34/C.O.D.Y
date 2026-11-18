@@ -23,3 +23,13 @@
 .network-status[data-status=offline] .status-light{background:#ff8396}
 .network-status[data-status=offline]{color:#ffbdc8}
 @media(max-width:650px){.test-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.preview-actions{flex-wrap:wrap}}
+
+/* Optional user-owned media servers: wrap forms instead of cramming secrets
+   into the right-hand Settings column. No credentials are ever displayed. */
+#self-hosted-settings form[data-self-hosted]{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
+#self-hosted-settings form[data-self-hosted]>span,
+#self-hosted-settings form[data-self-hosted] input{grid-column:1/-1;min-width:0;width:100%}
+#self-hosted-settings form[data-self-hosted] button[type="submit"]{grid-column:2}
+#self-hosted-settings .setting-row{flex-wrap:wrap}
+#self-hosted-results{max-height:250px;overflow:auto}
+#self-hosted-results .setting-row{overflow-wrap:anywhere}
