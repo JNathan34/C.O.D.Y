@@ -39,6 +39,7 @@ const {routeRequest,isExpensive,localAnswer,localCard,validateFolder}=require('.
 const {ComputerController}=require('./control/controller');
 const {ActionAudit}=require('./control/action-audit');
 const {AssistantModes}=require('./assistant-modes');
+const {SelfHosted}=require('./integrations/self-hosted');
 const {parseDirectAction}=require('./control/parser');
 const {FirefoxBridge}=require('./control/firefox-bridge');
 const {buildWebActionPrompt,parseActionReply,stripTrailingActionDraft}=require('./control/web-actions');
@@ -67,7 +68,7 @@ const {ControlOverlay}=require('./control-overlay');
 const {KeywordWakeListener}=require('./voice/keyword-wake-listener');
 let controlOverlay,wakeListener;
 const nativeEngine=new NativeEngine();
-let actionAudit,assistantModes;
+let actionAudit,assistantModes,selfHosted;
 async function openPreferredWebLink(rawUrl){
   const url=new URL(rawUrl);
   if(!['http:','https:'].includes(url.protocol))throw Error('Expected an HTTP or HTTPS link.');
@@ -241,6 +242,17 @@ function registerIpc(){
   ipcMain.handle('firefox-smoke-test',async e=>{fromCody(e);if(!firefoxBridge?.status().connected)throw Error('Firefox is not ready; check the add-on connection first.');return testFirefoxTools(controller);});
   ipcMain.handle('computer-catalog',e=>{fromCody(e);return controller.catalog()});
   ipcMain.handle('computer-audit',e=>{fromCody(e);return actionAudit?.recent()||[];});
+  ipcMain.handle('self-hosted-status',e=>{fromAnnotationUI(e);return selfHosted.status();});
+  ipcMain.handle('self-hosted-connect',(e,id,credentials)=>{fromAnnotationUI(e);return selfHosted.configure(id,credentials);});
+  ipcMain.handle('self-hosted-disconnect',(e,id)=>{fromAnnotationUI(e);return selfHosted.disconnect(id);});
+  ipcMain.handle('self-hosted-read',(e,id,method,query)=>{
+    fromAnnotationUI(e);
+    if(id==='plex'&&method==='sessions')return selfHosted.plexSessions();
+    if(id==='plex'&&method==='recent')return selfHosted.plexRecent();
+    if(id==='overseerr'&&method==='requests')return selfHosted.overseerrRequests();
+    if(id==='overseerr'&&method==='search')return selfHosted.overseerrSearch(query);
+    throw Error('Unknown self-hosted read request.');
+  });
   ipcMain.handle('assistant-modes-list',e=>{fromAnnotationUI(e);return assistantModes.list();});
   ipcMain.handle('assistant-modes-activate',(e,id)=>{fromAnnotationUI(e);const result=assistantModes.activate(id);sendUI('settings-changed',store.data.settings);return result;});
   ipcMain.handle('assistant-modes-save',(e,name)=>{fromAnnotationUI(e);return assistantModes.save(name);});
@@ -597,6 +609,7 @@ if(!singleInstance)app.quit();
 else app.whenReady().then(()=>{
   nativeTheme.themeSource='dark';app.setAppUserModelId(branding.appId);
   store=new StateStore(app.getPath('userData'));
+  selfHosted=new SelfHosted({file:path.join(app.getPath('userData'),'self-hosted-connections.dat'),cipher:safeStorage,fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   assistantModes=new AssistantModes({file:path.join(app.getPath('userData'),'assistant-modes.json'),island,store,
     onChange:()=>sendUI('settings-changed',store.data.settings)});
   updates=new UpdateService({version:app.getVersion(),packaged:app.isPackaged,
@@ -667,7 +680,7 @@ else app.whenReady().then(()=>{
   let lastSavedCapture=null;screenCapture.on('change',state=>{sendUI('capture-state',state);refreshIslandCards();if(state.status==='starting')island.collapse();if(state.status==='saved'&&state.savedPath!==lastSavedCapture){lastSavedCapture=state.savedPath;showQuickCard({kind:'utility',text:'Recording saved',detail:'Click to open',icon:'camera',captureKind:'recording'});}if(state.status==='error')showQuickCard({kind:'utility',text:'Recording error',detail:state.error,icon:'circle-alert'});});
   monitors=new IslandMonitors({settingsFile:path.join(app.getPath('userData'),'island-monitors.json'),weather,readDesktopFrames:()=>nativeEngine.request('desktop-frames'),fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact({automatic:true});lastMonitorActive=state.active;});
-  const islandUtilities=new IslandUtilities({modes:assistantModes,tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,appSettings:{show:island.showSettings,update:island.updatePreferences},showCompact:()=>{island.showCompact({automatic:true});if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
+  const islandUtilities=new IslandUtilities({selfHosted,modes:assistantModes,tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,appSettings:{show:island.showSettings,update:island.updatePreferences},showCompact:()=>{island.showCompact({automatic:true});if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
   attachments=new Attachments({store,onChange:state=>sendUI('attachments-state',state),encodeImage:bytes=>{
     const image=nativeImage.createFromBuffer(bytes);
     if(image.isEmpty())return null;
