@@ -93,6 +93,12 @@
         const icon=$('island-info-icon'),name=discordMic?'discord-mic':activeCard.icon||'calculator';
         $('island-info-text').textContent=activeCard.text;
         $('island-info-detail').textContent=activeCard.detail||'';
+        if(activeCard.kind==='brightness'&&Number.isInteger(activeCard.level)){
+          const bar=$('island-update-progress');
+          bar.value=Math.max(0,Math.min(100,activeCard.level));
+          bar.hidden=false;
+          bar.setAttribute('aria-label','Brightness level');
+        }
         icon.hidden=false;
         if(icon.dataset.icon!==name)window.CODYIcons.set(icon,name);
       }else{
