@@ -53,7 +53,11 @@ internal static class CodyDrawingControls
         // Empty containers and closed 3D placeholders can remain allocated. Only
         // visible drawing nodes (or a live model) should keep the Clear button up.
         int renderedUnits=VisibleUnitCount(canvas);
-        return CodyDrawingControlState.HasContent(canvas.IsShowing,canvas.IsDrawingFadedAway,renderedUnits,ModelCount(canvas));
+        // Ordinary computer-control tasks can construct visual nodes for previews,
+        // targets or app windows. They are not user-clearable ink. Require a
+        // confirmed ink mark (or a live 3D drawing) before offering Clear.
+        return CodyDrawingControlState.HasContent(canvas.IsShowing,canvas.IsDrawingFadedAway,
+            renderedUnits,ModelCount(canvas),canvas.InkedMarkCount);
     }
     private static int VisibleUnitCount(ScreenDrawingCanvas canvas)
     {
