@@ -1,0 +1,124 @@
+name: Build and publish Windows installers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - CODY-App/frontend/original-cody/package.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cody-stable-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish x64 and ARM64 installers
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - name: Allow long Windows paths
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Check out release source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: CODY-App/package-lock.json
+
+      - name: Set up .NET SDK and test runtime
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Read release version and prevent duplicates
+        id: version
+        shell: pwsh
+        working-directory: CODY-App
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = node -p "require('./frontend/original-cody/package.json').version"
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Stable release version required" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          gh release view "v$version" --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release v$version already exists; bump the package version for a new release." }
+
+      - name: Restore Node and Electron dependencies
+        shell: pwsh
+        working-directory: CODY-App
+        run: |
+          npm ci --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+          node node_modules/electron/install.js
+          if ($LASTEXITCODE -ne 0) { throw "Electron download failed" }
+
+      - name: Run source and regression checks
+        shell: pwsh
+        working-directory: CODY-App
+        run: |
+          npm run check
+          if ($LASTEXITCODE -ne 0) { throw "Source checks failed" }
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw "JavaScript tests failed" }
+          dotnet run --project tools/drawing-controls-tests/DrawingControlsTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Native drawing checks failed" }
+
+      - name: Restore verified native build inputs
+        shell: pwsh
+        working-directory: CODY-App
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/restore-build-inputs.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Native build-input verification failed" }
+
+      - name: Build both standalone Windows installers
+        shell: pwsh
+        working-directory: CODY-App
+        run: |
+          .\Build-CODY-Standalone.bat
+          if ($LASTEXITCODE -ne 0) { throw "Standalone installer build failed" }
+
+      - name: Validate installers and create checksums
+        shell: pwsh
+        working-directory: CODY-App
+        run: |
+          npm run release:check
+          if ($LASTEXITCODE -ne 0) { throw "Installer integrity checks failed" }
+          npm run release:checksums
+          if ($LASTEXITCODE -ne 0) { throw "Checksum generation failed" }
+          npm run release:check
+          if ($LASTEXITCODE -ne 0) { throw "Final release checks failed" }
+
+      - name: Upload installers and updater files to draft release
+        shell: pwsh
+        working-directory: CODY-App
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          npm run release:draft
+          if ($LASTEXITCODE -ne 0) { throw "Release asset upload failed; keep any incomplete release in draft state." }
+
+      - name: Publish the complete verified GitHub Release
+        shell: pwsh
+        working-directory: CODY-App
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          gh release edit "v$version" --draft=false --prerelease=false
+          if ($LASTEXITCODE -ne 0) { throw "Draft is ready, but publication failed" }
