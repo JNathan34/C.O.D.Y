@@ -255,7 +255,7 @@ function registerIpc(){
   });
   ipcMain.handle('assistant-modes-list',e=>{fromAnnotationUI(e);return assistantModes.list();});
   ipcMain.handle('assistant-modes-activate',(e,id)=>{fromAnnotationUI(e);const result=assistantModes.activate(id);sendUI('settings-changed',store.data.settings);return result;});
-  ipcMain.handle('assistant-modes-save',(e,name)=>{fromAnnotationUI(e);return assistantModes.save(name);});
+  ipcMain.handle('assistant-modes-save',(e,name,options)=>{fromAnnotationUI(e);return assistantModes.save(name,options);});
   ipcMain.handle('assistant-modes-delete',(e,id)=>{fromAnnotationUI(e);return assistantModes.remove(id);});
   ipcMain.handle('computer-emergency-stop',async e=>{fromCody(e);controller.configure({enabled:false});activeTurn?.abortController?.abort();if(activeTurn?.engine==='web')await webBrowser?.stop();sendUI('settings-changed',store.data.settings);sendUI('activity',{text:'Emergency stop: Windows controls disabled'});updateTrayMenu();return {stopped:true}});
   ipcMain.handle('computer-permissions',e=>{fromCody(e);return controller.permissions()});
@@ -658,6 +658,7 @@ else app.whenReady().then(()=>{
   actionAudit=new ActionAudit(path.join(app.getPath('userData'),'control-audit.jsonl'));
   controller=new ComputerController({
     readPermissions:()=>store.data.settings.computerControl,
+    canUseLocalTools:()=>assistantModes.isLocalControlAllowed(),
     writePermissions:settings=>{store.settings({computerControl:settings});if(nativeEngine.connected&&(store.data.settings.nativePermissions?.enabled!==settings.enabled||store.data.settings.nativePermissions?.level!==settings.level))void nativeEngine.request("permissions-configure",{enabled:settings.enabled,level:settings.level}).catch(error=>sendUI("diagnostic",error.message));},
     getWorkingFolder:()=>store.data.settings.workingFolder,
     clipboard,desktopCapturer,browserBridge:firefoxBridge,spotify,annotations,scene,captures,visualLedger,
