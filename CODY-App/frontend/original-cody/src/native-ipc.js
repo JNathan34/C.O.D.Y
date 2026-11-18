@@ -104,7 +104,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   }
   const sendMessage=(role,text,provider='heyclicky')=>{
     const persist=!active.utility&&!(active.voice&&role==='user');
-    const message=store.addMessage(active.chatId,role,text,provider,{persist});
+    const message=store.addMessage(active.chatId,role,text,provider,{persist,...(role==='user'&&active.mention?{mention:active.mention}:{})});
     if(role==='user'&&active.files?.length){
       message.attachments=active.attachmentBatch?.items||attachmentNames(active.files);
       if(persist)store.save();
@@ -248,11 +248,19 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     return state;
   });
   handle('state',()=>({...getState(),busy:Boolean(active||externalBusy()),nativeEngine:true,connected:engine.connected}));
-  const submit=async({chatId,text,voice=false,capabilityId=''})=>{
+  const submit=async({chatId,text,voice=false,capabilityId='',mention=null})=>{
     if(active||externalBusy())return {error:'Another reply is in progress'};
     text=String(text||'').trim();if(text.length>25000)return {error:'Enter a message under 25,000 characters'};
     if(!store.chat(chatId))return {error:'Select a conversation'};
     if(typeof capabilityId!=='string'||capabilityId.length>300)return {error:'Invalid capability selection.'};
+     // This is display metadata only. Capability authorization and routing still
+     // use the separately validated ID; a styled label cannot grant access.
+     const validMention=capabilityId&&mention&&typeof mention==='object'&&!Array.isArray(mention)&&
+       mention.id===capabilityId&&typeof mention.name==='string'&&mention.name.trim()&&mention.name.length<=80&&
+       Number.isInteger(mention.offset)&&mention.offset>=0&&mention.offset<=text.length;
+     const cleanMention=validMention?{id:capabilityId,name:mention.name.trim(),
+       icon:typeof mention.icon==='string'&&/^[a-z][a-z0-9-]{0,63}$/.test(mention.icon)?mention.icon:'plug',
+       offset:mention.offset,...(typeof mention.logo==='string'&&/^https:\/\/[^\s]{1,500}$/.test(mention.logo)?{logo:mention.logo}:{})}:null;
     if(gameVoice?.running)await gameVoice.cancel();
     if(changingMemoryMode)return {error:'Wait for C.O.D.Y. to finish changing memory mode.'};
     const note=capabilityId?null:localMemoryText(text,localMemoryOnly());
@@ -272,7 +280,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(selected&&files.length)return {error:'Remove attached files before using this tool.'};
     const route=capabilityId?selected?.route:files.length?null:utilities?.match(text);
     if(route){
-      active={turn:randomUUID(),chatId,utility:true,quietUtility:usesUtilityCard(route)};active.user=sendMessage('user',text);sendUI('busy',{busy:true});
+      active={turn:randomUUID(),chatId,utility:true,quietUtility:usesUtilityCard(route),mention:cleanMention};active.user=sendMessage('user',text);sendUI('busy',{busy:true});
       publishProgress(active,'Working…');
       const operation=active;
       void runUtility(operation,text,voice||store.data.settings.voiceAutoSpeak,route).catch(error=>{if(active===operation)finish(error.message);});
@@ -294,7 +302,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
       try{await engine.request('mentions-check',{capabilityId});}catch(error){return {error:error.message};}
       if(active||externalBusy()||changingMemoryMode||localMemoryOnly())return {error:'Another operation is in progress. Try again.'};
     }
-    active={turn:randomUUID(),chatId,files,attachmentBatch:batch};active.user=sendMessage('user',text);active.answer=sendMessage('assistant','');sendUI('busy',{busy:true});
+    active={turn:randomUUID(),chatId,files,attachmentBatch:batch,mention:cleanMention};active.user=sendMessage('user',text);active.answer=sendMessage('assistant','');sendUI('busy',{busy:true});
     sendUI('native-turn-status',{id:active.turn,text:'Working…'});
     remember(active);
     const operation=active;

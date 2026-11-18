@@ -7,8 +7,8 @@
   const menu = document.getElementById('mention-picker');
   const results = document.getElementById('mention-results');
   const status = document.getElementById('mention-status');
-  const chip = document.getElementById('mention-chip');
-  let token, selected, active = 0, matches = [], inventory = [], loading = false, error = '';
+  const composer = window.CODYInlineComposer;
+  let token, active = 0, matches = [], inventory = [], loading = false, error = '';
 
   function element(tag, className, text) {
     const node = document.createElement(tag);
@@ -25,7 +25,7 @@
       const image = element('img');
       image.alt = '';
       image.src = item.logo;
-      image.addEventListener('load', () => badge.replaceChildren(image), {once:true});
+      image.addEventListener('load', () => badge.replaceChildren(image), {once: true});
     }
     return badge;
   }
@@ -38,9 +38,7 @@
 
   function clear() {
     close();
-    selected = null;
-    chip.hidden = true;
-    chip.replaceChildren();
+    composer?.clearMention();
   }
 
   function markActive(scroll = false) {
@@ -55,15 +53,9 @@
 
   function choose(item) {
     if (!token || !item || input.disabled) return;
-    input.setRangeText('', token.start, token.end, 'end');
+    // Insert a non-editable inline entity at the @ token, not a detached row.
+    if (!composer?.insertMention(item, token.start, token.end)) return;
     close();
-    selected = item;
-    const remove = element('button', 'mention-remove', '×');
-    remove.type = 'button';
-    remove.setAttribute('aria-label', 'Remove ' + item.name);
-    remove.addEventListener('click', () => { clear(); input.focus(); });
-    chip.replaceChildren(icon(item), element('span', '', item.name), remove);
-    chip.hidden = false;
     window.CODYIsland?.updateInput();
     input.focus();
   }
@@ -116,13 +108,15 @@
   }
 
   function update() {
-    const end = input.selectionStart;
-    // The boundary excludes addresses like name@example.com.
+    const selection = composer?.selectionOffsets();
+    if (!selection || selection.start !== selection.end || input.disabled) { close(); return; }
+    const end = selection.end;
+    // The boundary excludes email addresses such as name@example.com.
     const match = /(?:^|[\s([{])@([\p{L}\p{N}_-]*)$/u.exec(input.value.slice(0, end));
-    if (input.disabled || end !== input.selectionEnd || !match) { close(); return; }
+    if (!match) { close(); return; }
     const opening = !token;
     const suffix = /^[\p{L}\p{N}_-]*/u.exec(input.value.slice(end))[0];
-    token = {start:end - match[1].length - 1, end:end + suffix.length, query:match[1]};
+    token = {start: end - match[1].length - 1, end: end + suffix.length, query: match[1]};
     if (opening) void load();
     render();
   }
@@ -144,5 +138,5 @@
     markActive(true);
   }, true);
   document.addEventListener('cody:view-changed', event => { if (event.detail !== 'chat' && event.detail !== 'history') close(); });
-  window.CODYMentions = Object.freeze({selected:() => selected?.id, clear});
+  window.CODYMentions = Object.freeze({selected: () => composer?.snapshot().mention?.id, snapshot: () => composer?.snapshot().mention, clear});
 })();

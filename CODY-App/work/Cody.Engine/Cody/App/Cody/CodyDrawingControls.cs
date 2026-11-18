@@ -156,7 +156,7 @@ internal static class CodyDrawingControls
                     visible.Add((item.GetProperty("id").GetInt32(),item.GetProperty("role").GetString(),
                         new RectD(box[0],box[1],box[2]-box[0],box[3]-box[1]),visuals));
                 }
-                follow.Sync(visible);
+                follow.Sync(visible, canvas.IsStreamingNarration);
             }
             follow.Tick();
             return !canvas.DrawsPicture&&(follow.Hidden||follow.Moved);
@@ -189,6 +189,20 @@ internal static class CodyDrawingControls
         var latest=drawings.LastOrDefault(HasVisibleDrawing);
         if(latest==null)
         {
+            // Native composition can report zero visible nodes between incremental
+            // drawing frames. Do not destroy/recreate the Clear HUD on that single
+            // transient result: it causes a noticeable flash every time it fades in.
+            var previous=offeredCanvas;
+            if(previous!=null&&drawings.Contains(previous))
+            {
+                int generation=(int)(Field(previous,"clearGeneration")??-1);
+                bool hidden=Field(previous,"staleWatch") is DrawingScreenWatch watch&&watch.Hidden;
+                bool stillInk=previous.InkedMarkCount>0||ModelCount(previous)>0;
+                if(CodyDrawingControlState.KeepClearDuringStream(previous.IsStreamingNarration,
+                    previous.IsShowing,previous.IsDrawingFadedAway,
+                    generation==offeredGeneration,stillInk,hidden))
+                    return;
+            }
             offeredCanvas=null;
             offeredGeneration=-1;
             host.Lessons?.HideDrawingControls();

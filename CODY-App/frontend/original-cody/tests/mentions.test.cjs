@@ -24,7 +24,7 @@ function fixture({unavailable=false}={}){
     engine,getWindow:()=>w,getState:()=>({}),sendUI(){},
     utilities:{match:text=>routeRequest(text),run:async()=>({handled:true,reply:'Calculator result'}),observe(){}},
     store:{data:{activeChatId:'conversation',settings:{}},chat:()=>({}),
-      addMessage(chatId,role,text){const message={id:String(messages.length),role,text};messages.push(message);return message;},
+      addMessage(chatId,role,text,mode,options={}){const message={id:String(messages.length),role,text,...(role==='user'&&options.mention?{mention:options.mention}:{})};messages.push(message);return message;},
       save(){},publicState:()=>({})}
   });
   const invoke=(name,...args)=>handlers.get(name)({sender:webContents,senderFrame:webContents.mainFrame},...args);
@@ -66,4 +66,23 @@ test('a disconnected selection is reported before sending and never falls back t
   assert.equal(result.error,'This capability is unavailable.');
   assert.equal(f.messages.length,0);
   assert.deepEqual(f.calls.map(call=>call.command),['mentions-check']);
+});
+
+test('selected skill appears as structured metadata on the sent chat message',async()=>{
+  const f=fixture();
+  const mention={id:'plugin:higgsfield',name:'Higgsfield',icon:'plug',offset:6};
+  const result=await f.invoke('send-message',{chatId:'conversation',text:'hello world',capabilityId:mention.id,mention});
+  assert.equal(result.provider,'heyclicky');
+  assert.deepEqual(f.messages[0].mention,mention);
+  assert.equal(f.messages[0].text,'hello world');
+  assert.equal(f.calls.find(call=>call.command==='submit').args.capabilityId,mention.id);
+});
+
+test('unrelated or invalid inline labels cannot impersonate a routed capability',async()=>{
+  const f=fixture();
+  const result=await f.invoke('send-message',{chatId:'conversation',text:'hello world',
+    capabilityId:'plugin:higgsfield',mention:{id:'tool:calculator',name:'Computer Use',icon:'plug',offset:6}});
+  assert.equal(result.provider,'heyclicky');
+  assert.equal(f.messages[0].mention,undefined);
+  assert.equal(f.calls.find(call=>call.command==='submit').args.capabilityId,'plugin:higgsfield');
 });

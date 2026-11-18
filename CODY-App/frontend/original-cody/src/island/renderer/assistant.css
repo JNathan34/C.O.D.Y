@@ -414,17 +414,22 @@ body[data-motion="off"][data-microphone="restored"] .microphone-slash-mask{opaci
 .mention-label strong,.mention-label small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mention-label small,.mention-kind{color:#c1c3c7;font-size:calc(10px * var(--font-scale))}
 .mention-kind{text-transform:capitalize}
-.mention-chip{
-  display:inline-flex;align-items:center;gap:4px;max-width:100%;margin:0 0 6px;
-  padding:2px 4px 2px 6px;border:1px solid #3d5d78;border-radius:8px;
-  background:#26364a;color:#dbedff;font-size:calc(11px * var(--font-scale));
+.inline-mention{
+  display:inline-flex;align-items:center;vertical-align:-.2em;gap:4px;
+  max-width:100%;margin:0 2px;white-space:nowrap;
+  color:#91b9ff;font-weight:600;line-height:1.25;
+  border:0;background:transparent;user-select:all;
 }
-.mention-chip>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mention-chip .mention-icon{width:16px;height:16px}
-.mention-chip .mention-icon svg,.mention-chip .mention-icon img{width:14px;height:14px}
-.mention-remove{display:grid;place-items:center;min-width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:inherit;cursor:pointer}
-.mention-remove:hover,.mention-remove:focus-visible{background:#3b526e;outline:1px solid var(--ui-accent)}
+.inline-mention-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex:0 0 18px}
+.inline-mention-icon svg,.inline-mention-icon img{display:block;width:18px;height:18px;object-fit:contain}
+.inline-mention-name{overflow:hidden;text-overflow:ellipsis}
+#quick-input .inline-mention{cursor:default;user-select:all}
+#quick-input:focus-visible{outline:none}
+#quick-input[aria-disabled="true"]{opacity:.46;cursor:default}
+.message.user .inline-mention{color:#9cbeff}
 
+/* The original plain-text editor used a separate chip row. Rich mentions now
+   live inside #quick-input itself and in the sent message bubble. */
 /* The in-app Reduced motion option must cover the same secondary effects as
    the Windows accessibility option, including idle expressions and notices. */
 body[data-motion="off"] .media-music-notes,

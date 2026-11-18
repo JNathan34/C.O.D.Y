@@ -145,10 +145,10 @@
   }
   new ResizeObserver(([{contentRect}])=>updateIslandPath(contentRect.width,contentRect.height)).observe(island);
   updateIslandPath(island.clientWidth,island.clientHeight);
-  function appendMessage(role,text){
+  function appendMessage(role,text,mention=null){
     const node=document.createElement('div');
     node.className='message '+(role==='user'?'user':'assistant');
-    window.CODYChatFormat.render(node,text,role);
+    window.CODYChatFormat.render(node,text,role,mention);
     messages.appendChild(node);
     emptyState.hidden=true;
     document.getElementById('conversation').scrollTop=document.getElementById('conversation').scrollHeight;
@@ -522,19 +522,24 @@
   }
   function togglePanel(value=!panelOpen){setPanelOpen(value);}
   async function sendPrompt(){
-    const prompt=input.value.trim();
+    const draft=window.CODYInlineComposer?.snapshot();
+    const raw=input.value;
+    const prompt=raw.trim();
+    const leading=raw.length-raw.trimStart().length;
+    const mention=draft?.mention?{...draft.mention,offset:Math.max(0,Math.min(prompt.length,draft.mention.offset-leading))}:null;
     if(sendButton.disabled)return;
     if(typeof window.CODYIsland.onPrompt!=='function'&&!window.CODYIsland.backendConnected){
       note.textContent="Connect your main C.O.D.Y. backend to enable chat.";
       return;
     }
-    if(!window.CODYIsland.managedChat)appendMessage('user',prompt);input.value='';updateInput();
+    if(!window.CODYIsland.managedChat)appendMessage('user',prompt,mention);
+    input.value='';window.CODYMentions?.clear();updateInput();
     note.textContent='';
     document.dispatchEvent(new CustomEvent('cody:prompt',{detail:{prompt}}));
     if(typeof window.CODYIsland.onPrompt==='function'){
       setState('thinking');
       try{
-        const result=await window.CODYIsland.onPrompt(prompt);
+        const result=await window.CODYIsland.onPrompt(prompt,mention);
         if(typeof result==='string')appendMessage('assistant',result);
         else if(result&&typeof result.text==='string')appendMessage('assistant',result.text);
         if(state==='thinking'&&!window.CODYIsland.backendBusy)setState('idle');

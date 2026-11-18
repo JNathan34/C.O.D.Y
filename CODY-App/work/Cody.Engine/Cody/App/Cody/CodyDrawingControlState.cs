@@ -17,4 +17,10 @@ internal static class CodyDrawingControlState
     // drawing ink. Do not offer Clear for those non-annotation visuals.
     internal static bool HasContent(bool showing,bool faded,int renderedUnits,int models,int inkedMarks)
         => showing&&!faded&&(models>0||(inkedMarks>0&&renderedUnits>0));
+
+    // Avoid Clear flashing during transient empty native composition frames.
+    // An actual clear, fade, window hide or generation change must still hide it.
+    internal static bool KeepClearDuringStream(bool streaming,bool showing,bool faded,
+        bool sameGeneration,bool hasContent,bool ownerHidden)
+        => streaming&&showing&&!faded&&sameGeneration&&hasContent&&!ownerHidden;
 }

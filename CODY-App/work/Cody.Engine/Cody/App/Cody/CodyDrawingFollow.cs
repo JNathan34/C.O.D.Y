@@ -119,10 +119,15 @@ internal sealed class CodyDrawingFollow : IDisposable
             visible = mark.Visible, removed = mark.Removed, hasFeatures = mark.Anchor?.HasFeatures,
             x = mark.Offset.X, y = mark.Offset.Y, box = ToScreen(mark) }).ToArray() };
 
-    internal void Sync(IReadOnlyList<(int Id, string Role, RectD Box, Visual[] Units)> visible)
+    internal void Sync(IReadOnlyList<(int Id, string Role, RectD Box, Visual[] Units)> visible,
+        bool streaming = false)
     {
-        foreach (int id in marks.Keys.Except(visible.Select(mark => mark.Id)).ToArray())
-            marks.Remove(id);
+        // Incremental drawing feeds can temporarily omit already painted marks.
+        // Keep those visuals alive until a completed frame confirms their removal;
+        // otherwise their visibility and entrance animations repeatedly restart.
+        if (!streaming)
+            foreach (int id in marks.Keys.Except(visible.Select(mark => mark.Id)).ToArray())
+                marks.Remove(id);
         foreach (var item in visible)
         {
             if (!marks.TryGetValue(item.Id, out var mark))
