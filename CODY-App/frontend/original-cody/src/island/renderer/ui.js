@@ -56,7 +56,7 @@
   const DEFAULTS = {
     visibility:'always',islandSize:'medium',animationSpeed:'normal',revealStyle:'liquid',
     idleReactions:'subtle',cursorTracking:true,blinkEnabled:true,reactiveExpressions:true,
-    funReactions:true,sunglassesEnabled:true,pretendSleepEnabled:true,wifiReactions:true,showMediaWidget:true,
+    funReactions:true,sunglassesEnabled:true,pretendSleepEnabled:true,wifiReactions:true,showMediaWidget:true,weatherUnit:'celsius',weatherCity:'',
     startListeningOnHotkey:true,hotkeyMode:'hold',activityHideDelay:1600,
     quickMessageEnabled:true,quickMessagePhrase:'done',
     fontScale:100,guiScale:100,
