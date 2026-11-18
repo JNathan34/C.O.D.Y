@@ -12,8 +12,12 @@ module.exports=async({win,island,store,monitors,engine})=>{
     await prompt('stop showing cpu');check('individual stop keeps other monitors',monitors.snapshot().metrics.join(',')==='ram');
     await prompt('show wifi details and wifi speed');await until(()=>monitors.data.wifi!==undefined);
     check('Wi-Fi data comes from the active adapter',monitors.data.wifi?.connected===true,{connected:monitors.data.wifi?.connected,linkMbps:monitors.data.wifi?.linkMbps,signalAvailable:Boolean(monitors.data.wifi?.signal)});
+    await prompt('hide Wi-Fi details and Wi-Fi speed');
     await prompt('run a wifi speed test');await until(()=>!monitors.speedRunning,50000);
-    check('real Internet speed test completes and remains pinned',monitors.selected.has('speedtest')&&/Mbps/.test(monitors.values.speedtest.detail),monitors.values.speedtest);
+    await until(()=>evaluate("document.getElementById('island-info').dataset.monitor==='speedtest'"),3000);
+    check('real Internet speed test temporarily takes over the Island',monitors.snapshot().items.length===1&&/Mbps/.test(monitors.values.speedtest.detail),monitors.values.speedtest);
+    await until(()=>evaluate("document.getElementById('island-info').dataset.monitor==='ram'"),6500);
+    check('the pinned RAM card returns after the speed result',monitors.snapshot().metrics.join(',')==='ram');
     await prompt('clear the island');check('clear removes all pinned monitors',!monitors.snapshot().active);
     await prompt('show cpu and ram');await wait(500);
     const bounds=await evaluate(`(()=>{const r=document.getElementById('island').getBoundingClientRect();return {x:Math.floor(r.x),y:0,width:Math.ceil(r.width),height:Math.ceil(r.height+8)};})()`);

@@ -230,18 +230,24 @@ public static class CodyEngineBridge
                     case "drawing-controls-state":return await CodyDrawingControls.Snapshot(host);
                     case "drawing-controls-test-close":if(!zoomFixture)throw new InvalidOperationException("Create the local model fixture first.");CodyDrawingControls.CloseForTest(host);return new{closed=true};
                     case "drawing-controls-test-screen-change":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");var changeReason=Text("reason");if(changeReason is not ("click" or "app switch" or "space change" or "scroll"))throw new InvalidOperationException("Unsupported test reason.");CodyDrawingControls.ScreenChangeForTest(host,changeReason);return new{changed=true};
+                    case "drawing-controls-test-press":
+                        if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");
+                        CodyDrawingControls.PressForTest(host,new PointD(request.GetProperty("x").GetInt32(),request.GetProperty("y").GetInt32()));
+                        return new{accepted=true};
                     case "drawing-controls-test-finish":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");host.Real.Canvas.Finish();host.Real.Canvas.IsStreamingNarration=false;return new{finished=true};
                     case "drawing-controls-test-highlight":
                         if(host.Real.Canvas.IsShowingDrawing&&!zoomFixture)throw new InvalidOperationException("Keep the existing drawing; this check requires an empty canvas.");
-                        double Fraction(string name)
+                        double Fraction(JsonElement mark,string name)
                         {
-                            double value=request.GetProperty(name).GetDouble();
+                            double value=mark.GetProperty(name).GetDouble();
                             return value>=0&&value<=1?value:throw new ArgumentOutOfRangeException(name);
                         }
                         var rememberHighlight=CodyDrawingFollow.RememberCapture();
                         var highlightFrame=(await host.Real.Capture.CaptureAllAsync()).First();
                         rememberHighlight?.Invoke(highlightFrame,highlightFrame.Jpeg);
-                        string highlightProgram=FormattableString.Invariant($"ring({Fraction("x")*highlightFrame.PixelWidth},{Fraction("y")*highlightFrame.PixelHeight},{Fraction("width")*highlightFrame.PixelWidth},{Fraction("height")*highlightFrame.PixelHeight});");
+                        string Ring(JsonElement mark)=>FormattableString.Invariant($"ring({Fraction(mark,"x")*highlightFrame.PixelWidth},{Fraction(mark,"y")*highlightFrame.PixelHeight},{Fraction(mark,"width")*highlightFrame.PixelWidth},{Fraction(mark,"height")*highlightFrame.PixelHeight});");
+                        string highlightProgram=request.TryGetProperty("marks",out var testMarks)
+                            ? string.Join("\n",testMarks.EnumerateArray().Take(8).Select(Ring)) : Ring(request);
                         host.Real.Canvas.BeginProgram(highlightFrame,host.Services.Settings.CursorColorHex);
                         var highlightFeed=host.Real.Canvas.Feed(highlightProgram,true);
                         for(int line=0;line<Math.Max(1,highlightFeed.Lines.Count);line++)host.Real.Canvas.ReleaseLine(line);

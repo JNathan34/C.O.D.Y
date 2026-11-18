@@ -10,6 +10,11 @@ Check(CodyDrawingControlState.HasContent(true,true,5,1,1),false,"faded drawings 
 Check(CodyDrawingControlState.HasContent(true,false,0,0,0),false,"returning to an empty stream hides old controls");
 foreach(string kind in new[]{"Group","Wrapper","MaskedContainer","Placeholder","Stage3D"})Check(CodyDrawingControlState.IsDrawable(kind),false,kind+" alone does not keep Clear visible");
 foreach(string kind in new[]{"Shape","Text","Wash","Dot","Window","Photo"})Check(CodyDrawingControlState.IsDrawable(kind),true,kind+" is real drawing content");
+Check(CodyDrawingControlState.IsPressable("RadioButton",false),true,"quiz choices can be recognized by their role");
+Check(CodyDrawingControlState.IsPressable("Text",false),false,"static text does not make a ring dismissible");
+Check(CodyDrawingControlState.HitDistance(175,75,100,50,150,50)==0,true,"presses anywhere inside a wide outline hit the mark");
+Check(CodyDrawingControlState.HitDistance(175,108,100,50,150,50)==64,true,"nearby presses use the distance to the outline edge");
+Check(CodyDrawingControlState.HitDistance(90,40,100,50,150,50)==200,true,"corner proximity uses radial distance");
 
 const int width=520,height=360,markX=200,markY=145,markWidth=90,markHeight=80;
 byte[] page=Enumerable.Repeat((byte)245,width*height).ToArray();
@@ -25,6 +30,8 @@ Check(anchor.Locate(Shift(21,-93),21,22,width,height,(0,0),(21,22))==(21,-93),tr
 Check(anchor.Locate(Shift(0,-330),0,0,width,height,(0,-84),(0,0))==null,true,"a scrolled-off or replaced target hides the highlight");
 Check(anchor.Locate(Shift(0,-84),0,144,width,height,(0,-84),(0,0))==null,true,"a target above the window's visible area stays hidden");
 Check(anchor.Locate(page,0,0,width,height,(0,-84),(0,0))==(0,0),true,"returning to the original content restores its drawing");
+Check(anchor.Locate(Shift(0,-84),0,0,width,height,(0,0),(0,0),(0,-84))==(0,-84),true,"other marks can suggest scroll motion if this mark confirms it");
+Check(anchor.Locate(page,0,0,width,height,(0,0),(0,0),(0,-84))==null,true,"shared motion cannot move a mark onto unrelated content");
 Check(new CodyDrawingAnchor(Shift(0,-330),width,height,markX,markY,markWidth,markHeight).HasFeatures,false,"blank areas never act as a scroll anchor");
 byte[] repeated=Shift(0,-71),copy=Shift(0,71);
 for(int i=0;i<copy.Length;i++)if(copy[i]!=245)repeated[i]=copy[i];
