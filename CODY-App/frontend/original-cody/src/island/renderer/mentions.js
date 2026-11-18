@@ -112,10 +112,10 @@
     if (!selection || selection.start !== selection.end || input.disabled) { close(); return; }
     const end = selection.end;
     // The boundary excludes email addresses such as name@example.com.
-    const match = /(?:^|[\\s([{])@([\\p{L}\\p{N}_-]*)$/u.exec(input.value.slice(0, end));
+    const match = /(?:^|[\s([{])@([\p{L}\p{N}_-]*)$/u.exec(input.value.slice(0, end));
     if (!match) { close(); return; }
     const opening = !token;
-    const suffix = /^[\\p{L}\\p{N}_-]*/u.exec(input.value.slice(end))[0];
+    const suffix = /^[\p{L}\p{N}_-]*/u.exec(input.value.slice(end))[0];
     token = {start: end - match[1].length - 1, end: end + suffix.length, query: match[1]};
     if (opening) void load();
     render();
