@@ -404,6 +404,8 @@
     const speedChanged=next.voiceRate!==preferences.voiceRate;preferences=next;
     if(next.microphoneMuted&&['starting','listening'].includes(voice.getPhase()))void voice.cancel();
     if(speedChanged)void api.voice.configure({speed:next.voiceRate}).catch(error=>note(error.message));
+    // Apply music visibility immediately when the preference changes.
+    renderTimer();
   });
   busy(app.data.busy);renderMessages();renderPermissions();
   await voice.initialized;
