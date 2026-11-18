@@ -24,10 +24,16 @@ app.whenReady().then(async()=>{
     const assistantSource=await fs.readFile(path.resolve(__dirname,'../frontend/original-cody/src/island/renderer/assistant.js'),'utf8');
     const begin=assistantSource.indexOf('function renderTimer(){');
     const render=assistantSource.slice(begin,assistantSource.indexOf("document.addEventListener('cody:update-state'",begin));
-    await evaluate("var $=id=>document.getElementById(id),wakeListening=()=>false,capture={status:'idle'},capturePending=false,tasks={connected:false,tasks:[]},game={active:false},timer=null,quickCard=null,media={available:false},island=window.CODYIsland,art=$('island-media-art'),monitors={active:true,items:[{id:'ram',text:'RAM 69%',detail:'10.7 / 15.6 GB',icon:'activity'}]};"+render+"document.addEventListener('cody:update-state',renderTimer);renderTimer();window.CODYIsland.showIsland(true);");
+    await evaluate("var $=id=>document.getElementById(id),wakeListening=()=>false,capture={status:'idle'},capturePending=false,taskStatus=null,visibleTaskStatus=null,game={active:false},timer=null,quickCard=null,media={available:false},island=window.CODYIsland,art=$('island-media-art'),monitors={active:true,items:[{id:'ram',text:'RAM 69%',detail:'10.7 / 15.6 GB',icon:'activity'}]};"+render+"document.addEventListener('cody:update-state',renderTimer);renderTimer();window.CODYIsland.showIsland(true);");
     updates.set({status:'downloading',availableVersion:'0.15.2',progress:43});
     await until("document.getElementById('island-info').dataset.update==='true'");
     assert.equal(await evaluate("document.getElementById('island-update-progress').value"),43);
+    await evaluate("quickCard={kind:'brightness',text:'Brightness',level:68,expiresAt:Date.now()+5000};renderTimer()");
+    assert.equal(await evaluate("$('island-update-progress').getAttribute('aria-label')"),'Brightness level');
+    assert.equal(await evaluate("$('island-update-progress').value"),68);
+    await evaluate("quickCard=null;renderTimer()");
+    assert.equal(await evaluate("$('island-update-progress').getAttribute('aria-label')"),'Update download progress');
+    assert.equal(await evaluate("$('island-update-progress').value"),43);
     for(const size of ['small','medium','large']){
       await evaluate(`document.body.dataset.size=${JSON.stringify(size)}`);
       const fits=await evaluate("(()=>{const t=$('island-info-text'),p=$('island-update-progress');return t.scrollWidth<=t.clientWidth&&!p.hidden&&p.getBoundingClientRect().height>0;})()");

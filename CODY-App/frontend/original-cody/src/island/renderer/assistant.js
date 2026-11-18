@@ -125,6 +125,7 @@
       $('island-info-icon').hidden=false;window.CODYIcons.set($('island-info-icon'),updateCard.icon);
       art.hidden=true;$('island-media-controls').hidden=true;$('island-rps-controls').hidden=true;
       const progress=$('island-update-progress');progress.hidden=updateCard.progress===undefined;progress.value=updateCard.progress??0;
+      progress.setAttribute('aria-label','Update download progress');
     }
     document.body.classList.toggle('timer-finished',showTimer&&timer?.status==='finished');
     if(!timer)return;
