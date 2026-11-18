@@ -93,8 +93,18 @@
   pre.append(code);toolbar.append(label,button);block.append(toolbar,pre);
   return block;
  }
- function render(node,text,role='assistant'){
-  node.replaceChildren();if(role==='user'){node.textContent=String(text??'');return;}
+ function render(node,text,role='assistant',mention=null){
+  node.replaceChildren();
+  if(role==='user'){
+   const content=String(text??'');
+   if(mention && typeof mention.id==='string' && typeof mention.name==='string' &&
+      Number.isInteger(mention.offset) && mention.offset>=0 && mention.offset<=content.length &&
+      window.CODYInlineComposer?.badge){
+    node.append(document.createTextNode(content.slice(0,mention.offset)),
+      window.CODYInlineComposer.badge(mention),document.createTextNode(content.slice(mention.offset)));
+   }else node.textContent=content;
+   return;
+  }
   const chunks=splitFences(normalize(text).split('\n')),fragment=document.createDocumentFragment();let paragraph=null,list=null,quote=null;
   const reset=()=>{paragraph=null;list=null;quote=null;};
   const cells=line=>line.trim().replace(/^\||\|$/g,'').split('|').map(cell=>cell.trim());
