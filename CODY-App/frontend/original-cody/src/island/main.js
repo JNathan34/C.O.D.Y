@@ -53,6 +53,7 @@ const DEFAULTS = Object.freeze({
   sunglassesEnabled: true,
   pretendSleepEnabled: true,
   wifiReactions: true,
+  showMediaWidget: true,
   animationSpeed: 'normal', // slow | normal | fast | off
   revealStyle: 'liquid', // liquid | simple | none
   enableHotkey: true,
