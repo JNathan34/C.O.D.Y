@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - CODY-App/frontend/original-cody/package.json
+      - CODY-App/Build-CODY-Standalone.bat
       - .github/workflows/release-windows.yml
   workflow_dispatch:
 
