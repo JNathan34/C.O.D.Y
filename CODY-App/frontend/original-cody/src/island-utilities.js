@@ -44,8 +44,10 @@ function matchesApp(window,name){
 }
 
 class IslandUtilities {
-  constructor({selfHosted,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
+  constructor({selfHosted,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false}={}){
+    if(this.textContext&&/^(?:what can you do (?:with|in) this (?:text ?box|field|text)|suggest (?:some )?(?:edits|actions) (?:for|in) this (?:text|field)|help me (?:edit|write) (?:this|the) (?:text|field))$/i.test(commandText(input,{preserveShow:true})))
+      return {kind:'local',action:'text-context-help'};
     if(this.selfHosted){
       const text=commandText(input,{preserveShow:true}).toLowerCase();
       if(/^(?:show|check|who is|how many people are) (?:my )?(?:watching|viewers on|playing on) plex$|^(?:plex viewers|plex sessions|who is watching plex)$/.test(text))
@@ -111,6 +113,15 @@ class IslandUtilities {
     try{
       let reply,confirmation;
       switch(route.action){
+        case 'text-context-help':{
+          // Only an explicit user request triggers native field detection.
+          // No field value or selected text is displayed, logged, or sent to a model.
+          const current=await this.textContext();
+          reply=current?.protected?'That field appears protected. I won’t inspect, rewrite or fill it.':
+            current?.editable?'This is an editable field. I can proofread its spelling, or type text you explicitly give me. I will not fill or replace anything automatically.':
+            'Select an ordinary editable text field, then ask me again. No text has been changed.';
+          show({kind:'utility',text:current?.editable?'Text tools':'No editable field',detail:'Only on request',icon:'pencil'});break;
+        }
         case 'self-hosted-plex-sessions':{
           const data=await this.selfHosted.plexSessions();
           reply=data.count?data.count+' Plex viewing session(s): '+data.sessions.slice(0,5).map(s=>s.viewer+' watching '+s.title+' ('+s.state+')').join('; ')+'.':'Nobody is watching Plex right now.';
