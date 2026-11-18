@@ -13,10 +13,22 @@ using HeyClicky.Platform.Win32;
 namespace HeyClicky.App.Cody;
 internal static class CodyAccessibilityInput
 {
-    internal sealed record Result(bool Handled=false,bool Attempted=false,string Method=null,string Reason=null,string Text=null);
+    internal sealed record Result(bool Handled=false,bool Attempted=false,string Method=null,string Reason=null,string Text=null,object Data=null);
     private static UiaElement lastEdit;
     private static nint lastRoot;
     private static readonly MethodInfo run=typeof(UIAutomationHelpers).GetMethods(BindingFlags.Static|BindingFlags.NonPublic).Single(m=>m.Name=="RunAsync"&&m.IsGenericMethodDefinition).MakeGenericMethod(typeof(Result));
+    private static readonly Func<Func<object,Result>,Delegate> makeCallback=CreateCallbackFactory();
+
+    private static Func<Func<object,Result>,Delegate> CreateCallbackFactory()
+    {
+        var delegateType=run.GetParameters()[0].ParameterType;
+        var callback=Expression.Parameter(typeof(Func<object,Result>));
+        var parameter=Expression.Parameter(delegateType.GenericTypeArguments[0]);
+        var adapter=Expression.Lambda(delegateType,
+            Expression.Invoke(callback,Expression.Convert(parameter,typeof(object))),parameter);
+        return Expression.Lambda<Func<Func<object,Result>,Delegate>>(
+            Expression.Convert(adapter,typeof(Delegate)),callback).Compile();
+    }
     internal static async Task<Result> Run(Func<Uia,Func<bool>,Result> query,Func<bool> valid,TimeSpan? budget=null){
         using var timeout=new CancellationTokenSource(budget??TimeSpan.FromSeconds(3));bool attempted=false;
         try{
@@ -27,8 +39,7 @@ internal static class CodyAccessibilityInput
                 catch(OperationCanceledException){return new(Attempted:attempted,Reason:"Control was stopped.");}
                 catch(Exception ex){return new(Attempted:attempted,Reason:"Windows accessibility action failed: "+(ex is COMException?"0x"+ex.HResult.ToString("X8"):ex.GetType().Name));}
             };
-            var delegateType=run.GetParameters()[0].ParameterType;var parameter=Expression.Parameter(delegateType.GenericTypeArguments[0]);
-            var callback=Expression.Lambda(delegateType,Expression.Invoke(Expression.Constant(bridge),Expression.Convert(parameter,typeof(object))),parameter).Compile();
+            var callback=makeCallback(bridge);
             var task=(Task<Result>)run.Invoke(null,new object[]{callback,timeout.Token});return await task.WaitAsync(timeout.Token).ConfigureAwait(false)??new Result();
         }catch(OperationCanceledException){return new(Attempted:attempted,Reason:"The app did not answer its accessibility request in time.");}
         catch(Exception){return new(Attempted:attempted,Reason:"Windows accessibility is unavailable for this control.");}
@@ -249,9 +260,9 @@ internal static class CodyAccessibilityInput
     [ComImport,Guid("619BE086-1F4E-4EE4-BAFA-210128738730"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]private interface UiaExpand{void Expand();void Collapse();int CurrentExpandCollapseState{get;}}
     [ComImport,Guid("828055AD-355B-4435-86D5-3B51C14A9B1B"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]private interface UiaLegacy{void Select(int flags);void DoDefaultAction();}
     [ComImport,Guid("A94CD8B1-0844-4CD6-9D2D-640537AB39E9"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]private interface UiaValue{void SetValue([MarshalAs(UnmanagedType.LPWStr)]string value);string CurrentValue{[return:MarshalAs(UnmanagedType.BStr)]get;}bool CurrentIsReadOnly{[return:MarshalAs(UnmanagedType.Bool)]get;}}
-    [ComImport,Guid("32EBA289-3583-42C9-9C59-3B6D9A1E9B6A"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]private interface UiaText{UiaRange RangeFromPoint(Point point);UiaRange RangeFromChild(UiaElement element);UiaRanges GetSelection();UiaRanges GetVisibleRanges();UiaRange DocumentRange{get;}}
-    [ComImport,Guid("CE4AE76A-E717-4C98-81EA-47371D028EB6"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]private interface UiaRanges{int Length{get;}UiaRange GetElement(int index);}
-    [ComImport,Guid("A543CC6A-F4AE-494B-8239-C814481187A8"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]private interface UiaRange{
-        UiaRange Clone();int Compare(UiaRange other);int CompareEndpoints(int endpoint,UiaRange other,int otherEndpoint);void ExpandToEnclosingUnit(int unit);nint FindAttribute(int attribute,[MarshalAs(UnmanagedType.Struct)]object value,int backward);nint FindText([MarshalAs(UnmanagedType.BStr)]string text,int backward,int ignoreCase);[return:MarshalAs(UnmanagedType.Struct)]object GetAttributeValue(int attribute);nint GetBoundingRectangles();UiaElement GetEnclosingElement();[return:MarshalAs(UnmanagedType.BStr)]string GetText(int length);int Move(int unit,int count);int MoveEndpointByUnit(int endpoint,int unit,int count);void MoveEndpointByRange(int endpoint,UiaRange other,int otherEndpoint);void Select();
+    [ComImport,Guid("32EBA289-3583-42C9-9C59-3B6D9A1E9B6A"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]internal interface UiaText{UiaRange RangeFromPoint(Point point);UiaRange RangeFromChild(UiaElement element);UiaRanges GetSelection();UiaRanges GetVisibleRanges();UiaRange DocumentRange{get;}}
+    [ComImport,Guid("CE4AE76A-E717-4C98-81EA-47371D028EB6"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]internal interface UiaRanges{int Length{get;}UiaRange GetElement(int index);}
+    [ComImport,Guid("A543CC6A-F4AE-494B-8239-C814481187A8"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]internal interface UiaRange{
+        UiaRange Clone();int Compare(UiaRange other);int CompareEndpoints(int endpoint,UiaRange other,int otherEndpoint);void ExpandToEnclosingUnit(int unit);nint FindAttribute(int attribute,[MarshalAs(UnmanagedType.Struct)]object value,int backward);nint FindText([MarshalAs(UnmanagedType.BStr)]string text,int backward,int ignoreCase);[return:MarshalAs(UnmanagedType.Struct)]object GetAttributeValue(int attribute);[return:MarshalAs(UnmanagedType.SafeArray,SafeArraySubType=VarEnum.VT_R8)]double[] GetBoundingRectangles();UiaElement GetEnclosingElement();[return:MarshalAs(UnmanagedType.BStr)]string GetText(int length);int Move(int unit,int count);int MoveEndpointByUnit(int endpoint,int unit,int count);void MoveEndpointByRange(int endpoint,UiaRange other,int otherEndpoint);void Select();
     }
 }

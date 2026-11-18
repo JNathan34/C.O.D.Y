@@ -2,6 +2,8 @@
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net9.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
   <ItemGroup>
     <Compile Include="../../work/Cody.Engine/Cody/App/Cody/CodyDrawingControlState.cs" />
-    <Compile Include="../../work/Cody.Engine/Cody/App/Cody/CodyDrawingAnchor.cs" />
+    <Compile Include="../../work/Cody.Engine/Cody/App/Cody/CodyDrawingGeometry.cs" />
+    <Compile Include="../../work/Cody.Contracts/Cody/RectD.cs" />
+    <Compile Include="../../work/Cody.Contracts/Cody/PointD.cs" />
   </ItemGroup>
 </Project>

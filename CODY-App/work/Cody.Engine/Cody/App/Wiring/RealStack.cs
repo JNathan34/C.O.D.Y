@@ -62,7 +62,7 @@ public sealed class RealStack : IAsyncDisposable
 
 	private ScreenDrawingCanvas PrepareDrawingCanvas()
 	{
-		if (!CodyDrawingControls.HasVisibleDrawing(Canvas)) return Canvas;
+		if (!CodyDrawingControls.HasRetainedDrawing(Canvas)) return Canvas;
 		var next = makeDrawingCanvas();
 		next.PlaysSounds = Canvas.PlaysSounds;
 		next.PlaysPenSounds = Canvas.PlaysPenSounds;

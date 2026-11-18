@@ -13,6 +13,7 @@ using HeyClicky.Drawing;
 using HeyClicky.Platform.Capture;
 using HeyClicky.Platform.Input;
 using HeyClicky.Platform.Win32;
+using Windows.Graphics;
 using Windows.UI.Composition;
 
 namespace HeyClicky.App.Cody;
@@ -95,18 +96,38 @@ internal static class CodyDrawingControls
             this.canvas=canvas;
             this.display=display;
             this.changed=changed;
-            if(Property(Field(canvas,"painter"),"StageVisual") is Visual stage)stage.IsVisible=true;
-            follow=new CodyDrawingFollow(capture,display,Field(canvas,"screenshotJpeg") as byte[],
-                (Vector2)(Field(canvas,"canvasSize")??Vector2.Zero),Post);
+            if(Property(Field(canvas,"painter"),"StageVisual") is Visual stage)
+            {
+                stage.Scale=Vector3.One;
+                stage.Offset=Vector3.Zero;
+                stage.IsVisible=true;
+            }
+            follow=new CodyDrawingFollow(display,Field(canvas,"screenshotJpeg") as byte[],
+                (Vector2)(Field(canvas,"canvasSize")??Vector2.Zero),Post,ResizeSurface,CloseMarks);
             if(follow.Available)presses=new PointerInput().WatchPresses(point=>Post(()=>Press(point)));
             Arm();
         }
         private void Post(Action action)=>Invoke(canvas,"PostToDrawingThread",action);
         internal bool Hidden=>follow.Hidden;
+        internal bool HasHiddenDrawing=>follow.HasHiddenDrawing;
         internal Vector2 Offset=>follow.Offset;
         internal bool CanContinue(ScreenCaptureFrame frame)=>follow.CanContinue(frame);
         internal object Inspect()=>follow.Inspect();
         private void Arm()=>stale=new ScreenDrawingStaleWatch(display,Fire);
+        private void ResizeSurface(RectD bounds)
+        {
+            if (Field(canvas,"overlay") is not {} overlay ||
+                Property(Field(canvas,"painter"),"StageVisual") is not Visual stage) return;
+            var rect = new RectInt32((int)bounds.X, (int)bounds.Y, (int)bounds.Width, (int)bounds.Height);
+            Invoke(overlay,"Reframe",rect);
+            double currentScale = Convert.ToDouble(Property(overlay,"RasterizationScale"));
+            if (currentScale <= 0) return;
+            var original = display.BoundsPx;
+            float scale = (float)(display.Scale / currentScale);
+            stage.Scale = new Vector3(scale, scale, 1);
+            stage.Offset = new Vector3((float)((original.X - bounds.X) / currentScale),
+                (float)((original.Y - bounds.Y) / currentScale), 0);
+        }
         internal void Fire(string reason)=>Post(()=>{
             if(disposed||!canvas.IsShowing||canvas.IsDrawingFadedAway)return;
             stale.Dispose();
@@ -126,8 +147,9 @@ internal static class CodyDrawingControls
         {
             if(disposed||!canvas.IsShowing||ClickyDriveState.IsDrivingNow)return;
             if(follow.Press(point) is int id)
-                Invoke(Field(canvas,"engine"),"CloseCard",(object)new[]{id});
+                CloseMarks([id]);
         }
+        private void CloseMarks(int[] ids)=>Invoke(Field(canvas,"engine"),"CloseCard",(object)ids);
 
         internal bool Refresh()
         {
@@ -174,6 +196,9 @@ internal static class CodyDrawingControls
     internal static bool CanContinue(ScreenDrawingCanvas canvas,ScreenCaptureFrame frame)
         =>Field(canvas,"staleWatch") is not DrawingScreenWatch watch||
             ReadOnDrawingThread(canvas,()=>watch.CanContinue(frame)?1:0)==1;
+    internal static bool HasRetainedDrawing(ScreenDrawingCanvas canvas) =>
+        HasVisibleDrawing(canvas) || Field(canvas,"staleWatch") is DrawingScreenWatch watch &&
+        ReadOnDrawingThread(canvas,()=>watch.HasHiddenDrawing?1:0)==1;
     internal static void ScreenChangeForTest(AppHost host,string reason)=>Invoke(Field(host.Real.Canvas,"staleWatch"),"Fire",reason);
     internal static void PressForTest(AppHost host,PointD point)
     {
@@ -195,12 +220,13 @@ internal static class CodyDrawingControls
             var previous=offeredCanvas;
             if(previous!=null&&drawings.Contains(previous))
             {
-                int generation=(int)(Field(previous,"clearGeneration")??-1);
-                bool hidden=Field(previous,"staleWatch") is DrawingScreenWatch watch&&watch.Hidden;
+                int previousGeneration=(int)(Field(previous,"clearGeneration")??-1);
+                bool hidden=Field(previous,"staleWatch") is DrawingScreenWatch watch&&
+                    ReadOnDrawingThread(previous,()=>watch.Hidden?1:0)==1;
                 bool stillInk=previous.InkedMarkCount>0||ModelCount(previous)>0;
                 if(CodyDrawingControlState.KeepClearDuringStream(previous.IsStreamingNarration,
                     previous.IsShowing,previous.IsDrawingFadedAway,
-                    generation==offeredGeneration,stillInk,hidden))
+                    previousGeneration==offeredGeneration,stillInk,hidden))
                     return;
             }
             offeredCanvas=null;

@@ -1,3 +1,4 @@
+using HeyClicky;
 using HeyClicky.App.Cody;
 void Check(bool actual,bool expected,string label){if(actual!=expected)throw new Exception(label);Console.WriteLine("PASS: "+label);}
 Check(CodyDrawingControlState.HasContent(true,false,0,0,0),false,"an empty canvas never offers Clear, including during narration");
@@ -23,36 +24,16 @@ Check(CodyDrawingControlState.HitDistance(175,75,100,50,150,50)==0,true,"presses
 Check(CodyDrawingControlState.HitDistance(175,108,100,50,150,50)==64,true,"nearby presses use the distance to the outline edge");
 Check(CodyDrawingControlState.HitDistance(90,40,100,50,150,50)==200,true,"corner proximity uses radial distance");
 
-const int width=520,height=360,markX=200,markY=145,markWidth=90,markHeight=80;
-byte[] page=Enumerable.Repeat((byte)245,width*height).ToArray();
-var noise=new Random(741);
-for(int y=markY;y<markY+markHeight;y++)
-for(int x=markX;x<markX+markWidth;x++)
-    page[y*width+x]=(byte)(noise.Next(36)*5+30);
-var anchor=new CodyDrawingAnchor(page,width,height,markX,markY,markWidth,markHeight);
-Check(anchor.HasFeatures,true,"a product-like image inside the highlight provides an anchor");
-Check(anchor.Locate(Shift(0,-84),0,0,width,height,(0,0),(0,0))==(0,-84),true,"a vertical scroll shifts the drawing with the original content");
-Check(anchor.Locate(Shift(32,0),0,0,width,height,(0,0),(0,0))==(32,0),true,"a horizontal scroll shifts the drawing with the original content");
-Check(anchor.Locate(Shift(21,-93),21,22,width,height,(0,0),(21,22))==(21,-93),true,"moving the window while scrolling keeps the highlight anchored");
-Check(anchor.Locate(Shift(0,-330),0,0,width,height,(0,-84),(0,0))==null,true,"a scrolled-off or replaced target hides the highlight");
-Check(anchor.Locate(Shift(0,-84),0,144,width,height,(0,-84),(0,0))==null,true,"a target above the window's visible area stays hidden");
-Check(anchor.Locate(page,0,0,width,height,(0,-84),(0,0))==(0,0),true,"returning to the original content restores its drawing");
-Check(anchor.Locate(Shift(0,-84),0,0,width,height,(0,0),(0,0),(0,-84))==(0,-84),true,"other marks can suggest scroll motion if this mark confirms it");
-Check(anchor.Locate(page,0,0,width,height,(0,0),(0,0),(0,-84))==null,true,"shared motion cannot move a mark onto unrelated content");
-Check(new CodyDrawingAnchor(Shift(0,-330),width,height,markX,markY,markWidth,markHeight).HasFeatures,false,"blank areas never act as a scroll anchor");
-byte[] repeated=Shift(0,-71),copy=Shift(0,71);
-for(int i=0;i<copy.Length;i++)if(copy[i]!=245)repeated[i]=copy[i];
-Check(anchor.Locate(repeated,0,0,width,height,(0,0),(0,0))==null,true,"identical targets at two offsets do not relocate the drawing");
-
-byte[] Shift(int horizontal,int vertical)
-{
-    var image=Enumerable.Repeat((byte)245,width*height).ToArray();
-    for(int y=markY;y<markY+markHeight;y++)
-    for(int x=markX;x<markX+markWidth;x++)
-    {
-        int dx=x+horizontal,dy=y+vertical;
-        if(dx>=0&&dx<width&&dy>=0&&dy<height)
-            image[dy*width+dx]=(byte)Math.Clamp(page[y*width+x]+((x+y)%7)-3,0,255);
-    }
-    return image;
-}
+var originalTarget = new RectD(200, 150, 80, 20);
+var originalMark = new RectD(190, 142, 100, 36);
+var viewport = new RectD(0, 0, 1200, 800);
+var moved = CodyDrawingGeometry.Project(originalMark, originalTarget, new RectD(220, 65, 80, 20));
+Check(moved == new RectD(210, 57, 100, 36),true,"scroll and window movement translate the original ink");
+var zoomed = CodyDrawingGeometry.Project(originalMark, originalTarget, new RectD(300, 250, 120, 30));
+Check(zoomed == new RectD(285, 238, 150, 54),true,"zoom preserves the original margin around the target");
+Check(CodyDrawingGeometry.Visible(moved,viewport,viewport),true,"visible content keeps its existing drawing");
+Check(CodyDrawingGeometry.Visible(new RectD(300,-20,100,60),viewport,viewport),false,"a partially clipped mark stays within the owner viewport");
+Check(CodyDrawingGeometry.Visible(new RectD(1250,50,80,25),new RectD(0,0,1800,800),viewport),false,"a mark cannot spill onto a different display surface");
+Check(CodyDrawingGeometry.Visible(new RectD(-1740,120,90,35),new RectD(-1920,0,1920,1080),new RectD(-1920,0,1920,1080)),true,"window and overlay bounds support monitors with negative origins");
+var spanningOverlay = CodyDrawingGeometry.Union(viewport, new RectD(-1600,100,1200,900));
+Check(CodyDrawingGeometry.Visible(new RectD(-750,220,100,35),new RectD(-1600,100,1200,900),spanningOverlay),true,"an expanded overlay can follow the owner onto the second monitor");
