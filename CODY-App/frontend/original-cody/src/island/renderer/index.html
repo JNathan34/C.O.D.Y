@@ -205,6 +205,11 @@
                 <label class="setting-row"><span><strong>Preferred browser</strong><small>Choose which browser C.O.D.Y. uses for web links and browser tasks.</small></span><select id="preferred-browser" aria-label="Preferred browser" aria-describedby="preferred-browser-status" disabled><option value="system">Windows default</option></select></label>
               </div>
               <p class="setting-help" id="preferred-browser-status" role="status" hidden></p>
+              <h3 class="group-title">WEATHER</h3>
+              <div class="settings-group">
+                <label class="setting-row"><span><strong>Default weather city</strong><small>Optional. Enter a city to avoid approximate IP-location lookup for weather.</small></span><input data-pref="weatherCity" type="text" maxlength="100" placeholder="Use approximate location" autocomplete="off" aria-label="Default weather city"></label>
+                <label class="setting-row"><span><strong>Temperature units</strong><small>Used for current, hourly and weekly forecasts.</small></span><select data-pref="weatherUnit" aria-label="Weather temperature units"><option value="celsius">Celsius (°C)</option><option value="fahrenheit">Fahrenheit (°F)</option></select></label>
+              </div>
               <h3 class="group-title">SETTINGS BACKUP</h3>
               <div class="settings-group">
                 <div class="setting-row"><span><strong>Export settings</strong><small>Save appearance, cursor, shortcut and voice preferences to a JSON file.</small></span><button id="settings-export" class="light-action" type="button">Export settings</button></div>
