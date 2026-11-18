@@ -45,6 +45,8 @@ function matchesApp(window,name){
 class IslandUtilities {
   constructor({tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false}={}){
+    const forecast=/^(?:(?:show|check|tell me|what is|what's) (?:me )?(?:the )?)?(?:(?:seven|7)[ -]day|weekly|hourly)? ?(?:weather )?forecast(?: (?:for|in|at) (.+))?$/i.exec(commandText(input,{preserveShow:true}));
+    if(forecast)return {kind:'local',action:'weather-forecast',location:(forecast[1]||'').trim()};
     const system=parseSystemCommand(input);if(system)return {kind:'direct',...system,text:input};
     if(this.appSettings){const setting=parseSettingsCommand(input);if(setting)return setting;}
     const discord=parseDiscordCommand(input,{spoken});if(discord)return {kind:discord.action==='discord.leave-clarify'?'local':'direct',...discord};
@@ -110,6 +112,7 @@ class IslandUtilities {
         case 'rps':{const state=this.rps.act(route.game);reply=state.message;confirmation=this.rps.confirmation(state);this.clearCard();break;}
         case 'time':case 'date':reply=localAnswer(route.action,this.now());show(localCard(route.action,this.now()));break;
         case 'weather':{const result=await this.weather.current(route.weather.location);reply=result.reply;show(result.card);break;}
+        case 'weather-forecast':{const result=await this.weather.forecast(route.location);reply=result.reply;show(result.card);break;}
         case 'maths':reply=route.maths.text;show({kind:'utility',text:reply,detail:'Calculator',icon:'calculator'});break;
         case 'timer':reply=this.timer.execute(route.timer,chatId);if(['start','cancel'].includes(route.timer.action))this.clearCard();this.refreshMedia();confirmation=route.timer.action==='start'?'Timer set.':route.timer.action==='cancel'?'Timer stopped.':undefined;break;
         case 'spotify-status':{const media=this.mediaCard();reply=media.available?`${media.playing?'Playing':'Paused'}: ${media.title||'Music'}${media.artist?' — '+media.artist:''}.`:'Open a music player and start a track to show it in the Island.';break;}
@@ -168,7 +171,7 @@ class IslandUtilities {
       return {handled:true,reply,confirmation};
     }catch(error){
       const reply=error.message||'That utility is unavailable.';
-      const weather=route.action==='weather',brightness=route.action.startsWith('system.brightness.');
+      const weather=['weather','weather-forecast'].includes(route.action),brightness=route.action.startsWith('system.brightness.');
       show(discord?discordCard('Failed','shield-alert',reply):{kind:weather?'weather':brightness?'brightness':'utility',text:'Unavailable',detail:weather?'Weather':brightness?'Brightness':'C.O.D.Y.',icon:weather?'cloud-off':'circle-alert',tooltip:reply});
       return {handled:true,reply,error:true};
     }
@@ -184,7 +187,7 @@ class IslandUtilities {
     try{
       if(route.action==='volume-status')this.volumeCard(await this.audioState(),generation);
       else if(route.action==='spotify-status')this.mediaCard();
-      else if(['time','date','weather','maths'].includes(route.action))await this.run(input);
+      else if(['time','date','weather','weather-forecast','maths'].includes(route.action))await this.run(input);
       else if(route.action.startsWith('audio.'))this.volumeCard(await this.audioState());
       else if(['spotify.control','media.control'].includes(route.action))this.mediaCard();
       else if(route.action==='app.open'){
