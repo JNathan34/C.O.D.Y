@@ -13,6 +13,7 @@ test('Word command verifies foreground Word selection and avoids launching a new
  const script=wordScript({operation:'heading1'});
  assert.match(script,/GetForegroundWindow/);assert.match(script,/ProcessName -ne 'WINWORD'/);
  assert.match(script,/ActiveWindow.Hwnd/);assert.match(script,/GetActiveObject/);
+ assert.doesNotMatch(script,/\$pid\s*=/i,'PowerShell PID is read-only');
  assert.doesNotMatch(script,/Start-Process|New-Object -ComObject Word/);
  assert.throws(()=>validateWordArgs({operation:'bold',path:'C:\\temp\\file.docx'}),/supported/);
 });
