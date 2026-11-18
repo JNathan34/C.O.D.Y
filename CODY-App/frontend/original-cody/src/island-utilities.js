@@ -115,7 +115,7 @@ class IslandUtilities {
         case 'island-monitors':{const result=await this.monitors.execute(route.monitor);reply=result.reply;confirmation=result.confirmation;this.clearCard();break;}
         case 'screen-capture':{
           const result=await this.capture.execute(route.command);reply=result.reply;confirmation=result.confirmation;
-          if(result.path)show({kind:'utility',text:route.command==='screenshot'?'Screenshot saved':'Recording saved',detail:'Click to open',icon:'camera',captureKind:route.command==='screenshot'?'screenshot':'recording'});
+          if(result.path)show({kind:'utility',text:['screenshot','annotated-screenshot'].includes(route.command)?'Screenshot saved':'Recording saved',detail:'Click to open',icon:'camera',captureKind:['screenshot','annotated-screenshot'].includes(route.command)?'screenshot':'recording'});
           else this.clearCard();break;
         }
         case 'rps':{const state=this.rps.act(route.game);reply=state.message;confirmation=this.rps.confirmation(state);this.clearCard();break;}
