@@ -704,6 +704,9 @@ else app.whenReady().then(()=>{
   if(!store.data.settings.nativeHeyClickyGui){store.data.settings.nativeHeyClickyGui=true;store.settings({voiceAutoSpeak:true,assistantProvider:"heyclicky"});}
   setPersonalCodexEnabled(store.data.settings.assistantProvider==='codex');
   createWindow();createTray();
+  const syncWeather=({weatherUnit,weatherCity})=>weather.configure({unit:weatherUnit,city:weatherCity});
+  island.onPreferencesChanged(syncWeather);
+  syncWeather(island.preferences());
   // Subscribe to Windows monitor brightness notifications instead of polling.
   // Unsupported external monitors fail quietly; brightness controls still work.
   const brightnessMonitor=new BrightnessMonitor();
