@@ -163,7 +163,8 @@ function directPlan(text,files=[]){
 
 function script(){
   return "[Console]::InputEncoding=[Text.Encoding]::UTF8\n"+
-    "$payload=[Console]::In.ReadToEnd()|ConvertFrom-Json\n. "+psQuote(SCRIPT);
+    "try { $payload=[Console]::In.ReadToEnd()|ConvertFrom-Json\n. "+psQuote(SCRIPT)+
+    " } catch { [Console]::Error.Write($_.Exception.Message); exit 1 }";
 }
 
 function decode(raw){

@@ -98,7 +98,7 @@ test('packaged Word module runs its extracted helper through real PowerShell',{
     await asar.createPackageWithOptions(source,archive,{unpack:'**/{'+config.asarUnpack.join(',')+'}'});
     assert.ok(fs.existsSync(archive+'.unpacked/windows/word-document.ps1'));
     const harness=path.join(folder,'verify.cjs');
-    fs.writeFileSync(harness,`const {app}=require('electron');\napp.whenReady().then(async()=>{try{const word=require(${JSON.stringify(archive+'/src/control/word-document.js')});const result=await word.snapshot();require('node:assert/strict').equal(result.target.fingerprint,'packaged');console.log('PACKAGED_WORD_OK');app.exit(0);}catch(error){console.error(error);app.exit(1);}});`);
+    fs.writeFileSync(harness,`const {app}=require('electron');\napp.whenReady().then(async()=>{try{const word=require(${JSON.stringify(archive+'/src/control/word-document.js')});const assert=require('node:assert/strict');const result=await word.snapshot();assert.equal(result.target.fingerprint,'packaged');await assert.rejects(word.execute({steps:[{type:'save'}]},null),{message:'Missing stdin payload'});console.log('PACKAGED_WORD_OK');app.exit(0);}catch(error){console.error(error);app.exit(1);}});`);
     const result=await new Promise((resolve,reject)=>{
       const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
       const child=spawn(require(path.join(root,'node_modules/electron')),[harness,'--user-data-dir='+path.join(folder,'profile')],{env,windowsHide:true});
