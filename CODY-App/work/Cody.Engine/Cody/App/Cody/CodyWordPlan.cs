@@ -40,6 +40,8 @@ internal static class CodyWordPlan
 
                 If the topic or intended change is missing, return {"question":"one concise question"}.
                 If asked to read or summarise, return {"answer":"the requested explanation"}.
+                If the requested operation cannot be represented by the supported steps, return
+                {"unsupported":"a short explanation of the specific limitation"}.
                 Otherwise return {"steps":[...]} with at most 120 steps and 25000 text characters.
                 Supported steps and fields follow.
                 {"type":"paragraph","text":"prose","style":"normal"}
@@ -61,6 +63,10 @@ internal static class CodyWordPlan
                 Picture indices refer to existing floating pictures; image indices refer ONLY
                 to the supplied image attachment list. Use an existing selected picture when appropriate.
                 Do not invent images, download URLs, paths, sources or facts.
+                Use referenceLayouts, when present, as formatting examples. Match the supplied
+                structure, headings, spacing, page breaks and image positioning where practicable.
+                Reference pictures describe layout only. Ask for a usable attachment or work without
+                the picture if appropriate. Do not open or modify the reference document itself.
                 Insert new content at the current cursor, or select append if requested.
                 Revisions target existing paragraph numbers or the user's selection.
                 Preserve existing unrelated text, embedded pictures, page breaks and layout.

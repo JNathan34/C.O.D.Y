@@ -5,6 +5,40 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'../../..');
 const {runPowerShell,psQuote}=require('../src/control/windows');
+const {referenceLayout}=require('../src/control/word-document');
+
+test('a Word reference supplies editable-layout cues without launching Word',{
+  skip:process.platform!=='win32'
+},async()=>{
+  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'cody-word-reference-'));
+  try{
+    const source=path.join(folder,'package'),file=path.join(folder,'Reference.docx');
+    fs.mkdirSync(path.join(source,'word'),{recursive:true});
+    fs.writeFileSync(path.join(source,'word','document.xml'),`
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
+        <w:body>
+          <w:p><w:r><w:drawing><wp:anchor><wp:extent cx="2286000"/>
+            <wp:positionH><wp:align>right</wp:align></wp:positionH><wp:wrapSquare/>
+          </wp:anchor></w:drawing></w:r></w:p>
+          <w:p><w:pPr><w:pStyle w:val="Heading1"/><w:pageBreakBefore/><w:spacing w:after="240"/></w:pPr></w:p>
+        </w:body>
+      </w:document>`);
+    await runPowerShell(`Add-Type -AssemblyName System.IO.Compression.FileSystem
+      Add-Type -AssemblyName System.IO.Compression
+      $archive=[IO.Compression.ZipFile]::Open(${psQuote(file)},[IO.Compression.ZipArchiveMode]::Create)
+      try{[void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive,${psQuote(path.join(source,'word','document.xml'))},'word/document.xml')}
+      finally{$archive.Dispose()}`);
+    assert.deepEqual(await referenceLayout(file),{name:'Reference.docx',paragraphs:[
+      {paragraph:1,picture:{kind:'anchor',wrap:'wrapSquare',align:'right',widthPoints:180}},
+      {paragraph:2,style:'Heading1',pageBreak:true,afterTwips:'240'},
+    ]});
+  }finally{
+    fs.unlinkSync(path.join(folder,'package','word','document.xml'));
+    if(fs.existsSync(path.join(folder,'Reference.docx')))fs.unlinkSync(path.join(folder,'Reference.docx'));
+    fs.rmdirSync(path.join(folder,'package','word'));fs.rmdirSync(path.join(folder,'package'));fs.rmdirSync(folder);
+  }
+});
 
 test('Word snapshot fingerprints after reading lazy shape metadata',{
   skip:process.platform!=='win32'
@@ -32,6 +66,20 @@ test('Word fingerprints ignore multiline session IDs but detect content and form
     xml('00000001'),xml('00000002'),xml('00000002','Edited'),xml('00000002','Original','<w:rPr><w:b/></w:rPr>')
   ].map(value=>`(Fingerprint ([pscustomobject]@{Content=[pscustomobject]@{WordOpenXML=${psQuote(value)}}}))`).join(',')+')|ConvertTo-Json -Compress'));
   assert.equal(hashes[0],hashes[1]);assert.notEqual(hashes[0],hashes[2]);assert.notEqual(hashes[0],hashes[3]);
+});
+
+test('Word fingerprints ignore fresh floating drawing IDs while detecting placement and wrapping changes',{
+  skip:process.platform!=='win32'
+},async()=>{
+  const source=fs.readFileSync(path.join(__dirname,'../windows/word-document.ps1'),'utf8');
+  const fingerprint=source.slice(source.indexOf('function Fingerprint('),source.indexOf('function CheckedDocument'));
+  const xml=(id,align='right',wrap='wrapSquare')=>`<wp:anchor wp14:anchorId="${id}" wp14:editId="${id}"><wp:align>${align}</wp:align><wp:${wrap}/></wp:anchor>`;
+  const cases=[xml('00000001'),xml('00000002'),xml('00000002','left'),xml('00000002','right','wrapTight')];
+  const hashes=JSON.parse(await runPowerShell(fingerprint+'\n@('+cases
+    .map(value=>`(Fingerprint ([pscustomobject]@{Content=[pscustomobject]@{WordOpenXML=${psQuote(value)}}}))`)
+    .join(',')+')|ConvertTo-Json -Compress'));
+  assert.equal(hashes[0],hashes[1]);
+  assert.notEqual(hashes[1],hashes[2]);assert.notEqual(hashes[1],hashes[3]);
 });
 
 test('packaged Word module runs its extracted helper through real PowerShell',{

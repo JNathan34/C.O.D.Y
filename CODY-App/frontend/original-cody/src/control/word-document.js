@@ -180,6 +180,12 @@ async function snapshot({runner=runPowerShell}={}){
   return result;
 }
 
+async function referenceLayout(file,{runner=runPowerShell}={}){
+  const result=decode(await runner(script(),{timeout:12000,input:JSON.stringify({mode:'reference-layout',path:file})}));
+  if(result.ok!==true||!Array.isArray(result.paragraphs))throw Error('Word did not return a formatting reference.');
+  return {name:path.basename(file),paragraphs:result.paragraphs};
+}
+
 async function execute(plan,target,{runner=runPowerShell,signal,overwrite=[]}={}){
   if(signal?.aborted)throw Error('Word editing cancelled.');
   // Let Word finish or roll back its undo record once an atomic batch has begun.
@@ -189,4 +195,4 @@ async function execute(plan,target,{runner=runPowerShell,signal,overwrite=[]}={}
   return result;
 }
 
-module.exports={wordIntent,formatting,validatePlan,requestedPaths,directPlan,script,snapshot,execute};
+module.exports={wordIntent,formatting,validatePlan,requestedPaths,directPlan,script,snapshot,referenceLayout,execute};
