@@ -25,6 +25,7 @@
     const recording=['starting','recording','paused','stopping'].includes(capture.status);
     visibleTaskStatus=!recording&&!game.active&&taskStatus&&(taskStatus.kind==='attention'||(!wakeListening()&&!utilityCard&&timer?.status!=='finished'))?taskStatus:null;
     const activeCard=visibleTaskStatus||utilityCard;
+    island.renderTaskAppearance(visibleTaskStatus);
     const announcement=$('island-task-announcement'),description=visibleTaskStatus?[visibleTaskStatus.text,visibleTaskStatus.detail].filter(Boolean).join('. '):'';
     if(announcement.textContent!==description)announcement.textContent=description;
     infoUpdate.dataset.discord=String(Boolean(discord&&!visibleTaskStatus&&!recording&&!game.active));
@@ -114,7 +115,7 @@
     if(visibleTaskStatus){
       info.setAttribute('role','button');info.tabIndex=0;
       info.setAttribute('aria-label',description);
-      info.title=description;
+      if(!preferences.hideNotificationText)info.title=description;
       $('island-rps-controls').hidden=true;
     }
     if(showUpdate){

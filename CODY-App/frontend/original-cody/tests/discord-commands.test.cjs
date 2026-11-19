@@ -158,7 +158,8 @@ test('the Island renders Discord feedback over listening and keeps recording con
   };
   const context=vm.createContext({
     $,document:{body:$('body')},window:{CODYIcons:{set:(element,icon)=>element.dataset.icon=icon}},
-    wakeListening:()=>true,taskStatus:null,visibleTaskStatus:null,island:{setMediaPlaying(){}},media:{available:false},
+    wakeListening:()=>true,taskStatus:null,visibleTaskStatus:null,
+    island:{setMediaPlaying(){},renderTaskAppearance(card){assert.equal(card,null);}},media:{available:false},
     timer:{status:'finished',deadline:Date.now()},capture:{status:'idle'},game:{active:false},monitors:{items:[]},
     quickCard:{kind:'utility',source:'discord',text:'Muted',detail:'Discord',icon:'mic',micMuted:true,micChanged:true,expiresAt:Date.now()+10000},
     capturePending:false,art:{}

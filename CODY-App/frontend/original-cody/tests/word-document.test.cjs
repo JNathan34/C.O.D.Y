@@ -58,14 +58,15 @@ function fixture({changed=false,planner,voiceText}={}){
 }
 
 test('reported two-turn Word request generates a plan and edits the same open document locally',async()=>{
-  const f=fixture();
+  const f=fixture({planner:()=>({steps:[paragraph]})});
   assert.equal((await f.send('put some pictures and words in this document make it look like a proper document')).word,true);
   await f.settled();
   assert.match(f.messages.at(-1).text,/What should/);
   assert.equal(f.edits.length,0);
+  assert.equal(f.calls.length,0);
   assert.equal((await f.send('just make it about you cody')).word,true);
   await f.settled();
-  assert.match(f.calls[1].args.text,/proper document[\s\S]*about you cody/);
+  assert.match(f.calls[0].args.text,/proper document[\s\S]*about you cody/);
   assert.equal(f.edits[0].action,'word.document');
   assert.equal(f.edits[0].args.target.window,target.window);
   assert.match(f.messages.at(-1).text,/local Word commands/);
@@ -80,12 +81,54 @@ test('a follow-up cannot silently switch to a different Word document',async()=>
   assert.match(f.messages.at(-1).text,/Word document changed/);
 });
 
+test('attached formatting references survive a clarification without becoming editable targets',async()=>{
+  const file='C:\\Docs\\reference.docx';
+  const layouts=[{name:'reference.docx',paragraphs:[{paragraph:1,style:'Heading1',pageBreak:true}]}];
+  const drafts=[];
+  const session=new WordSession({
+    controller:{permissions:()=>({filesRead:true}),readWord:async()=>({target,context:{paragraphs:[]}}),
+      execute:async(action,args)=>{assert.equal(args.target,target);return {result:{document:target.document}};}},
+    readReferenceLayout:async reference=>{assert.equal(reference,file);return layouts[0];},
+    engine:{request:async(command,args)=>{
+      if(command==='attachments-text'){assert.deepEqual(args.files,[file]);return {context:'Reference paragraphs'};}
+      assert.equal(command,'word-plan');drafts.push(JSON.parse(args.context));
+      return drafts.length===1?{question:'What should the document be about?'}:{steps:[paragraph]};
+    }}
+  });
+  assert.equal((await session.run({chatId:'one',text:'Format this document like the attached example',files:[file]})).question,true);
+  await session.run({chatId:'one',text:'Make it about Cody'});
+  assert.deepEqual(drafts.map(draft=>draft.referenceLayouts),[layouts,layouts]);
+});
+
+test('unsupported Word operations explain the limit without dispatching a background agent',async()=>{
+  const f=fixture({planner:()=>({unsupported:'Editable charts are outside the supported steps.'})});
+  await f.send('make an editable chart in this Word document','plugin:word');await f.settled();
+  assert.equal(f.edits.length,0);
+  assert.deepEqual(f.calls.map(call=>call.command),['word-plan']);
+  assert.match(f.messages.at(-1).text,/Editable charts.*Computer Use/);
+});
+
 test('Word drafting through an inline mention never becomes literal instruction text or a background job',async()=>{
   const f=fixture({planner:()=>({steps:[paragraph]})});
   await f.send('write a report about C.O.D.Y.','plugin:word');await f.settled();
   assert.equal(f.calls.length,1);
   assert.equal(f.edits.length,1);
   assert.equal(f.edits[0].args.plan.steps[0].text,paragraph.text);
+});
+
+test('simple writing requests from the screenshot draft into Word without typing the instruction',async()=>{
+  for(const text of [
+    'Can you write something introducing yourself in this Word document, please?',
+    'write something in this document'
+  ]){
+    const f=fixture({planner:()=>({steps:[paragraph]})});
+    assert.equal((await f.send(text)).word,true);
+    await f.settled();
+    assert.deepEqual(f.calls.map(call=>call.command),['word-plan']);
+    assert.equal(f.calls[0].args.text,text);
+    assert.equal(f.edits.length,1);
+    assert.equal(f.edits[0].args.plan.steps[0].text,paragraph.text);
+  }
 });
 
 test('routine formatting and a chosen right-wrapped picture execute without an AI request',async()=>{

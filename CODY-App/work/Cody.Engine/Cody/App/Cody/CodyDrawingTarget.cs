@@ -48,22 +48,22 @@ internal static class CodyDrawingTarget
         }
     }
     internal sealed record Query(int Id, RectD OriginalBox, Anchor Anchor, bool Bind);
-    internal sealed record Reading(int Id, Anchor Anchor, RectD? Bounds);
+    internal sealed record Reading(int Id, Anchor Anchor, RectD? Bounds, bool Unavailable = false);
     internal sealed record Frame(Reading[] Targets, bool TabClosed = false);
 
     internal static async Task<Document> Capture(nint window, RectD viewport, bool browser, Func<bool> valid,
-        bool preferLegacy = false)
+        bool preferLegacy = false, bool firefox = false)
     {
         var response = await Run((uia, _) =>
         {
-            var preferred = preferLegacy ? CodyDrawingLegacyTarget.Capture(window, viewport, browser, valid) : null;
+            var preferred = preferLegacy ? CodyDrawingLegacyTarget.Capture(window, viewport, browser, valid, firefox) : null;
             try
             {
                 var root = uia.ElementFromHandle(window);
                 var document = DocumentAt(uia, root, Center(viewport)) ?? FindDocument(uia, root, viewport);
                 if (document == null)
                 {
-                    var legacy = preferred ?? CodyDrawingLegacyTarget.Capture(window, viewport, browser, valid);
+                    var legacy = preferLegacy ? preferred : CodyDrawingLegacyTarget.Capture(window, viewport, browser, valid, firefox);
                     return new Result(Data: legacy == null ? null : new Document(null, null, null, legacy));
                 }
                 var tab = browser ? SelectedTab(uia, root, document, viewport) : null;
@@ -86,7 +86,7 @@ internal static class CodyDrawingTarget
                 // Keep the MSAA document/tab identity guard. Only supplement a
                 // missing target when UIA confirms the same captured page too.
                 if (legacy?.Targets.Any(target => target.Anchor == null) == true && document.Element != null &&
-                    Active(uia, window, document, viewport))
+                    Active(uia, window, document, viewport) == true)
                 {
                     var supplemented = legacy.Targets.Select(target =>
                     {
@@ -130,7 +130,9 @@ internal static class CodyDrawingTarget
                     return new Result(Data: new Frame([], TabClosed: true));
                 }
             }
-            if (!Active(uia, window, document, viewport)) return new Result(Data: new Frame([]));
+            bool? active = Active(uia, window, document, viewport);
+            if (active == null) return new Result();
+            if (active == false) return new Result(Data: new Frame([]));
             bool canBind = queries.Any(query => query.Bind) && document.Scroll == ReadScroll(document.Element);
             var output = new List<Reading>(queries.Count);
             foreach (var query in queries)
@@ -141,7 +143,7 @@ internal static class CodyDrawingTarget
                     var anchor = query.Anchor ?? (query.Bind && canBind ? Bind(uia, document, query.OriginalBox) : null);
                     output.Add(new Reading(query.Id, anchor, anchor?.Read()));
                 }
-                catch (COMException) { output.Add(new Reading(query.Id, query.Anchor, null)); }
+                catch (COMException) { output.Add(new Reading(query.Id, query.Anchor, null, Unavailable: true)); }
             }
             return new Result(Data: new Frame(output.ToArray()));
         }, valid, TimeSpan.FromMilliseconds(700)).ConfigureAwait(false);
@@ -149,13 +151,13 @@ internal static class CodyDrawingTarget
         return response.Data as Frame;
     }
 
-    private static bool Active(Uia uia, nint window, Document document, RectD viewport)
+    private static bool? Active(Uia uia, nint window, Document document, RectD viewport)
     {
         if (!Visible(document.Element) || Bounds(document.Element) is not { } rect ||
             Intersection(rect, viewport) is not { } visible) return false;
         var root = uia.ElementFromHandle(window);
         var active = DocumentAt(uia, root, Center(visible));
-        return active != null && Within(uia, active, document.Element);
+        return active == null ? null : Within(uia, active, document.Element);
     }
 
     private static Anchor Bind(Uia uia, Document document, RectD box)

@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,6 +39,8 @@ internal static class CodyWordPlan
 
                 If the topic or intended change is missing, return {"question":"one concise question"}.
                 If asked to read or summarise, return {"answer":"the requested explanation"}.
+                If the requested operation cannot be represented by the supported steps, return
+                {"unsupported":"a short explanation of the specific limitation"}.
                 Otherwise return {"steps":[...]} with at most 120 steps and 25000 text characters.
                 Supported steps and fields follow.
                 {"type":"paragraph","text":"prose","style":"normal"}
@@ -61,6 +62,10 @@ internal static class CodyWordPlan
                 Picture indices refer to existing floating pictures; image indices refer ONLY
                 to the supplied image attachment list. Use an existing selected picture when appropriate.
                 Do not invent images, download URLs, paths, sources or facts.
+                Use referenceLayouts, when present, as formatting examples. Match the supplied
+                structure, headings, spacing, page breaks and image positioning where practicable.
+                Reference pictures describe layout only. Ask for a usable attachment or work without
+                the picture if appropriate. Do not open or modify the reference document itself.
                 Insert new content at the current cursor, or select append if requested.
                 Revisions target existing paragraph numbers or the user's selection.
                 Preserve existing unrelated text, embedded pictures, page breaks and layout.
@@ -77,46 +82,42 @@ internal static class CodyWordPlan
                 A request to "make it about you Cody" after asking for a document means draft a
                 useful document about C.O.D.Y., the Windows desktop assistant with voice, chat,
                 screen drawing and local app controls. Avoid claiming unverified capabilities.
+                A request to introduce yourself means introduce C.O.D.Y. in the document.
+                For a generic request to write something, draft a brief useful introduction to
+                C.O.D.Y. rather than asking for a topic. Use paragraph steps with the actual prose.
                 """ + "\nUser request\n" + request + "\nDocument context\n" + context + "\nAttached images\n" + assets;
             var token = await host.Real.Core.Auth.GetValidAccessTokenAsync(cancellation.Token);
             if (string.IsNullOrEmpty(token)) throw new InvalidOperationException("Sign in to C.O.D.Y. to draft document content.");
-            var reply = new BrainReplyAccumulator { SpeechOnly = true };
-            await host.Real.Core.BrainClient.StreamTurnAsync(writer =>
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                writer.WriteStartObject();
-                writer.WriteStartArray("thread"); writer.WriteEndArray();
-                writer.WriteStartObject("turn");
-                writer.WriteString("words", prompt);
-                writer.WriteString("input", "text"); writer.WriteString("trigger", "typed");
-                writer.WriteString("time_label", DateTimeOffset.Now.ToString("O"));
-                writer.WriteString("fact", "Return Word plan JSON only. No tools or background work. The image is a constant empty placeholder.");
-                writer.WriteString("front_app", ""); writer.WriteString("live_state", "");
-                writer.WriteString("drawing_on_screen", ""); writer.WriteNull("highlight"); writer.WriteNull("page");
-                writer.WriteStartObject("screenshot"); writer.WriteString("base64", EmptyImage);
-                writer.WriteString("mimeType", "image/jpeg");
-                writer.WriteNumber("widthInPixels", 64); writer.WriteNumber("heightInPixels", 64);
-                writer.WriteEndObject(); writer.WriteEndObject();
-                writer.WriteStartArray("turn_items"); writer.WriteEndArray();
-                writer.WriteString("session_id", Guid.NewGuid().ToString());
-                writer.WriteNumber("max_rounds", 1); writer.WriteBoolean("screenless", true);
-                writer.WriteBoolean("async_tools", false); writer.WriteEndObject();
-            }, token, "companion", reply, cancellation.Token);
-            cancellation.Token.ThrowIfCancellationRequested();
-            var spoken = SayLines.InOrder(reply.RawText);
-            string json = (spoken.Count > 0 ? string.Join("\n", spoken) : reply.RawText).Trim();
-            if (json.StartsWith("```", StringComparison.Ordinal))
-                json = string.Join("\n", json.Split('\n').Skip(1).SkipLast(1));
-            try
-            {
-                using var parsed = JsonDocument.Parse(json);
-                if (parsed.RootElement.ValueKind != JsonValueKind.Object)
-                    throw new InvalidOperationException("The AI did not return a Word editing plan. Try a more specific request.");
-                return parsed.RootElement.Clone();
+                var reply = new BrainReplyAccumulator { SpeechOnly = true };
+                await host.Real.Core.BrainClient.StreamTurnAsync(writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteStartArray("thread"); writer.WriteEndArray();
+                    writer.WriteStartObject("turn");
+                    writer.WriteString("words", prompt + (attempt == 0 ? "" :
+                        "\nResponse format reminder: the previous attempt did not return a complete Word plan. Return a single JSON object with steps, question, answer or unsupported. For example: {\"steps\":[{\"type\":\"paragraph\",\"text\":\"Hello, I am C.O.D.Y., your Windows desktop assistant.\",\"style\":\"normal\"}]}. Include the requested content. Do not add narration or call tools."));
+                    writer.WriteString("input", "text"); writer.WriteString("trigger", "typed");
+                    writer.WriteString("time_label", DateTimeOffset.Now.ToString("O"));
+                    writer.WriteString("fact", "Return Word plan JSON only. No tools or background work. The image is a constant empty placeholder.");
+                    writer.WriteString("front_app", ""); writer.WriteString("live_state", "");
+                    writer.WriteString("drawing_on_screen", ""); writer.WriteNull("highlight"); writer.WriteNull("page");
+                    writer.WriteStartObject("screenshot"); writer.WriteString("base64", EmptyImage);
+                    writer.WriteString("mimeType", "image/jpeg");
+                    writer.WriteNumber("widthInPixels", 64); writer.WriteNumber("heightInPixels", 64);
+                    writer.WriteEndObject(); writer.WriteEndObject();
+                    writer.WriteStartArray("turn_items"); writer.WriteEndArray();
+                    writer.WriteString("session_id", Guid.NewGuid().ToString());
+                    writer.WriteNumber("max_rounds", 1); writer.WriteBoolean("screenless", true);
+                    writer.WriteBoolean("async_tools", false); writer.WriteEndObject();
+                }, token, "companion", reply, cancellation.Token);
+                cancellation.Token.ThrowIfCancellationRequested();
+                if (!string.IsNullOrWhiteSpace(reply.Reply.Error))
+                    throw new InvalidOperationException("Word drafting failed: " + reply.Reply.Error);
+                if (CodyWordPlanReply.TryParse(reply.RawText, out var plan)) return plan;
             }
-            catch (JsonException)
-            {
-                throw new InvalidOperationException("C.O.D.Y. could not produce a usable Word plan. Try a more specific request.");
-            }
+            throw new InvalidOperationException("C.O.D.Y. did not return a complete Word editing plan. Your document was left unchanged. Please try again.");
         }
         finally { lock (gate) if (ReferenceEquals(pending, cancellation)) pending = null; }
     }

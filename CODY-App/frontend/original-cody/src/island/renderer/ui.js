@@ -59,7 +59,7 @@
     funReactions:true,sunglassesEnabled:true,pretendSleepEnabled:true,wifiReactions:true,showMediaWidget:true,weatherUnit:'celsius',weatherCity:'',
     startListeningOnHotkey:true,hotkeyMode:'hold',activityHideDelay:1600,
     quickMessageEnabled:true,quickMessagePhrase:'done',
-    fontScale:100,guiScale:100,
+    fontScale:100,guiScale:100,hideNotificationText:false,
     enableHotkey:true,wakeWordEnabled:false,wakeHeyCody:true,wakeOkayCody:true,wakeCody:true,mascotLook:'blue',accentColor:window.CODYLooks.blue.color,cursorColor:'accent',cursorSize:100,hideFloatingCursor:false,screenHighlight:true,shakeToDetach:true,voiceId:'',voiceRate:1,voicePitch:1,voiceVolume:1,micDeviceId:'',micSensitivity:1,visibility:'always'
   };
   let settings = {...DEFAULTS};
@@ -241,6 +241,7 @@
     body.dataset.size=settings.islandSize;
     body.dataset.motion=settings.animationSpeed;
     body.dataset.style=settings.revealStyle;
+    body.classList.toggle('hide-notification-text',settings.hideNotificationText===true);
     body.style.setProperty('--ui-accent',settings.accentColor||DEFAULTS.accentColor);
     body.style.setProperty('--font-scale',settings.fontScale/100);
     body.style.setProperty('--gui-scale',settings.guiScale/100);
@@ -881,6 +882,18 @@
       applyCursor({x:(event.clientX-mx)/210,y:(event.clientY-my)/130,near:distance<100,hovered:distance<18,speed:0});
     });
   }
+  function renderTaskAppearance(card) {
+    if(!card){delete body.dataset.notificationState;return;}
+    let face='working';
+    if(card.kind==='attention')face='attention';
+    else if(card.kind==='reply')face='reply';
+    else if(card.icon==='mouse-pointer-2')face='controlling';
+    else if(card.icon==='check')face='ready';
+    else if(card.icon==='circle-alert')face='failed';
+    else if(card.icon==='square')face='stopped';
+    else if(card.detail==='Starting…')face='starting';
+    body.dataset.notificationState=face;
+  }
   function renderTaskStatus(card) {
     document.getElementById('island-info-text').textContent=card.text;
     document.getElementById('island-info-detail').textContent=card.detail||'';
@@ -895,6 +908,7 @@
     body.classList.toggle('utility-layout',Boolean(card));
     body.classList.toggle('island-content-active',Boolean(card));
     body.classList.toggle('task-layout',card?.kind==='progress'&&card.target==='tasks');
+    renderTaskAppearance(card);
     if(card)renderTaskStatus(card);
   }
   // Cross-frame animation studio protocol. postMessage works reliably even
@@ -918,7 +932,7 @@
     startListening:()=>void startMicrophone(),stopListening:()=>stopMicrophone(),
     togglePanel,getState:()=>state,onPrompt:null,onNewChat:null,backendConnected:false,
     appendMessage,renderMessage:window.CODYChatFormat.render,newConversation,setActiveView,
-    applySettings,showIsland,applyCursor,renderTaskStatus,
+    applySettings,showIsland,applyCursor,renderTaskStatus,renderTaskAppearance,
     playExpression:(name,duration)=>setExpression(name,duration),
     previewExpression:(name,duration=2100)=>{setState('idle');setExpression(name,duration,true);},
     previewBlink:(double=false)=>{setState('idle');setExpression('normal',0,true);blink(double,true);},

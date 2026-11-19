@@ -10,7 +10,7 @@ const filters=[{name:'C.O.D.Y. settings backup',extensions:['json']}];
 // Only portable preferences belong in a backup. Device IDs, account state,
 // permissions, and the switches for microphone privacy stay on this PC.
 const ISLAND_KEYS=[
-  'launchAtLogin','visibility','islandSize','revealStyle','animationSpeed',
+  'launchAtLogin','visibility','islandSize','revealStyle','animationSpeed','hideNotificationText',
   'accentColor','mascotLook','cursorColor','cursorSize',
   'hideFloatingCursor','screenHighlight','shakeToDetach','cursorTracking',
   'idleReactions','blinkEnabled','reactiveExpressions','funReactions',

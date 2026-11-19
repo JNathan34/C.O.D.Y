@@ -91,6 +91,7 @@ public static class CodyEngineBridge
         ConfigureRecognition(language=="multi"?"multi":"en",false);
         IsRunning = true;
         CodyProofread.Start();
+        CodyDrawingOwner.Start();
         CodyDriveVisuals.Start(host.DispatcherQueue);
         CodyModelZoom.Start(host.Real.Canvas,()=>host.Real.DrawingCanvases,()=>host.Real.Canvas);
         CodyJobReports.Bind(host,()=>turn);
@@ -244,8 +245,11 @@ public static class CodyEngineBridge
                     case "drawing-controls-test-highlight":
                         if(host.Real.Canvas.IsShowingDrawing&&!zoomFixture)throw new InvalidOperationException("Keep the existing drawing; this check requires an empty canvas.");
                         if(request.TryGetProperty("window",out var fixtureWindow)&&
-                            HeyClicky.Platform.Win32.ForegroundAppInfo.Capture()?.WindowHandle.ToString()!=fixtureWindow.GetString())
-                            throw new InvalidOperationException("The drawing fixture lost the foreground before capture (expected "+fixtureWindow.GetString()+", found "+HeyClicky.Platform.Win32.ForegroundAppInfo.Capture()?.WindowHandle+").");
+                            CodyDrawingOwner.Capture()?.WindowHandle.ToString()!=fixtureWindow.GetString())
+                            throw new InvalidOperationException("The drawing fixture lost the target window before capture.");
+                        if(request.TryGetProperty("windowTitlePrefix",out var fixtureTitle)&&
+                            CodyDrawingOwner.Capture()?.WindowTitle.StartsWith(fixtureTitle.GetString(),StringComparison.Ordinal)!=true)
+                            throw new InvalidOperationException("The drawing fixture lost the target window before capture.");
                         double Fraction(JsonElement mark,string name)
                         {
                             double value=mark.GetProperty(name).GetDouble();
@@ -315,7 +319,7 @@ public static class CodyEngineBridge
                     case "cursor-style-status":return new{presentation="cody",originalOverlayCreated=host.Real.Cursor.Inner!=null};
                     case "quiet-control-state":return new{instructions=CodyCommunication.Instructions,driveFact=CodyCommunication.DriveFact("Complete the quiz quickly.",null),waitsForNarration=CodyCommunication.WaitForActionNarration(EngineMode)};
                     case "identity-state":return new{displayName="C.O.D.Y.",spokenName="Cody",promptPath=CodyIdentity.PromptPath,instructions=CodyIdentity.Prompt,routingInstructions=CodyActionRouting.Instructions,communicationInstructions=CodyCommunication.Instructions,speechExample=CodyIdentity.ForSpeech("C.O.D.Y. is ready."),backgroundInstructions=File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"BundledResources","clicky-model-instructions.md"))};
-                    case "text-client": CodyProofread.Client(request.GetProperty("clientPid").GetInt32());return new{registered=true};
+                    case "text-client": CodyProofread.Client(request.GetProperty("clientPid").GetInt32());CodyDrawingOwner.Client(request.GetProperty("clientPid").GetInt32());return new{registered=true};
                     case "text-capture":return new{target=await CodyProofread.Capture(request.GetProperty("clientPid").GetInt32())};
                     case "proofread":return await CodyProofread.Run(host,Text("target"));
                     case "word-plan":

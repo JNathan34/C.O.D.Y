@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, BrowserView, screen } = require('electron');
+const { app, BrowserWindow, BrowserView, desktopCapturer, screen } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -97,6 +97,45 @@ app.whenReady().then(async () => {
     const monitor = screen.dipToScreenPoint(primary.bounds);
     const area = { width: primary.bounds.width * primary.scaleFactor,
       height: primary.bounds.height * primary.scaleFactor };
+    async function verifyUnanchoredInk() {
+      const content = page.getContentBounds();
+      const point = screen.dipToScreenPoint({x:content.x+480,y:content.y+420});
+      const box = {x:point.x-monitor.x,y:point.y-monitor.y,width:96*primary.scaleFactor,height:70*primary.scaleFactor};
+      await request('drawing-controls-test-highlight',{window:pageHandle,marks:[{
+        x:box.x/area.width,y:box.y/area.height,width:box.width/area.width,height:box.height/area.height,
+      }]});
+      fixture = true;
+      await until('a ring over empty space stays visible without an element anchor',(marks,state)=>
+        state.clearVisible && state.renderedUnits>0 && marks.length===1 && marks[0].visible && !marks[0].anchored);
+      for (let i=0;i<18;i++) {
+        const state=await request('drawing-controls-state');
+        assert.ok(state.clearVisible && state.renderedUnits>0 && state.follow.marks[0].visible,
+          'ink and Clear must survive the end of the pen animation');
+        await wait(100);
+      }
+      const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:area});
+      const image=sources.find(source=>source.display_id===String(primary.id)).thumbnail;
+      const pixels=image.toBitmap(), size=image.getSize();
+      let blue=0;
+      for(let y=Math.max(0,Math.floor(box.y-20)); y<Math.min(size.height,box.y+box.height+20); y++)
+        for(let x=Math.max(0,Math.floor(box.x-20)); x<Math.min(size.width,box.x+box.width+20); x++) {
+          const i=(y*size.width+x)*4;
+          const b=pixels[i],g=pixels[i+1],r=pixels[i+2];
+          if(b>150 && g>75 && b>r*1.35 && b>g*1.05) blue++;
+        }
+      assert.ok(blue>=200,`the finished ring must be visible on the desktop, found ${blue} ink pixels`);
+      console.log(`PASS: finished ring remains on the desktop (${blue} ink pixels)`);
+      await page.webContents.executeJavaScript('scrollTo(0,150)');
+      await request('drawing-controls-test-screen-change',{reason:'scroll'});
+      await until('scroll hides the old screenshot position', (marks,state)=>
+        marks.length===1 && !marks[0].visible && state.renderedUnits===0 && !state.clearVisible);
+      await request('model-zoom-demo-clear');
+      fixture = false;
+    }
+    if (process.argv.includes('--unanchored-only')) {
+      await verifyUnanchoredInk();
+      return;
+    }
     const boxes = await page.webContents.executeJavaScript(`['first','second','sketch'].map(id=>{
       const r=document.getElementById(id).getBoundingClientRect();
       return id==='sketch'?{x:r.x+20,y:r.y+35,width:220,height:70}:
@@ -276,6 +315,7 @@ app.whenReady().then(async () => {
     await wait(400);
     await until('cleared drawings do not return after scroll and restore',(_,state)=>
       !state.showing&&state.renderedUnits===0&&!state.clearVisible);
+    await verifyUnanchoredInk();
     const report={testedAt:new Date().toISOString(),mode:'owned Electron page with real native engine',
       displayScale:primary.scaleFactor,realPointerClick:!!process.env.CODY_DRAWING_FIXTURE_REAL_CLICK,
       continuousScroll:{samples:duringScroll.length,distinctPositions:positions.size,

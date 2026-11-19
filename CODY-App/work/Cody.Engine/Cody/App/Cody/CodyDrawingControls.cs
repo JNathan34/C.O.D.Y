@@ -131,6 +131,11 @@ internal static class CodyDrawingControls
         internal void Fire(string reason)=>Post(()=>{
             if(disposed||!canvas.IsShowing||canvas.IsDrawingFadedAway)return;
             stale.Dispose();
+            if(!CodyDrawingFollow.Enabled && reason == "scroll")
+            {
+                Arm();
+                return;
+            }
             if(CodyEngineBridge.EngineMode || follow.Available || canvas.DrawsPicture)
             {
                 follow.ScreenChanged(reason);

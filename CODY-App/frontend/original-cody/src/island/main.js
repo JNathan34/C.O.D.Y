@@ -55,6 +55,7 @@ const DEFAULTS = Object.freeze({
   wifiReactions: true,
   weatherUnit: 'celsius', weatherCity: '',
   showMediaWidget: true,
+  hideNotificationText: false,
   animationSpeed: 'normal', // slow | normal | fast | off
   revealStyle: 'liquid', // liquid | simple | none
   enableHotkey: true,
