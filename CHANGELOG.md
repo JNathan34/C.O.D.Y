@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.32 — 19 November 2026
+
+- Fix Ctrl-drag for 3D models across retained and replacement drawing canvases, including transparent models and backgrounds.
+- Make Ctrl+Alt+X clear all native models, backgrounds, retained drawings, Electron scenes and annotations.
+- Repair intended-outline anchor geometry, browser accessibility lookup and DPI handling; improve scrolling updates and stale-document rejection.
+- Add native integration coverage for drawing tracking and multi-canvas model dragging/clearing. Installed Firefox, Word/PDF and multi-monitor acceptance remain open.
+
 ## 0.15.24 — 15 November 2026
 
 - Add independent **Font size** and **GUI size** controls under **Settings → Accessibility**. Changes apply immediately and save automatically.

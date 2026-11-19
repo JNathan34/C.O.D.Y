@@ -4,6 +4,16 @@ namespace HeyClicky.App.Cody;
 
 internal static class CodyDrawingGeometry
 {
+    // A product photograph often includes white padding outside the object the
+    // user circled. Its retained image still supplies the correct translation.
+    // Reject large page/background images and neighbouring pictures.
+    internal static bool FitsImage(RectD mark, RectD image) =>
+        image.Contains(new PointD(mark.X + mark.Width / 2, mark.Y + mark.Height / 2)) &&
+        image.Width <= mark.Width * 4 && image.Height <= mark.Height * 4 &&
+        image.Width * image.Height <= mark.Width * mark.Height * 6 &&
+        Intersection(mark, image) is { } overlap &&
+        overlap.Width * overlap.Height >= mark.Width * mark.Height * .6;
+
     internal static RectD Project(RectD mark, RectD original, RectD current)
     {
         double scaleX = current.Width / original.Width, scaleY = current.Height / original.Height;

@@ -651,9 +651,12 @@ else app.whenReady().then(()=>{
   let clearingNativeDrawing=false;
   island.onClearDrawings(()=>{
     annotations.clearImmediate('cleared with Ctrl+Alt+X');
+    scene.clearImmediate('cleared with Ctrl+Alt+X');
+    captures.clear();
+    visualLedger.begin('gui');
     if(!nativeEngine.connected||clearingNativeDrawing)return;
     clearingNativeDrawing=true;
-    void nativeEngine.request('clear-2d-drawings').catch(error=>sendUI('diagnostic','Clear drawings: '+error.message))
+    void nativeEngine.request('clear').catch(error=>sendUI('diagnostic','Clear drawings: '+error.message))
       .finally(()=>{clearingNativeDrawing=false;});
   });
   const resetVisuals=reason=>{annotations.clearImmediate(reason);scene.clearImmediate(reason);captures.clear();visualLedger.begin('gui');};

@@ -51,6 +51,8 @@ internal sealed class CodyDrawingFollow : IDisposable
     private bool reading, readingDocument, scheduled, contextChanged, pageCurrent;
     private long nextDocumentRead;
     private int documentAttempts;
+    private int sampleCount, discardedSamples;
+    private long providerReadMs;
     private string confirmedTitle;
 
     internal CodyDrawingFollow(DisplayInfo display, byte[] screenshot, Vector2 imageSize, Action<Action> post,
@@ -86,7 +88,7 @@ internal sealed class CodyDrawingFollow : IDisposable
         if (app == null || app.ProcessId == Environment.ProcessId || !TryClientBounds(app.WindowHandle, out var bounds))
             return null;
         var document = TracksDocument(app)
-            ? CodyDrawingTarget.Capture(app.WindowHandle, bounds.Rect, IsBrowser(app), () => OwnerIsForeground(app))
+            ? CodyDrawingTarget.Capture(app.WindowHandle, bounds.Rect, IsBrowser(app), () => OwnerIsForeground(app), PreferLegacy(app))
             : null;
         return (frame, original) =>
         {
@@ -98,6 +100,8 @@ internal sealed class CodyDrawingFollow : IDisposable
     }
 
     private static bool IsBrowser(ForegroundApp app) => ForegroundAppInfo.IsBrowserProcess(app.ProcessName, out _);
+    private static bool PreferLegacy(ForegroundApp app) => IsBrowser(app) ||
+        app.ProcessName.Equals("electron", StringComparison.OrdinalIgnoreCase);
     private static bool TracksDocument(ForegroundApp app) =>
         IsBrowser(app) || app.ProcessName.Equals("winword", StringComparison.OrdinalIgnoreCase) ||
         app.ProcessName.Equals("electron", StringComparison.OrdinalIgnoreCase);
@@ -127,15 +131,21 @@ internal sealed class CodyDrawingFollow : IDisposable
         if (!Available) return true;
         bool sameWindow = frame.Jpeg != null && origins.TryGetValue(frame.Jpeg, out var source)
             ? source.App.WindowHandle == owner.WindowHandle : IsOwnerForeground();
-        return sameWindow && IsPageCurrent() && !marks.Values.Any(mark => !mark.Visible);
+        // A continued program would interpret new screenshot coordinates in
+        // this canvas's old capture basis. After scroll/window context changes,
+        // start a fresh canvas; RealStack retains these existing annotations.
+        return sameWindow && !contextChanged && IsPageCurrent() && !marks.Values.Any(mark => !mark.Visible);
     }
 
     internal object Inspect() => new { ownerForeground = OwnerForeground, pageCurrent = Available && IsPageCurrent(),
         owner = owner?.WindowHandle.ToString(), foreground = GetAncestor(GetForegroundWindow(), 3).ToString(),
-        sampling = reading, hasSampled = marks.Values.Any(mark => mark.Anchor != null),
+        sampling = reading, sampleCount, discardedSamples, providerReadMs,
+        lastReadAgeMs = lastRead == 0 ? (long?)null : Environment.TickCount64 - lastRead,
+        hasSampled = marks.Values.Any(mark => mark.Anchor != null),
         viewport = owner != null && TryClientBounds(owner.WindowHandle, out var view) ? view.Rect : (RectD?)null,
         tracking = contentTracking ? "document" : "window", hasDocument = document != null, documentAttempts,
         provider = document?.Legacy != null ? "MSAA" : document != null ? "UIA" : null,
+        providerPageState = document?.Legacy?.Status,
         hasBrowserTab = document?.Tab != null || document?.Legacy?.Tab != null,
         marks = marks.Values.Select(mark => new { id = mark.Id, role = mark.Role, control = mark.Control,
             visible = mark.Visible, removed = mark.Removed, anchored = mark.Anchor != null,
@@ -165,7 +175,10 @@ internal sealed class CodyDrawingFollow : IDisposable
     internal void ScreenChanged(string reason)
     {
         if (!Available) return;
-        screenVersion++;
+        // Scrolling changes geometry inside the retained document, not its
+        // identity. Cancelling every in-flight read here starves the tracker
+        // while wheel/trackpad events arrive faster than the provider answers.
+        if (reason is not "scroll") screenVersion++;
         if (reason is "scroll" or "window moved" or "app switch" or "space change") contextChanged = true;
         nextRead = 0;
         if (!IsOwnerForeground() || !IsPageCurrent()) Hide();
@@ -226,7 +239,7 @@ internal sealed class CodyDrawingFollow : IDisposable
             {
                 nextDocumentRead = currentTime + 500;
                 _ = UseDocument(CodyDrawingTarget.Capture(owner.WindowHandle, viewport.Rect,
-                    IsBrowser(owner), () => !token.IsCancellationRequested && IsOwnerForeground()));
+                    IsBrowser(owner), () => !token.IsCancellationRequested && IsOwnerForeground(), PreferLegacy(owner)));
             }
             return;
         }
@@ -235,28 +248,31 @@ internal sealed class CodyDrawingFollow : IDisposable
         long now = Environment.TickCount64;
         if (reading || now < nextRead) return;
         bool sameGeometry = viewport.Equals(origin);
-        bool canBind = sameGeometry && (!contextChanged || document.Scroll != null);
+        bool canBind = sameGeometry && (!contextChanged || document.Legacy == null && document.Scroll != null);
         var queries = marks.Values.Where(mark => !mark.Removed &&
             (mark.Anchor != null || !mark.BindingAttempted && canBind))
             .Select(mark => new CodyDrawingTarget.Query(mark.Id, OriginalBox(mark), mark.Anchor,
                 canBind)).ToArray();
         if (queries.Length == 0) return;
         reading = true;
-        nextRead = now + 33;
+        nextRead = now + 16;
         _ = ReadTargets(viewport, WindowTitle(), queries, screenVersion);
     }
 
     private async Task ReadTargets(Bounds viewport, string title, CodyDrawingTarget.Query[] queries, long version)
     {
+        long started = Environment.TickCount64;
         var frames = await CodyDrawingTarget.Read(owner.WindowHandle, document, viewport.Rect, queries,
             () => !token.IsCancellationRequested && IsOwnerForeground()).ConfigureAwait(false);
         post(() =>
         {
             if (token.IsCancellationRequested) return;
+            providerReadMs = Environment.TickCount64 - started;
             reading = false;
             if (version != screenVersion || !IsOwnerForeground() || title != WindowTitle() || !TryClientBounds(owner.WindowHandle, out var current) ||
                 !current.Equals(viewport))
             {
+                discardedSamples++;
                 Schedule();
                 return;
             }
@@ -272,6 +288,7 @@ internal sealed class CodyDrawingFollow : IDisposable
             }
             if (frames != null)
             {
+                sampleCount++;
                 lastRead = Environment.TickCount64;
                 pageCurrent = frames.Targets.Length > 0;
                 if (!pageCurrent) nextRead = lastRead + 150;

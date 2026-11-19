@@ -25,7 +25,37 @@ app.whenReady().then(async()=>{
   await engine.request('drawing-controls-test-finish');await engine.request('drawing-controls-test-close');await until(value=>value.figures.length===0);results.push('X still closes a moved model with a background');
   await engine.request('model-zoom-demo-clear');fixture=false;await engine.request('model-zoom-demo');fixture=true;await until(value=>value.figures.length===1);figure=(await zoom()).figures[0];
   await mouse('down',centre(figure));await engine.request('model-zoom-demo-clear');fixture=false;await mouse('move',{x:400,y:400});await mouse('up',{x:400,y:400});await until(value=>value.figures.length===0);results.push('clearing during a drag does not restore the model');
+  // Exercise the actual conversation lifecycle: a retained model causes a new canvas.
+  await engine.request('model-zoom-demo');fixture=true;await until(value=>value.figures.length===1);
+  figure=(await zoom()).figures[0];start=centre(figure);
+  await mouse('down',start);await mouse('move',{x:start.x+950,y:start.y});await mouse('up',{x:start.x+950,y:start.y});
+  await until(value=>value.figures[0]?.translation.x>100);
+  const retainedHandle=figure.handle;
+  await engine.request('model-zoom-demo',{append:true,streaming:true});
+  state=await until(value=>value.figures.length===2);
+  figure=state.figures.find(value=>value.handle!==retainedHandle);
+  // All quadrants, including empty model-window space, must move the whole card.
+  for(const [fx,fy] of [[.15,.15],[.85,.15],[.15,.85],[.85,.85],[.5,.5]]){
+   figure=(await zoom()).figures.find(value=>value.handle!==retainedHandle);
+   start={x:Math.round(figure.bounds.x+figure.bounds.width*fx),y:Math.round(figure.bounds.y+figure.bounds.height*fy)};
+   const before=figure.translation;
+   assert.equal((await mouse('down',start)).accepted,true,JSON.stringify({fx,fy,figure}));
+   await mouse('move',{x:start.x+35,y:start.y+20});await mouse('up',{x:start.x+35,y:start.y+20});
+   await until(value=>value.figures.find(item=>item.handle!==retainedHandle)?.translation.x>before.x+5);
+  }
+  results.push('a model on a new conversation canvas drags from every quadrant, including background space');
+  figure=(await zoom()).figures.find(value=>value.handle===retainedHandle);start=centre(figure);const oldX=figure.translation.x;
+  assert.equal((await mouse('down',start)).accepted,true);await mouse('move',{x:start.x+35,y:start.y+20});await mouse('up',{x:start.x+35,y:start.y+20});
+  await until(value=>value.figures.find(item=>item.handle===retainedHandle)?.translation.x>oldX+5);
+  results.push('the retained model still drags on its own canvas');
+  await engine.request('clear');fixture=false;await until(value=>value.figures.length===0);await wait(500);assert.equal((await zoom()).figures.length,0);
+  const cleared=await engine.request('drawing-controls-state');assert.equal(cleared.showing,false);assert.equal(cleared.models,0);
+  results.push('the production whole-drawing clear removes models on every canvas and their backgrounds');
+  await engine.request('model-zoom-demo',{append:true});fixture=true;await until(value=>value.figures.length===1);
+  figure=(await zoom()).figures[0];start=centre(figure);await mouse('down',start);await mouse('move',{x:start.x+70,y:start.y+40});await mouse('up',{x:start.x+70,y:start.y+40});await until(value=>value.figures[0]?.translation.x>10);
+  await engine.request('clear');fixture=false;await until(value=>value.figures.length===0);
+  results.push('a transparent replacement model after global clear remains draggable and clears completely');
   console.log(JSON.stringify({passed:true,results}));
  }catch(error){console.error(error);app.exitCode=1;}
- finally{if(fixture)await engine.request('model-zoom-demo-clear').catch(()=>{});fs.writeFileSync(path.resolve(__dirname,'../reports/model-drag.json'),JSON.stringify({passed:!app.exitCode,results},null,2));engine.close();await wait(600);app.exit(app.exitCode||0);}
+ finally{if(fixture)await engine.request('clear').catch(()=>{});fs.writeFileSync(path.resolve(__dirname,'../reports/model-drag.json'),JSON.stringify({passed:!app.exitCode,results},null,2));engine.close();await wait(600);app.exit(app.exitCode||0);}
 });

@@ -11,6 +11,23 @@ internal static class CodyDrawingLegacyTarget
 {
     internal sealed record Node(Accessible Provider, int Child = 0)
     {
+        internal byte[] Identity
+        {
+            get
+            {
+                if (Provider is not AccIdentity source) return null;
+                nint data=0;
+                try
+                {
+                    source.GetIdentityString(unchecked((uint)Child),out data,out uint length);
+                    if (data==0 || length is 0 or >4096) return null;
+                    var identity=new byte[length];Marshal.Copy(data,identity,0,(int)length);
+                    return identity;
+                }
+                catch (COMException) { return null; }
+                finally { if (data!=0) Marshal.FreeCoTaskMem(data); }
+            }
+        }
         internal int Role => Convert.ToInt32(Provider.get_accRole(Child));
         internal int State => Convert.ToInt32(Provider.get_accState(Child));
         internal bool Visible => (State & (0x8000 | 0x10000)) == 0;
@@ -25,10 +42,29 @@ internal static class CodyDrawingLegacyTarget
             }
         }
         internal Node Parent => Child != 0 ? new Node(Provider) : Provider.accParent is Accessible parent ? new Node(parent) : null;
+        private static Node Resolve(Accessible provider, int id)
+        {
+            try { if (provider.get_accChild(id) is Accessible child) return new Node(child); }
+            catch (COMException) { }
+            return new Node(provider, id);
+        }
         internal IEnumerable<Node> Children()
         {
             if (Child != 0) yield break;
-            int count = Math.Min(Provider.accChildCount, 500);
+            int count = Math.Clamp(Provider.accChildCount, 0, 500);
+            if (Marshal.IsComObject(Provider))
+            {
+                // Child IDs are provider IDs, not guaranteed to be 1..count
+                // (notably in Firefox). Enumerate the actual VARIANT children.
+                var children = new object[count];
+                if (AccessibleChildren(Provider, 0, count, children, out int obtained) >= 0)
+                {
+                    foreach (var child in children.Take(obtained))
+                        if (child is Accessible accessible) yield return new Node(accessible);
+                        else if (child is int id && id != 0) yield return Resolve(Provider, id);
+                    yield break;
+                }
+            }
             for (int id = 1; id <= count; id++)
             {
                 Node node;
@@ -40,20 +76,50 @@ internal static class CodyDrawingLegacyTarget
         internal Node Hit(PointD point, Func<bool> valid)
         {
             Node node = this;
+            int remaining = 500;
             for (int depth = 0; depth < 40; depth++)
             {
                 if (!valid()) return null;
                 if (node.Child != 0) return node;
                 object hit = node.Provider.accHitTest((int)Math.Round(point.X), (int)Math.Round(point.Y));
-                Node next = hit is Accessible child ? new Node(child) : hit is int id && id != 0 ? new Node(node.Provider, id) : node;
-                if (Same(node, next)) return node;
+                Node next = hit is Accessible child ? new Node(child) : hit is int id && id != 0 ? Resolve(node.Provider, id) : node;
+                if (Same(node, next))
+                {
+                    // Some browser providers return their document for every
+                    // accHitTest. Descend only that retained owner's children.
+                    Node containing = null;
+                    double smallest = double.MaxValue;
+                    foreach (var candidate in node.Children())
+                    {
+                        if (remaining-- <= 0 || !valid()) return node;
+                        if (!candidate.Visible || candidate.Bounds is not { } box || !box.Contains(point)) continue;
+                        double area = box.Width * box.Height;
+                        if (area < smallest) { containing = candidate; smallest = area; }
+                    }
+                    if (containing == null) return node;
+                    next = containing;
+                }
                 node = next;
+            }
+            return node;
+        }
+        internal Node Focused(Func<bool> valid)
+        {
+            Node node=this;
+            for(int depth=0; depth<40 && valid(); depth++)
+            {
+                if(node.Child!=0) return node;
+                object value=node.Provider.accFocus;
+                var next=value is Accessible child ? new Node(child) : value is int id && id!=0 ? Resolve(node.Provider,id) : node;
+                if(Same(node,next)) return node;
+                node=next;
             }
             return node;
         }
     }
 
-    internal sealed record Document(Node Root, Node Element, Node Tab, string Url);
+    internal sealed record Document(Node Root, Node Element, Node Tab, string Url, nint Window = 0)
+    { internal string Status = "captured"; }
     internal sealed class Anchor(Node element, RectD original, bool control)
     {
         internal RectD Original => original;
@@ -75,6 +141,7 @@ internal static class CodyDrawingLegacyTarget
 
     internal static Document Capture(nint window, RectD viewport, bool browser, Func<bool> valid)
     {
+        using var dpi = new PhysicalCoordinates();
         valid = WithinBudget(valid, 900);
         Guid iid = typeof(Accessible).GUID;
         if (AccessibleObjectFromWindow(window, 0xFFFFFFFC, ref iid, out var provider) < 0 || provider == null) return null;
@@ -108,23 +175,42 @@ internal static class CodyDrawingLegacyTarget
             int budget = 500;
             tab = Find(root, node => node.Role == 37 && (node.State & 2) != 0 && node.Visible, ref budget, valid);
         }
-        return new Document(contentRoot, document, tab, document.Value);
+        return new Document(contentRoot, document, tab, document.Value, window);
     }
 
     internal static CodyDrawingTarget.Frame Read(Document document, RectD viewport,
         IReadOnlyList<CodyDrawingTarget.Query> queries, Func<bool> valid)
     {
+        using var dpi = new PhysicalCoordinates();
         valid = WithinBudget(valid, 550);
         if (!valid()) return null;
         if (document.Tab != null)
         {
-            try { if ((document.Tab.State & 2) == 0) return new CodyDrawingTarget.Frame([]); }
+            try { if ((document.Tab.State & 2) == 0) { document.Status="inactive tab"; return new CodyDrawingTarget.Frame([]); } }
             catch (COMException ex) when (ex.HResult == unchecked((int)0x80040201))
             { return new CodyDrawingTarget.Frame([], TabClosed: true); }
         }
-        var current = DocumentAt(document.Root, viewport, valid);
-        if (current == null || !Same(current, document.Element) || !document.Element.Visible || document.Element.Value != document.Url)
-            return new CodyDrawingTarget.Frame([]);
+        // A retained renderer HWND can remain alive underneath a different tab
+        // or view in the same top-level window. Resolve the currently visible
+        // owner child instead of asking that old renderer about itself.
+        var current = document.Window == 0 ? DocumentAt(document.Root, viewport, valid) :
+            ActiveDocumentAt(document.Window,viewport,valid);
+        if(current==null && document.Window!=0)
+        {
+            // A restored renderer can retain live providers while its native
+            // entry point is unavailable. Require actual focus inside this
+            // exact document, with its owner foreground, before recovering.
+            var nativeFocus=new GuiThreadInfo{Size=(uint)Marshal.SizeOf<GuiThreadInfo>()};
+            if(GetGUIThreadInfo(0,ref nativeFocus) && GetAncestor(nativeFocus.Active,3)==document.Window &&
+                document.Element.Focused(valid) is { } focused && (focused.State&4)!=0 &&
+                Within(focused,document.Element,valid))
+                current=document.Element;
+        }
+        document.Status = current == null ? "no active document" :
+            !Within(current, document.Element, valid) ? "different document" :
+            !document.Element.Visible ? "document offscreen" :
+            document.Element.Value != document.Url ? "document URL changed" : "active";
+        if (document.Status != "active") return new CodyDrawingTarget.Frame([]);
         var readings = new List<CodyDrawingTarget.Reading>();
         foreach (var query in queries)
         {
@@ -151,14 +237,17 @@ internal static class CodyDrawingLegacyTarget
             bool belongs = false;
             int depth = 0;
             for (var ancestor = leaf; ancestor != null && depth++ < 64 && valid(); ancestor = ancestor.Parent)
+            {
                 if (Same(ancestor, document)) { belongs = true; break; }
+            }
             if (!belongs) continue;
             int ancestors = 0;
             for (var node = leaf; node != null && !Same(node, document) && ancestors++ < 64 && valid(); node = node.Parent)
             {
-                if (!node.Visible || node.Bounds is not { } bounds || !Fits(box, bounds)) continue;
+                if (!node.Visible || node.Bounds is not { } bounds) continue;
                 int role = node.Role;
-                if (role == 40) return new Anchor(node, bounds, false); // Graphic, including an icon.
+                if (role == 40 && CodyDrawingGeometry.FitsImage(box, bounds)) return new Anchor(node, bounds, false);
+                if (!Fits(box, bounds)) continue;
                 if (role is 30 or 34 or 35 or 43 or 44 or 45 or 46)
                     return new Anchor(node, bounds, true);
                 if (text == null && role == 41 && !string.IsNullOrWhiteSpace(node.Name)) text = new Anchor(node, bounds, false);
@@ -178,6 +267,44 @@ internal static class CodyDrawingLegacyTarget
             if (Same(node, root)) return document;
         }
         return null;
+    }
+    private static Node ActiveDocumentAt(nint window, RectD viewport, Func<bool> valid)
+    {
+        var screenPoint=new PointD(viewport.X+viewport.Width/2,viewport.Y+viewport.Height/2);
+        var chain=VisibleWindowPath(window,screenPoint);
+        // The innermost HWND can expose only a generic client proxy. Its
+        // renderer parent exposes the document, so walk back up this *active*
+        // z-order path rather than enumerating hidden sibling renderers.
+        for (int index=chain.Count-1; index>=0 && valid(); index--)
+        {
+            Guid iid=typeof(Accessible).GUID;
+            if (AccessibleObjectFromWindow(chain[index],0xFFFFFFFC,ref iid,out var provider)<0 || provider==null) continue;
+            try { if (DocumentAt(new Node(provider),viewport,valid) is { } active) return active; }
+            catch (COMException) { }
+        }
+        return null;
+    }
+    private static List<nint> VisibleWindowPath(nint window, PointD screenPoint)
+    {
+        var chain=new List<nint>{window};
+        for (int depth=0; depth<24; depth++)
+        {
+            var point=new NativePoint{X=(int)Math.Round(screenPoint.X),Y=(int)Math.Round(screenPoint.Y)};
+            if (!ScreenToClient(window,ref point)) break;
+            // Browser renderer children may use WS_EX_TRANSPARENT to route
+            // input through their parent while still presenting the page.
+            nint child=ChildWindowFromPointEx(window,point,1); // CWP_SKIPINVISIBLE
+            if (child==0 || child==window) break;
+            window=child;
+            chain.Add(window);
+        }
+        return chain;
+    }
+    private static bool Within(Node node, Node ancestor, Func<bool> valid)
+    {
+        for (int depth=0; node!=null && depth<64 && valid(); depth++,node=node.Parent)
+            if (Same(node,ancestor)) return true;
+        return false;
     }
     private static Node Find(Node root, Func<Node, bool> matches, ref int budget, Func<bool> valid, int depth = 0)
     {
@@ -202,10 +329,35 @@ internal static class CodyDrawingLegacyTarget
         long deadline = Environment.TickCount64 + milliseconds;
         return () => Environment.TickCount64 < deadline && valid();
     }
+    // MSAA obeys the calling thread's DPI context, unlike UIA's physical
+    // rectangles. Run hit-testing and accLocation in screenshot pixels too.
+    private readonly struct PhysicalCoordinates : IDisposable
+    {
+        private readonly nint previous;
+        public PhysicalCoordinates() => previous = OperatingSystem.IsWindows() ? SetThreadDpiAwarenessContext(-4) : 0;
+        public void Dispose() { if (previous != 0) SetThreadDpiAwarenessContext(previous); }
+    }
+    [DllImport("user32.dll")] private static extern nint SetThreadDpiAwarenessContext(nint context);
+    [StructLayout(LayoutKind.Sequential)] private struct NativePoint { internal int X,Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct GuiThreadInfo
+    {
+        internal uint Size,Flags;
+        internal nint Active,Focus,Capture,MenuOwner,MoveSize,Caret;
+        internal int Left,Top,Right,Bottom;
+    }
+    [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint thread,ref GuiThreadInfo info);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint window,uint flags);
+    [DllImport("user32.dll")] private static extern bool ScreenToClient(nint window,ref NativePoint point);
+    [DllImport("user32.dll")] private static extern nint ChildWindowFromPointEx(nint parent,NativePoint point,uint flags);
     private static bool Same(Node a, Node b)
     {
-        if (a == null || b == null || a.Child != b.Child) return false;
-        if (ReferenceEquals(a.Provider, b.Provider)) return true;
+        if (a == null || b == null) return false;
+        if (a.Child == b.Child && ReferenceEquals(a.Provider, b.Provider)) return true;
+        // Browser proxies may return different COM wrappers for the same
+        // accessible element. Use the provider's opaque identity when present.
+        if (a.Identity is { } firstId && b.Identity is { } secondId)
+            return firstId.AsSpan().SequenceEqual(secondId);
+        if (a.Child != b.Child) return false;
         if (!Marshal.IsComObject(a.Provider) || !Marshal.IsComObject(b.Provider)) return false;
         nint first = Marshal.GetIUnknownForObject(a.Provider), second = Marshal.GetIUnknownForObject(b.Provider);
         try { return first == second; }
@@ -213,8 +365,14 @@ internal static class CodyDrawingLegacyTarget
     }
 
     [DllImport("oleacc.dll")]
+    private static extern int AccessibleChildren([MarshalAs(UnmanagedType.Interface)] Accessible container,
+        int start, int count, [Out, MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.Struct, SizeParamIndex = 2)] object[] children,
+        out int obtained);
+    [DllImport("oleacc.dll")]
     private static extern int AccessibleObjectFromWindow(nint window, uint objectId, ref Guid iid,
         [MarshalAs(UnmanagedType.Interface)] out Accessible accessible);
+    [ComImport, Guid("7852B78D-1CFD-41C1-A615-9C0C85960B5F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface AccIdentity { void GetIdentityString(uint child,out nint data,out uint length); }
     private delegate bool EnumChildCallback(nint window, nint data);
     [DllImport("user32.dll")]
     private static extern bool EnumChildWindows(nint parent, EnumChildCallback callback, nint data);

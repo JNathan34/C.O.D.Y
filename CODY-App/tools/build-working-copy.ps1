@@ -16,6 +16,8 @@ node (Join-Path $PSScriptRoot 'sync-wake-runtime.cjs')
 if ($LASTEXITCODE -ne 0) { throw 'Wake runtime synchronization failed.' }
 node (Join-Path $PSScriptRoot 'patch-drawing-tracking.cjs')
 if ($LASTEXITCODE -ne 0) { throw 'Drawing runtime patch failed.' }
+node (Join-Path $PSScriptRoot 'verify-drawing-runtime.cjs')
+if ($LASTEXITCODE -ne 0) { throw 'Drawing runtime geometry verification failed.' }
 New-Item -ItemType Directory -Path (Join-Path $runtime 'Assets\Cody') -Force | Out-Null
 Copy-Item -LiteralPath .\frontend\original-cody\assets\brand\cody-64.png -Destination (Join-Path $runtime 'Assets\Cody\cody-64.png') -Force
 New-Item -ItemType Directory -Path (Join-Path $runtime 'Assets\Cody\Cursors') -Force | Out-Null

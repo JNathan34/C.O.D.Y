@@ -276,6 +276,7 @@ public sealed class RealStack : IAsyncDisposable
 			drawing.PenHandedBack += (_, _) => cursor.EndPenRide();
 			drawing.ScreenChangeWatchFactory = (display, changed) =>
 				CodyDrawingControls.WatchScreen(drawing, display, capture, changed);
+			if (CodyEngineBridge.EngineMode) CodyModelZoom.Register(drawing);
 			return drawing;
 		};
 		ScreenDrawingCanvas screenDrawingCanvas = makeDrawingCanvas();

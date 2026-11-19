@@ -19,8 +19,11 @@ internal static class CodyModelZoom
     private static readonly ConcurrentDictionary<nint,Binding> figures=new();
     private static readonly Hook callback=OnMouse;
     private static readonly Stopwatch clock=Stopwatch.StartNew();
-    private static ScreenDrawingCanvas canvas;
+    private static Func<ScreenDrawingCanvas> currentCanvas;
     private static MethodInfo post;
+    private static Func<ScreenDrawingCanvas[]> canvases;
+    private static readonly ConcurrentDictionary<ScreenDrawingCanvas,byte> registered=new();
+    internal static void Enqueue(ScreenDrawingCanvas owner,Action action){try{owner.GetType().GetMethod("PostToDrawingThread",Fields)?.Invoke(owner,new object[]{(Action)(()=>{try{action();}catch(Exception ex){error=ex.GetBaseException().Message;}})});}catch(Exception ex){error=ex.GetBaseException().Message;}}
     private static nint hook;
     private static Timer animation;
     private static int queued;
@@ -28,28 +31,36 @@ internal static class CodyModelZoom
     private static string error;
     private static object Field(object value,string name)=>value?.GetType().GetField(name,Fields)?.GetValue(value);
     private static object Property(object value,string name)=>value?.GetType().GetProperty(name,Fields)?.GetValue(value);
-    private static void Post(Action action){try{post?.Invoke(canvas,new object[]{(Action)(()=>{try{action();}catch(Exception ex){error=ex.GetBaseException().Message;}})});}catch(Exception ex){error=ex.GetBaseException().Message;}}
-    internal static void Start(ScreenDrawingCanvas value){
-        canvas=value;post=value.GetType().GetMethod("PostToDrawingThread",Fields);
-        CodyModelDrag.Start(value,Post);
+    internal static void Post(Action action){try{post?.Invoke(currentCanvas(),new object[]{(Action)(()=>{try{action();}catch(Exception ex){error=ex.GetBaseException().Message;}})});}catch(Exception ex){error=ex.GetBaseException().Message;}}
+    internal static void Start(ScreenDrawingCanvas value,Func<ScreenDrawingCanvas[]> allCanvases,Func<ScreenDrawingCanvas> current){
+        canvases=allCanvases;currentCanvas=current;post=value.GetType().GetMethod("PostToDrawingThread",Fields);
+        Register(value);
         hook=SetWindowsHookEx(14,callback,GetModuleHandle(null),0);
         if(hook==0)error="Mouse-wheel hook could not start: "+Marshal.GetLastWin32Error();
         animation=new Timer(_=>{
             if((!CodyModelDrag.Active&&!figures.Values.Any(x=>x.Animating))||Interlocked.Exchange(ref queued,1)!=0)return;
-            Post(()=>{try{CodyModelDrag.Tick();foreach(var binding in figures.Values)binding.Tick();}finally{Volatile.Write(ref queued,0);}});
+            Post(()=>{try{CodyModelDrag.Tick();foreach(var binding in figures.Values)if(binding.Animating)Enqueue(binding.Owner,binding.Tick);}finally{Volatile.Write(ref queued,0);}});
         },null,16,16);Refresh();
     }
-    internal static void Refresh()=>Post(()=>{
-        object painter=Field(canvas,"painter"),adapter=Property(painter,"Figures")??Field(painter,"Figures");
-        if(Field(adapter,"stages") is not IDictionary stages)return;
-        var live=new HashSet<nint>();
-        foreach(object figure in stages.Values.Cast<object>().ToArray()){object handle=Field(figure,"Handle"),stage=Field(figure,"Stage");if(handle==null||stage==null)continue;
-            nint hwnd=(nint)(Property(handle,"Handle")??nint.Zero);if(hwnd==0)continue;live.Add(hwnd);
-            if(!figures.TryGetValue(hwnd,out var existing)||!ReferenceEquals(existing.Stage,stage))figures[hwnd]=new Binding(stage,figure,hwnd);
-            figures[hwnd].Viewport=CodyModelViewport.Apply(canvas,figure);
-        }
-        foreach(nint hwnd in figures.Keys)if(!live.Contains(hwnd))figures.TryRemove(hwnd,out _);
-    });
+    // Every persistent canvas has its own engine and drawing thread.
+    internal static void Register(ScreenDrawingCanvas owner){if(registered.TryAdd(owner,0))CodyModelDrag.Start(owner,action=>Enqueue(owner,action));}
+    internal static void Refresh(){
+        var owners=canvases();
+        foreach(var owner in registered.Keys)if(!owners.Contains(owner))registered.TryRemove(owner,out _);
+        foreach(var pair in figures)if(!owners.Contains(pair.Value.Owner))figures.TryRemove(pair.Key,out _);
+        foreach(var owner in owners){Register(owner);Enqueue(owner,()=>{
+            object painter=Field(owner,"painter"),adapter=Property(painter,"Figures")??Field(painter,"Figures");
+            if(Field(adapter,"stages") is not IDictionary stages)return;
+            var live=new HashSet<nint>();
+            foreach(object figure in stages.Values.Cast<object>().ToArray()){
+                object handle=Field(figure,"Handle"),stage=Field(figure,"Stage");if(handle==null||stage==null)continue;
+                nint hwnd=(nint)(Property(handle,"Handle")??nint.Zero);if(hwnd==0)continue;live.Add(hwnd);
+                if(!figures.TryGetValue(hwnd,out var existing)||!ReferenceEquals(existing.Stage,stage))figures[hwnd]=new Binding(owner,stage,figure,hwnd);
+                figures[hwnd].Viewport=CodyModelViewport.Apply(owner,figure);
+            }
+            foreach(var pair in figures)if(ReferenceEquals(pair.Value.Owner,owner)&&!live.Contains(pair.Key))figures.TryRemove(pair.Key,out _);
+        });}
+    }
     private static nint OnMouse(int code,nint message,nint data){
         if(code>=0){var input=Marshal.PtrToStructure<MouseEvent>(data);
             bool control=(GetAsyncKeyState(0x11)&0x8000)!=0&&(GetAsyncKeyState(0x12)&0x8000)==0;
@@ -66,18 +77,18 @@ internal static class CodyModelZoom
             return figures.TryGetValue(hwnd,out var binding)?binding:null;
         }return null;
     }
-    private static bool RouteWheel(Point point,int delta){var binding=delta==0?null:Pick(point);if(binding==null)return false;Post(()=>binding.Wheel(delta));return true;}
-    private static bool RouteDrag(int message,int x,int y,bool control)=>CodyModelDrag.Mouse(message,x,y,control,(px,py)=>{var binding=Pick(new Point{X=px,Y=py});return (binding?.Figure,binding?.Handle??0);});
+    private static bool RouteWheel(Point point,int delta){var binding=delta==0?null:Pick(point);if(binding==null)return false;Enqueue(binding.Owner,()=>binding.Wheel(delta));return true;}
+    private static bool RouteDrag(int message,int x,int y,bool control)=>CodyModelDrag.Mouse(message,x,y,control,(px,py)=>{var binding=Pick(new Point{X=px,Y=py});return (binding?.Owner,binding?.Figure,binding?.Handle??0);});
     internal static bool DragForTest(string action,int x,int y,bool control)=>RouteDrag(action switch{"down"=>0x201,"move"=>0x200,"up"=>0x202,_=>throw new ArgumentException("Invalid drag action")},x,y,control);
     internal static bool WheelAtPointForTest(int x,int y,int delta)=>RouteWheel(new Point{X=x,Y=y},delta);
-    internal static bool WheelForTest(string handle,int delta){if(!long.TryParse(handle,out long raw)||!figures.TryGetValue((nint)raw,out var binding)||delta==0||!IsWindowVisible(binding.Handle))return false;Post(()=>binding.Wheel(delta));return true;}
+    internal static bool WheelForTest(string handle,int delta){if(!long.TryParse(handle,out long raw)||!figures.TryGetValue((nint)raw,out var binding)||delta==0||!IsWindowVisible(binding.Handle))return false;Enqueue(binding.Owner,()=>binding.Wheel(delta));return true;}
     internal static Task<object> Snapshot(){var answer=new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);Post(()=>answer.TrySetResult(new{hookInstalled=hook!=0,wheels=Interlocked.Read(ref wheels),error,figures=figures.Values.Select(x=>x.Snapshot()).ToArray()}));return answer.Task.WaitAsync(TimeSpan.FromSeconds(5));}
     private sealed class Binding{
-        internal readonly object Stage,Figure;internal readonly nint Handle;
+        internal readonly ScreenDrawingCanvas Owner;internal readonly object Stage,Figure;internal readonly nint Handle;
         internal RectD? Viewport;
         private readonly object scene,sync;private readonly FieldInfo camera,framing;private readonly MethodInfo apply;
         private double baseline,current,target,previous;private bool initialized;internal volatile bool Animating;
-        internal Binding(object stage,object figure,nint handle){Stage=stage;Figure=figure;Handle=handle;scene=Field(stage,"Scene");sync=Field(stage,"sync")??stage;camera=scene?.GetType().GetField("camera",Fields);framing=scene?.GetType().GetField("framing",Fields);apply=stage.GetType().GetMethod("ApplyCamera",Fields);}
+        internal Binding(ScreenDrawingCanvas owner,object stage,object figure,nint handle){Owner=owner;Stage=stage;Figure=figure;Handle=handle;scene=Field(stage,"Scene");sync=Field(stage,"sync")??stage;camera=scene?.GetType().GetField("camera",Fields);framing=scene?.GetType().GetField("framing",Fields);apply=stage.GetType().GetMethod("ApplyCamera",Fields);}
         internal void Wheel(int delta){
             if(scene==null||camera==null||framing==null||apply==null)throw new InvalidOperationException("The 3D engine zoom adapter is unavailable.");
             lock(sync){if(!initialized){baseline=current=target=Convert.ToDouble(Property(scene,"CameraDistance"));if(!double.IsFinite(baseline)||baseline<=0)throw new InvalidOperationException("The model camera is not ready.");initialized=true;}
@@ -87,7 +98,7 @@ internal static class CodyModelZoom
         }
         internal void Tick(){if(!Animating)return;lock(sync){double now=clock.Elapsed.TotalSeconds;current=CodyZoomMath.Ease(current,target,now-previous);previous=now;
             apply.Invoke(Stage,new object[]{JsonSerializer.SerializeToElement(new{distance=(float)current}),null});Animating=current!=target;}}
-        internal object Snapshot(){GetWindowRect(Handle,out var bounds);lock(sync){object placement=Property(Stage,"Placement");return new{handle=Handle.ToString(),bounds=new{x=bounds.Left,y=bounds.Top,width=bounds.Right-bounds.Left,height=bounds.Bottom-bounds.Top},viewport=Viewport,layout=CodyModelViewport.Inspect(canvas,Figure),translation=new{x=Convert.ToDouble(Field(placement,"M31")),y=Convert.ToDouble(Field(placement,"M32"))},rotating=Field(Stage,"isDragging") is true,initialized,baseline,current,target,cameraDistance=scene==null?0:Convert.ToDouble(Property(scene,"CameraDistance")),animating=Animating};}}
+        internal object Snapshot(){GetWindowRect(Handle,out var bounds);lock(sync){object placement=Property(Stage,"Placement");return new{handle=Handle.ToString(),bounds=new{x=bounds.Left,y=bounds.Top,width=bounds.Right-bounds.Left,height=bounds.Bottom-bounds.Top},viewport=Viewport,layout=CodyModelViewport.Inspect(Owner,Figure),translation=new{x=Convert.ToDouble(Field(placement,"M31")),y=Convert.ToDouble(Field(placement,"M32"))},rotating=Field(Stage,"isDragging") is true,initialized,baseline,current,target,cameraDistance=scene==null?0:Convert.ToDouble(Property(scene,"CameraDistance")),animating=Animating};}}
     }
     private delegate nint Hook(int code,nint message,nint data);
     [StructLayout(LayoutKind.Sequential)]private struct Point{public int X,Y;}

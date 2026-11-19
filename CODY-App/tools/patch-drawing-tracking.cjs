@@ -17,7 +17,10 @@ insert('clicky-draw-engine.js', '      keepNotesOnly() {', `      codyScreenMark
         const visible = visibleMarkIndexes();
         const onCard = cardTest(visible) || (() => false);
         return visible.flatMap(i => {
-          const m = mark(i), bounds = box(i);
+          // The revealed stroke's DOM box can be only its lower/right arc.
+          // Anchor geometric marks using their complete intended geometry,
+          // before the pen animation has finished revealing the outline.
+          const m = mark(i), bounds = m.do === 'text' ? box(i) : (markBox(m) || box(i));
           const invisible = m.do === 'dot' && m.fillAlpha === 0 && m.outline === false;
           return !invisible && pointsAtScreen(m) && !isCardMark(m) && bounds && !onCard(bounds)
             ? [{ id: i, role: m.role || '', bounds, nodes: E.NODES[i] }]

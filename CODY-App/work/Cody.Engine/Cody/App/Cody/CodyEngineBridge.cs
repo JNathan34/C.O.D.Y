@@ -92,7 +92,7 @@ public static class CodyEngineBridge
         IsRunning = true;
         CodyProofread.Start();
         CodyDriveVisuals.Start(host.DispatcherQueue);
-        CodyModelZoom.Start(host.Real.Canvas);
+        CodyModelZoom.Start(host.Real.Canvas,()=>host.Real.DrawingCanvases,()=>host.Real.Canvas);
         CodyJobReports.Bind(host,()=>turn);
         try{escapeCancellation=new CodyEscapeTakeBack(()=>host.DispatcherQueue.TryEnqueue(CancelCurrent),()=>CodyMouseGuard.Active||escapeWork);}catch(Exception error){Log.Warn("cody-cancel","Esc listener unavailable: "+error.Message);}
         Consent.Changed+=requests=>Emit("computer-approvals",requests);
@@ -228,6 +228,12 @@ public static class CodyEngineBridge
                     case "model-drag-test":if(!zoomFixture&&!CodyModelDrag.Active)throw new InvalidOperationException("Create the local model fixture first.");return new{accepted=CodyModelZoom.DragForTest(Text("action"),request.GetProperty("x").GetInt32(),request.GetProperty("y").GetInt32(),request.TryGetProperty("ctrl",out var ctrl)&&ctrl.ValueKind==JsonValueKind.True)};
                     case "legacy-shell-test":return host.Dock?.VerifyEngineShellHidden() ?? throw new InvalidOperationException("Task services are not ready.");
                     case "drawing-controls-state":return await CodyDrawingControls.Snapshot(host);
+                    case "drawing-controls-test-continuation":
+                        if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");
+                        var rememberContinuationProbe=CodyDrawingFollow.RememberCapture();
+                        var continuationProbeFrame=(await host.Real.Capture.CaptureAllAsync()).First();
+                        rememberContinuationProbe?.Invoke(continuationProbeFrame,continuationProbeFrame.Jpeg);
+                        return new{allowed=CodyDrawingControls.CanContinue(host.Real.Canvas,continuationProbeFrame)};
                     case "drawing-controls-test-close":if(!zoomFixture)throw new InvalidOperationException("Create the local model fixture first.");CodyDrawingControls.CloseForTest(host);return new{closed=true};
                     case "drawing-controls-test-screen-change":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");var changeReason=Text("reason");if(changeReason is not ("click" or "app switch" or "space change" or "scroll"))throw new InvalidOperationException("Unsupported test reason.");CodyDrawingControls.ScreenChangeForTest(host,changeReason);return new{changed=true};
                     case "drawing-controls-test-press":
@@ -237,6 +243,9 @@ public static class CodyEngineBridge
                     case "drawing-controls-test-finish":if(!zoomFixture)throw new InvalidOperationException("Create the local drawing fixture first.");host.Real.Canvas.Finish();host.Real.Canvas.IsStreamingNarration=false;return new{finished=true};
                     case "drawing-controls-test-highlight":
                         if(host.Real.Canvas.IsShowingDrawing&&!zoomFixture)throw new InvalidOperationException("Keep the existing drawing; this check requires an empty canvas.");
+                        if(request.TryGetProperty("window",out var fixtureWindow)&&
+                            HeyClicky.Platform.Win32.ForegroundAppInfo.Capture()?.WindowHandle.ToString()!=fixtureWindow.GetString())
+                            throw new InvalidOperationException("The drawing fixture lost the foreground before capture (expected "+fixtureWindow.GetString()+", found "+HeyClicky.Platform.Win32.ForegroundAppInfo.Capture()?.WindowHandle+").");
                         double Fraction(JsonElement mark,string name)
                         {
                             double value=mark.GetProperty(name).GetDouble();
@@ -279,8 +288,11 @@ public static class CodyEngineBridge
                     case "model-zoom-point-test":return new{accepted=CodyModelZoom.WheelAtPointForTest(request.GetProperty("x").GetInt32(),request.GetProperty("y").GetInt32(),request.GetProperty("delta").GetInt32())};
                     case "model-zoom-image":return new{png=Convert.ToBase64String(host.Real.Canvas.RenderDrawingPng(overScreenshot:false)??Array.Empty<byte>())};
                     case "model-zoom-demo":
-                        if(host.Real.Canvas.IsShowing&&host.Real.Canvas.InkedMarkCount>0)throw new InvalidOperationException("Keep the existing drawing; zoom verification requires an empty canvas.");
-                        var captures=await host.Real.Capture.CaptureAllAsync();var capture=captures.First();host.Real.Canvas.BeginProgram(capture,host.Services.Settings.CursorColorHex);
+                        bool appendModel=request.TryGetProperty("append",out var appendModelValue)&&appendModelValue.ValueKind==JsonValueKind.True;
+                        if(host.Real.Canvas.IsShowing&&host.Real.Canvas.InkedMarkCount>0&&!(zoomFixture&&appendModel))throw new InvalidOperationException("Keep the existing drawing; zoom verification requires an empty canvas.");
+                        var captures=await host.Real.Capture.CaptureAllAsync();var capture=captures.First();
+                        if(appendModel)session.BeginDrawingProgram(capture,host.Services.Settings.CursorColorHex);
+                        else host.Real.Canvas.BeginProgram(capture,host.Services.Settings.CursorColorHex);
                         bool streaming=request.TryGetProperty("streaming",out var streamingValue)&&streamingValue.ValueKind==JsonValueKind.True;host.Real.Canvas.IsStreamingNarration=streaming;
                         string extraHighlight=request.TryGetProperty("highlight",out var showHighlight)&&showHighlight.ValueKind==JsonValueKind.True?"ring(800,200,120,80);":"";
                         var feed=host.Real.Canvas.Feed((streaming?"say('Generating the model.');paper(160,120,460,380,{title:'3D generation',board:'plain'});":"")+"scene3d(180,140,420,340,s=>{s.box({w:1.7,h:1.2,d:1.1});s.camera({spin:0});});"+extraHighlight+(streaming?"say('Adding more detail.');":""),!streaming);

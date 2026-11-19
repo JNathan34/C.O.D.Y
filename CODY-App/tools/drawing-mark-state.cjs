@@ -3,7 +3,7 @@
 function screenMarkState(session,unitOf){
  return (session?.codyScreenMarks()||[]).map(mark=>{
   const units=new Set();
-  for(const node of mark.nodes){
+  for(const node of mark.nodes||[]){
    const unit=unitOf(node);
    if(unit&&unit.__sent&&unit.parentNode&&unit.parentNode.tagName!=='defs')units.add(unit.__n);
   }

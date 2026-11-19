@@ -13,8 +13,6 @@ namespace HeyClicky.App.Cody;
 internal static class CodyModelDrag
 {
     private const BindingFlags Members=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
-    private static ScreenDrawingCanvas canvas;
-    private static Action<Action> post;
     private static Drag active;
     private static string error;
     private static int moves;
@@ -24,29 +22,30 @@ internal static class CodyModelDrag
     internal static bool Active=>Volatile.Read(ref active)!=null;
     internal static void Start(ScreenDrawingCanvas value,Action<Action> enqueue)
     {
-        canvas=value;post=enqueue;
-        post(()=>{
+        var canvas=value;
+        enqueue(()=>{
             object engine=Field(canvas,"engine");
             Invoke(engine,"Evaluate",@"(()=>{if(globalThis.__codyDragInstalled)return 'ready';const live=ClickyDraw.live;ClickyDraw.live=function(...args){const session=live.apply(this,args);globalThis.__codyDragSession={session,w:args[0].w,h:args[0].h};return session;};globalThis.__codyDragInstalled=true;return 'ready';})()");
         });
     }
-    internal static bool Mouse(int message,int x,int y,bool control,Func<int,int,(object Figure,nint Handle)> pick)
+    internal static bool Mouse(int message,int x,int y,bool control,Func<int,int,(ScreenDrawingCanvas Owner,object Figure,nint Handle)> pick)
     {
         if(message==0x201){
             if(Active)return true;
             if(!control)return false;
             var target=pick(x,y);if(target.Figure==null)return false;
-            var drag=new Drag{Figure=target.Figure,Handle=target.Handle,StartX=x,StartY=y,X=x,Y=y};
-            Volatile.Write(ref active,drag);post(()=>Begin(drag));return true;
+            var drag=new Drag{Owner=target.Owner,Figure=target.Figure,Handle=target.Handle,StartX=x,StartY=y,X=x,Y=y};
+            Volatile.Write(ref active,drag);CodyModelZoom.Enqueue(drag.Owner,()=>Begin(drag));return true;
         }
         var current=Volatile.Read(ref active);if(current==null)return false;
         if(message==0x200){Volatile.Write(ref current.X,x);Volatile.Write(ref current.Y,y);return true;}
-        if(message==0x202){Volatile.Write(ref current.X,x);Volatile.Write(ref current.Y,y);Volatile.Write(ref active,null);post(()=>Apply(current));return true;}
+        if(message==0x202){Volatile.Write(ref current.X,x);Volatile.Write(ref current.Y,y);Volatile.Write(ref active,null);CodyModelZoom.Enqueue(current.Owner,()=>Apply(current));return true;}
         return false;
     }
-    internal static void Tick(){var drag=Volatile.Read(ref active);if(drag!=null)Apply(drag);}
+    internal static void Tick(){var drag=Volatile.Read(ref active);if(drag!=null)CodyModelZoom.Enqueue(drag.Owner,()=>Apply(drag));}
     private static void Begin(Drag drag)
     {
+        var canvas=drag.Owner;
         try{
             drag.Generation=(int)(Field(canvas,"clearGeneration")??-1);
             object engine=Field(canvas,"engine"),painter=Field(canvas,"painter"),overlay=Field(canvas,"overlay");
@@ -66,6 +65,7 @@ internal static class CodyModelDrag
     }
     private static void Apply(Drag drag)
     {
+        var canvas=drag.Owner;
         if(!drag.Ready||!canvas.IsShowing||drag.Generation!=(int)(Field(canvas,"clearGeneration")??-1))return;
         try{
             double keep=40*drag.Scale;
@@ -76,10 +76,10 @@ internal static class CodyModelDrag
             if(moved>0){drag.AppliedX=x;drag.AppliedY=y;Invoke(Field(canvas,"cardHandles"),"Refresh");CodyModelViewport.Apply(canvas,drag.Figure);Interlocked.Increment(ref moves);}
         }catch(Exception ex){error=ex.GetBaseException().Message;drag.Ready=false;}
     }
-    internal static Task<object> Snapshot(){var answer=new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);post(()=>answer.TrySetResult(new{active=Active,moves,error}));return answer.Task.WaitAsync(TimeSpan.FromSeconds(5));}
+    internal static Task<object> Snapshot(){var answer=new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);CodyModelZoom.Post(()=>answer.TrySetResult(new{active=Active,moves,error}));return answer.Task.WaitAsync(TimeSpan.FromSeconds(5));}
     private sealed class Drag
     {
-        internal object Figure;internal nint Handle;internal int StartX,StartY,X,Y,Generation;internal int[] Marks;
+        internal ScreenDrawingCanvas Owner;internal object Figure;internal nint Handle;internal int StartX,StartY,X,Y,Generation;internal int[] Marks;
         internal double Scale,Left,Top,Right,Bottom,ModelLeft,ModelTop,ModelRight,ModelBottom,AppliedX,AppliedY;internal bool Ready;
     }
 }

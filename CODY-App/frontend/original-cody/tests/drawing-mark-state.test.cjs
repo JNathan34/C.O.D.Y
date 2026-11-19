@@ -6,6 +6,9 @@ test('native marks retain their ID across missing render frames and disappear on
  let marks=[mark],unit;
  const session={codyScreenMarks:()=>marks};
  assert.deepEqual(screenMarkState(session,()=>unit),[{id:9,role:'ring',bounds:mark.bounds,units:[]}]);
+ mark.nodes=undefined;
+ assert.deepEqual(screenMarkState(session,()=>unit),[{id:9,role:'ring',bounds:mark.bounds,units:[]}]);
+ mark.nodes=[node];
  unit={__sent:true,__n:7,parentNode:{tagName:'svg'}};
  assert.deepEqual(screenMarkState(session,()=>unit)[0].units,[7]);
  unit=undefined;assert.equal(screenMarkState(session,()=>unit)[0].id,9);

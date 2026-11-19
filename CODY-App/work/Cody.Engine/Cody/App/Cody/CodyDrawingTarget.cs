@@ -51,19 +51,26 @@ internal static class CodyDrawingTarget
     internal sealed record Reading(int Id, Anchor Anchor, RectD? Bounds);
     internal sealed record Frame(Reading[] Targets, bool TabClosed = false);
 
-    internal static async Task<Document> Capture(nint window, RectD viewport, bool browser, Func<bool> valid)
+    internal static async Task<Document> Capture(nint window, RectD viewport, bool browser, Func<bool> valid,
+        bool preferLegacy = false)
     {
         var response = await Run((uia, _) =>
         {
-            var root = uia.ElementFromHandle(window);
-            var document = DocumentAt(uia, root, Center(viewport)) ?? FindDocument(uia, root, viewport);
-            if (document == null)
+            var preferred = preferLegacy ? CodyDrawingLegacyTarget.Capture(window, viewport, browser, valid) : null;
+            try
             {
-                var legacy = CodyDrawingLegacyTarget.Capture(window, viewport, browser, valid);
-                return new Result(Data: legacy == null ? null : new Document(null, null, null, legacy));
+                var root = uia.ElementFromHandle(window);
+                var document = DocumentAt(uia, root, Center(viewport)) ?? FindDocument(uia, root, viewport);
+                if (document == null)
+                {
+                    var legacy = preferred ?? CodyDrawingLegacyTarget.Capture(window, viewport, browser, valid);
+                    return new Result(Data: legacy == null ? null : new Document(null, null, null, legacy));
+                }
+                var tab = browser ? SelectedTab(uia, root, document, viewport) : null;
+                return new Result(Data: new Document(document, tab, ReadScroll(document), preferred));
             }
-            var tab = browser ? SelectedTab(uia, root, document, viewport) : null;
-            return new Result(Data: new Document(document, tab, ReadScroll(document)));
+            catch (COMException) when (preferred != null)
+            { return new Result(Data: new Document(null, null, null, preferred)); }
         }, valid, TimeSpan.FromMilliseconds(1200)).ConfigureAwait(false);
         return response.Data as Document;
     }
@@ -74,7 +81,28 @@ internal static class CodyDrawingTarget
         var response = await Run((uia, _) =>
         {
             if (document.Legacy != null)
-                return new Result(Data: CodyDrawingLegacyTarget.Read(document.Legacy, viewport, queries, valid));
+            {
+                var legacy = CodyDrawingLegacyTarget.Read(document.Legacy, viewport, queries, valid);
+                // Keep the MSAA document/tab identity guard. Only supplement a
+                // missing target when UIA confirms the same captured page too.
+                if (legacy?.Targets.Any(target => target.Anchor == null) == true && document.Element != null &&
+                    Active(uia, window, document, viewport))
+                {
+                    var supplemented = legacy.Targets.Select(target =>
+                    {
+                        var query = queries.First(item => item.Id == target.Id);
+                        if (target.Anchor != null || !query.Bind || !valid()) return target;
+                        try
+                        {
+                            var anchor = Bind(uia, document, query.OriginalBox);
+                            return new Reading(target.Id, anchor, anchor?.Read());
+                        }
+                        catch (COMException) { return target; }
+                    }).ToArray();
+                    legacy = legacy with { Targets = supplemented };
+                }
+                return new Result(Data: legacy);
+            }
             if (document.Tab != null)
             {
                 try
@@ -149,7 +177,7 @@ internal static class CodyDrawingTarget
                 int role = Role(node);
                 // Images have no TextPattern. Falling through to the document's
                 // nearest word can attach an icon's ring to a neighbouring heading.
-                if (role == 50006 && Bounds(node) is { } image && Fits(box, image))
+                if (role == 50006 && Bounds(node) is { } image && FitsImage(box, image))
                     return new Anchor(node, null, image);
                 if (role is 50000 or 50002 or 50003 or 50005 or 50007 or 50009 or 50011 or 50013 or 50024 &&
                     Bounds(node) is { } bounds && Fits(box, bounds))
