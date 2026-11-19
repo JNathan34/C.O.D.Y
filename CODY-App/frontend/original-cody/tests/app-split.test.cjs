@@ -2,6 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {parseAppCommand}=require('../src/app-commands');
 const {splitApps,validateSplitApps}=require('../src/control/app-layout');
+const {runPowerShell}=require('../src/control/windows');
 const {ComputerController}=require('../src/control/controller');
 const {IslandUtilities}=require('../src/island-utilities');
 test('short app names and the reported Spotify dictation use concise local opening acknowledgements',async()=>{
@@ -14,16 +15,67 @@ test('short app names and the reported Spotify dictation use concise local openi
 test('natural split-screen requests retain app order and map Plex to Plezy',()=>{
   for(const text of ['open Firefox and Plezy in split screen','Could you open Firefox and Plex side by side please?','launch Mozilla Firefox with the Plezy app in a split-screen','split screen with Firefox and Plezy','put Firefox and Plezy next to each other'])assert.deepEqual(parseAppCommand(text),{action:'app.split',args:{apps:['firefox','plezy']}},text);
   assert.deepEqual(parseAppCommand('open Plezy and Firefox in split screen').args.apps,['plezy','firefox']);
-  for(const text of ['open Firefox and Plezy in split screen and send an email','open Firefox and delete files in split screen','open Firefox and Firefox in split screen','open Firefox and Plezy and Chrome in split screen','explain split screen','play Iron Man on Plezy'])assert.equal(parseAppCommand(text),null,text);
+  for(const text of ['open Firefox and Plezy in split screen and send an email','open Firefox and delete files in split screen','open Firefox and Firefox in split screen','open Firefox, Plezy, Chrome, Word and Notepad in split screen','explain split screen','play Iron Man on Plezy'])assert.equal(parseAppCommand(text),null,text);
+});
+test('window commands preserve titles, placement and explicit new-window intent',()=>{
+  assert.deepEqual(parseAppCommand('Put Word "Budget" on the right and Firefox on the left at 60/40'),{action:'app.split',args:{apps:['firefox','word'],titles:[null,'Budget'],ratio:0.6}});
+  assert.deepEqual(parseAppCommand('Open Discord and split the screen with my browser'),{action:'app.split',args:{apps:['discord','browser']}});
+  assert.deepEqual(parseAppCommand('Move Word "Budget" to my second monitor'),{action:'window.manage',args:{app:'word',title:'Budget',operation:'move',display:2}});
+  assert.deepEqual(parseAppCommand('Is Notepad already open? Bring it to the front.'),{action:'window.manage',args:{app:'notepad',operation:'focus'}});
+  assert.deepEqual(parseAppCommand('Open a new document in Word'),{action:'app.open',args:{app:'word',newWindow:true}});
 });
 test('unsupported and repeated apps cannot reach the Windows layout runner',async()=>{
-  let ran=false;for(const apps of [['firefox','unknown'],['plex','plezy'],['firefox'],['firefox','plezy','chrome'],['firefox',"plezy';Remove-Item"]])await assert.rejects(splitApps(apps,{runner:()=>{ran=true;}}));assert.equal(ran,false);
+  let ran=false;for(const apps of [['firefox','unknown'],['plex','plezy'],['firefox'],['firefox','plezy','chrome','word','notepad'],['firefox',"plezy';Remove-Item"]])await assert.rejects(splitApps(apps,{runner:()=>{ran=true;}}));assert.equal(ran,false);
   assert.deepEqual(validateSplitApps(['Mozilla Firefox','Plex']),['firefox','plezy']);
 });
 test('split runner requires confirmed ordered windows before reporting success',async()=>{
   const result={arranged:true,windows:[{app:'firefox'},{app:'plezy'}]};
   assert.deepEqual(await splitApps(['firefox','plezy'],{runner:async()=>JSON.stringify(result)}),result);
-  for(const invalid of [{arranged:false,windows:result.windows},{arranged:true,windows:[]},{arranged:true,windows:[{app:'plezy'},{app:'firefox'}]}])await assert.rejects(splitApps(['firefox','plezy'],{runner:async()=>JSON.stringify(invalid)}),/confirm/);
+  for(const invalid of [{arranged:false,windows:result.windows},{arranged:true,windows:[]},{arranged:true,windows:[{app:'plezy'},{app:'firefox'}]},{arranged:true,windows:[null,{app:'plezy'}]}])await assert.rejects(splitApps(['firefox','plezy'],{runner:async()=>JSON.stringify(invalid)}),/confirm/);
+  await assert.rejects(splitApps(['firefox','plezy'],{runner:async()=>'{'}),/readable split-screen result/);
+});
+test('the Windows helper returns one JSON result after focusing the left window',{skip:process.platform!=='win32'},async()=>{
+  // Run the real PowerShell split flow with in-memory windows so the test
+  // cannot move any windows on the desktop.
+  const fixture=String.raw`
+class CodyAppLayout {
+  static [void] UsePhysicalPixels() {}
+  static [hashtable] WorkArea() { return @{Left=0;Top=0;Width=1600;Height=900} }
+  static [hashtable[]] FindAll([string[]]$names,[bool]$explorer) {
+    if($names[0] -eq 'WINWORD'){
+      return @(@{Pid=1;Title='Budget - Word';Bounds=$null},@{Pid=1;Title='Notes - Word';Bounds=$null})
+    }
+    return @(@{Pid=1;Title=$names[0];Bounds=$null})
+  }
+  static [bool] Foreground([hashtable]$window) { return $false }
+  static [void] Restore([hashtable]$window) {}
+  static [void] Place([hashtable]$window,[int]$left,[int]$top,[int]$width,[int]$height) {
+    $window.Bounds=@{Left=$left;Top=$top;Width=$width;Height=$height}
+  }
+  static [bool] Fits([hashtable]$window,[int]$left,[int]$top,[int]$width,[int]$height) {
+    return $window.Bounds.Left -eq $left -and $window.Bounds.Top -eq $top -and $window.Bounds.Width -eq $width -and $window.Bounds.Height -eq $height
+  }
+  static [bool] Focus([hashtable]$window) { return $true }
+  static [hashtable] Visible([hashtable]$window) { return $window.Bounds }
+  static [void] Rollback([hashtable]$window) {}
+}
+function Add-Type { param([string]$TypeDefinition) }
+`;
+  const result=await splitApps(['file explorer','firefox'],{
+    runner:(command,options)=>runPowerShell(fixture+command,options),
+  });
+  assert.deepEqual(result.windows.map(({app,side})=>({app,side})),[
+    {app:'file explorer',side:'left'},{app:'firefox',side:'right'},
+  ]);
+  const runner=(command,options)=>runPowerShell(fixture+command,options);
+  await assert.rejects(splitApps(['firefox','word'],{runner}),/Which word window.*Budget - Word.*Notes - Word/);
+  const named=await splitApps(['firefox','word'],{runner,titles:[null,'Notes'],ratio:0.6});
+  assert.equal(named.windows[1].title,'Notes - Word');
+  assert.equal(named.windows[0].bounds.width,960);
+  const grid=await splitApps(['firefox','word','notepad','file explorer'],{runner,titles:[null,'Budget',null,null]});
+  assert.deepEqual(grid.windows[3].bounds,{x:800,y:450,width:800,height:450});
+  const three=await splitApps(['firefox','word','notepad'],{runner,titles:[null,'Budget',null]});
+  assert.deepEqual(three.windows[2].bounds,{x:0,y:450,width:1600,height:450});
 });
 test('both app and window permissions apply, and a denied split cannot launch apps',async()=>{
   let ran=false;const runner=async()=>{ran=true;return '{}';};
