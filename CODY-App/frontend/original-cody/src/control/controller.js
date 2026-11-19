@@ -14,7 +14,7 @@ const {accessScope}=require('./access-scope');
 const {validate:validateDrawing}=require('../annotations/schema');
 const {validate:validateScene}=require('../visuals/schema');
 const {splitMetadata}=require('../visuals/ledger');
-const {splitApps,validateSplitApps,appPin,focusOrLaunchApp}=require('./app-layout');
+const {splitApps,validateSplitApps,appPin,focusOrLaunchApp,manageWindow}=require('./app-layout');
 const {editWord,validateWordArgs,captureWordTarget}=require('./word-edit');
 const wordDocument=require('./word-document');
 const {normalizeApp}=require('../app-commands');
@@ -35,8 +35,18 @@ function ensureArgs(action,args){
       if(args.crop!==undefined&&(!args.crop||Object.keys(args.crop).sort().join(',')!=='height,width,x,y'||!['x','y','width','height'].every(key=>Number.isInteger(args.crop[key])&&args.crop[key]>=0&&args.crop[key]<=100000)))throw Error('Invalid screenshot crop');
       return {...args};
     }
-    case 'app.open':return {app:str(args.app,60,'application').toLowerCase()};
-    case 'app.split':return {apps:validateSplitApps(args.apps)};
+    case 'app.open':{
+      if(args.newWindow!==undefined&&typeof args.newWindow!=='boolean')throw Error('Invalid new-window option');
+      return {app:str(args.app,60,'application').toLowerCase(),...(args.title===undefined?{}:{title:str(args.title,256,'window title')}),...(args.newWindow?{newWindow:true}:{})};
+    }
+    case 'app.split':return {apps:validateSplitApps(args.apps),...(args.titles===undefined?{}:{titles:args.titles}),...(args.ratio===undefined?{}:{ratio:args.ratio})};
+    case 'window.manage':return {
+      app:str(args.app,60,'application'),operation:str(args.operation,20,'window operation'),
+      ...(args.title===undefined?{}:{title:str(args.title,256,'window title')}),
+      ...(args.display===undefined?{}:{display:integer(args.display,1,64,'monitor number')}),
+      ...(args.width===undefined?{}:{width:integer(args.width,1,16384,'window width')}),
+      ...(args.height===undefined?{}:{height:integer(args.height,1,16384,'window height')}),
+    };
     case 'text.proofread':if(args.target!==undefined&&(typeof args.target!=='string'||!/^[a-f0-9-]{36}$/i.test(args.target)))throw Error('Invalid text target');return args.target?{target:args.target}:{};
     case 'word.edit':return validateWordArgs(args);
     case 'word.document':{
@@ -147,6 +157,12 @@ class ComputerController {
     throw Error('The observed UI target moved or is ambiguous. Inspect the desktop again');
   }
   catalog(){return availableActions(this.permissions());}
+  async layoutApp(app){
+    if(normalizeApp(app)!=='browser')return app;
+    const preferred=normalizeApp((await this.browserPreference?.())?.effectiveBrowser);
+    if(!['firefox','chrome','edge'].includes(preferred))throw Error('Name Firefox, Chrome or Edge to choose the browser window.');
+    return preferred;
+  }
   async readWord(){
     if(this.wordApplying)throw Error('Word is finishing its previous edit. Try again when it completes.');
     const error=permissionError('word.document',this.permissions());if(error)throw Error(error);
@@ -200,10 +216,14 @@ class ComputerController {
     }
     let result;
     const wordAction=action==='word.edit'||action==='word.document';
+    const changesLayout=['app.open','app.split','window.pin'].includes(action)||(action==='window.manage'&&clean.operation!=='inspect');
     if(wordAction&&this.wordApplying)throw Error('Word is finishing its previous edit. Try again when it completes.');
+    if(changesLayout&&this.layoutApplying)throw Error('A window operation is already in progress.');
     if(wordAction)this.wordApplying=true;
+    if(changesLayout)this.layoutApplying=true;
     try{this.logAction({action,status:'started',origin:context.origin});}catch{}
     try{
+    if(changesLayout&&await this.windowControlBusy?.())throw Error('Wait until the current computer-use task finishes before changing windows.');
     if(action.startsWith('draw.')){
       if(!this.annotations)throw Error('Annotation overlay is unavailable');
       result=this.visualLedger&&action!=='draw.status'?await this.visualLedger.execute(action,clean,context,(args,ctx)=>this.annotations.execute(action,args,ctx)):await this.annotations.execute(action,clean,context);
@@ -218,12 +238,13 @@ class ComputerController {
         if(!result||typeof result.message!=='string'||!result.message.trim())throw Error('Windows did not return a settings result.');
         break;
       }
-      case 'app.open':result=await focusOrLaunchApp(clean.app,{runner:this.runner});break;
-      case 'app.split':result=await splitApps(clean.apps,{runner:this.runner});break;
+      case 'app.open':result=await focusOrLaunchApp(await this.layoutApp(clean.app),{...clean,runner:this.runner});break;
+      case 'app.split':result=await splitApps(await Promise.all(clean.apps.map(app=>this.layoutApp(app))),{...clean,runner:this.runner});break;
+      case 'window.manage':result=await manageWindow({...clean,app:await this.layoutApp(clean.app)},{runner:this.runner});break;
       case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);if(typeof result?.changed!=='boolean')throw Error('Spelling correction outcome was not verified.');break;
       case 'word.edit':result=await editWord(clean,{runner:this.runner,target:wordTarget});break;
       case 'word.document':result=await wordDocument.execute(clean.plan,clean.target,{runner:this.runner,signal:context.signal,overwrite});break;
-      case 'window.pin':result=await appPin(clean.app,clean.pinned,{runner:this.runner});break;
+      case 'window.pin':result=await appPin(await this.layoutApp(clean.app),clean.pinned,{runner:this.runner});break;
       case 'audio.set':result=this.nativeAudio?await this.nativeAudio.set(clean.level):await this.runner(windows.audioSet(clean.level));break;
       case 'discord.voice':case 'discord.share':case 'discord.stop-share':case 'discord.leave':result=await runDiscordCommand(action,clean,{runner:this.runner,signal:context.signal});break;
       case 'spotify.control':if(!this.spotify)throw Error('Spotify media control is unavailable.');result=await this.spotify.command(clean.command);break;
@@ -312,7 +333,7 @@ class ComputerController {
     try{this.logAction({action,status:'completed',origin:context.origin});}catch{}
     return {ok:true,action,result};
     }catch(e){try{this.logAction({action,status:'failed',origin:context.origin,error:String(e.message).slice(0,160)});}catch{}throw e;}
-    finally{if(wordAction)this.wordApplying=false;}
+    finally{if(wordAction)this.wordApplying=false;if(changesLayout)this.layoutApplying=false;}
   }
 }
 module.exports={ComputerController,ensureArgs,resolveControlledPath,contained};

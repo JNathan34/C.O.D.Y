@@ -10,7 +10,7 @@ const {parseSettingsCommand}=require('./settings-commands');
 const {parseDiscordCommand}=require('./control/discord');
 const {parseWordCommand}=require('./control/word-edit');
 
-const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy'};
+const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy',word:'Word',discord:'Discord',browser:'Browser'};
 const APP_ALIASES={'google chrome':'chrome','microsoft edge':'edge','mozilla firefox':'firefox','windows explorer':'file explorer'};
 const DISCORD_PROGRESS={
   mute:{on:'Muting…',off:'Unmuting…',toggle:'Toggle mute…'},
@@ -215,7 +215,20 @@ class IslandUtilities {
           else if(action.startsWith('audio.')){reply=this.volumeCard(typeof result.result?.level==='number'?result.result:await this.audioState(),generation);confirmation=route.action==='audio.adjust'?(route.delta>0?"Volume up.":"Volume down."):action==='audio.mute'?(args.muted?"Muted.":"Unmuted."):"Volume set.";}
           else if(action==='spotify.control'||action==='media.control'){this.mediaCard(({play:'Playing',pause:'Paused',next:'Next track',previous:'Previous track',toggle:'Playback changed',seek:'Seeked'})[args.command]);reply=args.command==='seek'?`Skipped ${args.seconds<0?'back':'forward'} ${Math.abs(args.seconds)} seconds.`:({play:'Playing.',pause:'Paused.',next:'Skipping to the next track.',previous:'Playing the previous track.',toggle:'Playback changed.'})[args.command];confirmation=({play:'Playing.',pause:'Paused.',next:'Next track.',previous:'Previous track.',toggle:'Done.',seek:'Done.'})[args.command];}
           else if(action==='plezy.play'){reply=`Playing ${result.result?.title||args.title} on Plezy.`;confirmation='Playing.';show({kind:'utility',text:'Playing',detail:result.result?.title||args.title,icon:'play'});this.refreshMedia();}
-          else if(action==='app.split'){const names=args.apps.map(appLabel);reply=`Opened ${names[0]} on the left and ${names[1]} on the right.`;confirmation='Done.';this.showCompact();show({kind:'utility',text:'Split screen',detail:names.join(' + '),icon:'external-link'});}
+          else if(action==='app.split'){
+            const names=(result.result?.windows?.map(window=>window.app)??args.apps).map(appLabel);
+            reply=names.length===2?`Placed ${names[0]} on the left and ${names[1]} on the right.`:`Arranged ${names.join(', ')} in a grid.`;
+            confirmation='Done.';this.showCompact();show({kind:'utility',text:'Split screen',detail:names.join(' + '),icon:'external-link'});
+          }
+          else if(action==='window.manage'){
+            const {app,operation,display,windows}=result.result,name=appLabel(app);
+            if(operation==='inspect'){
+              reply=windows.length?`${name} has ${windows.length} open ${windows.length===1?'window':'windows'}. ${windows.map(window=>window.title+(window.minimized?' (minimised)':'')).join(', ')}`
+                :result.result.running?`${name} is running without an open window.`:`${name} isn't open.`;
+            }else if(operation==='move')reply=`Moved ${name} to monitor ${display}.`;
+            else reply=`${{focus:'Focused',restore:'Restored',minimize:'Minimised',maximize:'Maximised',resize:'Resized'}[operation]} ${name}.`;
+            confirmation=reply;show({kind:'utility',text:operation==='inspect'?'Window status':'Window updated',detail:name,icon:'external-link'});
+          }
           else if(action==='window.pin'){const name=appLabel(args.app);reply=result.result?.wasOpen===false?`${name} isn't open.`:args.pinned?`${name} pinned on top.`:`${name} unpinned.`;confirmation=reply;this.showCompact();show({kind:'utility',text:result.result?.wasOpen===false?'Not open':args.pinned?'Pinned on top':'Unpinned',detail:name,icon:'external-link'});}
           else if(action==='word.edit'){reply=result.result.message;confirmation=reply;show({kind:'utility',text:'Word updated',detail:result.result.document||'Active document',icon:'file-text'});}
           else if(action==='text.proofread'){reply=result.result.changed?'Spelling fixed.':'No spelling mistakes found.';confirmation=reply;this.showCompact();show({kind:'utility',text:result.result.changed?'Spelling fixed':'Spelling checked',detail:result.result.app||'',icon:'check'});}

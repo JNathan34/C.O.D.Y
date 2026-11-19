@@ -689,6 +689,8 @@ else app.whenReady().then(()=>{
   registerIpc();
   controller.plezy={play:title=>nativeEngine.request('plezy-play',{title})};
   controller.proofread=async target=>{if(!target)target=(await nativeEngine.request('text-capture',{clientPid:process.pid})).target;if(!target)throw Error('Click the text box, then hold your voice shortcut and say “spell check this”. The box must expose editable text.');return nativeEngine.request('proofread',{target});};
+  controller.browserPreference=()=>nativeEngine.request('browser-preference-state');
+  controller.windowControlBusy=async()=>nativeEngine.connected&&(await nativeEngine.request('drive-state')).active;
   controller.nativeAudio={set:level=>nativeEngine.request("audio-set",{level}),mute:muted=>nativeEngine.request("audio-mute",{muted})};
   controller.nativeKeyboard=(text,words)=>nativeEngine.request('keyboard-entry',{text,words});
   rps=new RockPaperScissors();rps.on("change",state=>{sendUI("rps-state",state);refreshIslandCards();});
