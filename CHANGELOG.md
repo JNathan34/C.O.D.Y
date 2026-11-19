@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.34 — 19 November 2026
+
+- Disable automatic drawing movement and target tracking during scrolling.
+- Handle wrapped Word plan replies, retry incomplete replies once and preserve service errors.
+- Add expression-based Island notifications and an option to hide notification text.
+
 ## 0.15.33 — 19 November 2026
 
 - Add named-window selection, custom splits, three- and four-window layouts, and monitor placement. Fix confirmation after a successful split.
