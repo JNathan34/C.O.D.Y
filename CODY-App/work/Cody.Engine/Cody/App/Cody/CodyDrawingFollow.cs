@@ -15,6 +15,7 @@ namespace HeyClicky.App.Cody;
 
 internal sealed class CodyDrawingFollow : IDisposable
 {
+    private const int TargetReadGraceMs = 1500;
     private sealed record CaptureOrigin(ForegroundApp App, Bounds Viewport, Task<CodyDrawingTarget.Document> Document);
     private sealed record Placement(Visual Visual, Vector3 Offset, Vector3 Scale);
     private sealed class Mark
@@ -31,6 +32,7 @@ internal sealed class CodyDrawingFollow : IDisposable
         internal bool VerifyingControl;
         internal bool Visible;
         internal bool Removed;
+        internal long LastVerified;
     }
 
     private static readonly ConditionalWeakTable<byte[], CaptureOrigin> origins = new();
@@ -49,6 +51,7 @@ internal sealed class CodyDrawingFollow : IDisposable
     private RectD surface;
     private long nextRead, lastRead, screenVersion;
     private bool reading, readingDocument, scheduled, contextChanged, pageCurrent;
+    private bool capturePositionInvalidated;
     private long nextDocumentRead;
     private int documentAttempts;
     private int sampleCount, discardedSamples;
@@ -75,7 +78,7 @@ internal sealed class CodyDrawingFollow : IDisposable
         }
         else
         {
-            owner = ForegroundAppInfo.CaptureUserApp();
+            owner = CodyDrawingOwner.Capture();
             if (owner == null || owner.ProcessId == Environment.ProcessId || !TryClientBounds(owner.WindowHandle, out origin))
                 return;
             contentTracking = TracksDocument(owner);
@@ -84,11 +87,11 @@ internal sealed class CodyDrawingFollow : IDisposable
 
     internal static Action<ScreenCaptureFrame, byte[]> RememberCapture()
     {
-        var app = ForegroundAppInfo.CaptureUserApp();
+        var app = CodyDrawingOwner.Capture();
         if (app == null || app.ProcessId == Environment.ProcessId || !TryClientBounds(app.WindowHandle, out var bounds))
             return null;
         var document = TracksDocument(app)
-            ? CodyDrawingTarget.Capture(app.WindowHandle, bounds.Rect, IsBrowser(app), () => OwnerIsForeground(app), PreferLegacy(app))
+            ? CodyDrawingTarget.Capture(app.WindowHandle, bounds.Rect, IsBrowser(app), () => OwnerIsForeground(app), PreferLegacy(app), IsFirefox(app))
             : null;
         return (frame, original) =>
         {
@@ -100,6 +103,7 @@ internal sealed class CodyDrawingFollow : IDisposable
     }
 
     private static bool IsBrowser(ForegroundApp app) => ForegroundAppInfo.IsBrowserProcess(app.ProcessName, out _);
+    private static bool IsFirefox(ForegroundApp app) => app.ProcessName.Equals("firefox", StringComparison.OrdinalIgnoreCase);
     private static bool PreferLegacy(ForegroundApp app) => IsBrowser(app) ||
         app.ProcessName.Equals("electron", StringComparison.OrdinalIgnoreCase);
     private static bool TracksDocument(ForegroundApp app) =>
@@ -138,7 +142,8 @@ internal sealed class CodyDrawingFollow : IDisposable
     }
 
     internal object Inspect() => new { ownerForeground = OwnerForeground, pageCurrent = Available && IsPageCurrent(),
-        owner = owner?.WindowHandle.ToString(), foreground = GetAncestor(GetForegroundWindow(), 3).ToString(),
+        ownership = CodyDrawingOwner.Inspect(),
+        owner = owner?.WindowHandle.ToString(), foreground = CodyDrawingOwner.ForegroundWindow.ToString(),
         sampling = reading, sampleCount, discardedSamples, providerReadMs,
         lastReadAgeMs = lastRead == 0 ? (long?)null : Environment.TickCount64 - lastRead,
         hasSampled = marks.Values.Any(mark => mark.Anchor != null),
@@ -161,8 +166,9 @@ internal sealed class CodyDrawingFollow : IDisposable
         {
             if (!marks.TryGetValue(item.Id, out var mark))
             {
-                mark = new Mark { Id = item.Id, Box = item.Box, Role = item.Role,
-                    Visible = !contentTracking && IsOwnerForeground() && IsPageCurrent() };
+                mark = new Mark { Id = item.Id, Box = item.Box, Role = item.Role };
+                if (IsOwnerForeground() && TryClientBounds(owner.WindowHandle, out var viewport))
+                    mark.Visible = contentTracking ? CanUseCapturePosition(mark, viewport) : IsPageCurrent();
                 marks[item.Id] = mark;
             }
             var old = mark.Units;
@@ -175,13 +181,17 @@ internal sealed class CodyDrawingFollow : IDisposable
     internal void ScreenChanged(string reason)
     {
         if (!Available) return;
+        // Moving focus between the Island and the same target is not a page
+        // change. In particular it must not prevent the first anchor binding.
+        if (reason == "app switch" && IsOwnerForeground()) { nextRead = 0; return; }
         // Scrolling changes geometry inside the retained document, not its
         // identity. Cancelling every in-flight read here starves the tracker
         // while wheel/trackpad events arrive faster than the provider answers.
         if (reason is not "scroll") screenVersion++;
         if (reason is "scroll" or "window moved" or "app switch" or "space change") contextChanged = true;
         nextRead = 0;
-        if (!IsOwnerForeground() || !IsPageCurrent()) Hide();
+        if (!IsOwnerForeground()) Hide();
+        else if (contextChanged) Hide(mark => mark.Anchor == null);
     }
 
     internal int? Press(PointD point)
@@ -229,6 +239,14 @@ internal sealed class CodyDrawingFollow : IDisposable
             }
             return;
         }
+        // A valid screenshot position can be used without a precise element
+        // anchor. Invalidate it as soon as the captured view or geometry changes.
+        if (!viewport.Equals(origin) || owner.WindowTitle != WindowTitle()) capturePositionInvalidated = true;
+        foreach (var mark in marks.Values.Where(mark => mark.Anchor == null))
+        {
+            mark.Visible = CanUseCapturePosition(mark, viewport);
+            Paint(mark);
+        }
         if (document == null)
         {
             // Providers can miss the initial capture while accessibility starts.
@@ -239,11 +257,11 @@ internal sealed class CodyDrawingFollow : IDisposable
             {
                 nextDocumentRead = currentTime + 500;
                 _ = UseDocument(CodyDrawingTarget.Capture(owner.WindowHandle, viewport.Rect,
-                    IsBrowser(owner), () => !token.IsCancellationRequested && IsOwnerForeground(), PreferLegacy(owner)));
+                    IsBrowser(owner), () => !token.IsCancellationRequested && IsOwnerForeground(), PreferLegacy(owner), IsFirefox(owner)));
             }
             return;
         }
-        if (!IsPageCurrent()) Hide();
+        if (!IsPageCurrent()) Hide(mark => mark.Anchor != null);
 
         long now = Environment.TickCount64;
         if (reading || now < nextRead) return;
@@ -291,12 +309,26 @@ internal sealed class CodyDrawingFollow : IDisposable
                 sampleCount++;
                 lastRead = Environment.TickCount64;
                 pageCurrent = frames.Targets.Length > 0;
-                if (!pageCurrent) nextRead = lastRead + 150;
+                if (!pageCurrent)
+                {
+                    nextRead = lastRead + 150;
+                    capturePositionInvalidated = true;
+                    Hide();
+                }
                 confirmedTitle = title;
-                if (!pageCurrent) Hide();
                 foreach (var frame in frames.Targets)
                 {
                     if (!marks.TryGetValue(frame.Id, out var mark) || mark.Removed) continue;
+                    if (frame.Unavailable)
+                    {
+                        if (mark.Anchor != null && lastRead - mark.LastVerified > TargetReadGraceMs)
+                        {
+                            mark.Visible = false;
+                            Paint(mark);
+                        }
+                        continue;
+                    }
+                    mark.LastVerified = lastRead;
                     if (mark.Anchor == null && queries.Any(query => query.Id == mark.Id && query.Bind))
                     {
                         mark.BindingAttempted = frame.Anchor != null;
@@ -307,7 +339,7 @@ internal sealed class CodyDrawingFollow : IDisposable
                             mark.VerifyingControl = true;
                         }
                     }
-                    mark.Visible = false;
+                    mark.Visible = mark.Anchor == null && CanUseCapturePosition(mark, current);
                     if (mark.Anchor != null && frame.Bounds is { } bounds)
                     {
                         var basis = mark.Anchor.Original;
@@ -321,7 +353,7 @@ internal sealed class CodyDrawingFollow : IDisposable
                     Paint(mark);
                 }
             }
-            else if (Environment.TickCount64 - lastRead > 500) Hide();
+            else if (Environment.TickCount64 - lastRead > TargetReadGraceMs) Hide(mark => mark.Anchor != null);
             Schedule();
         });
     }
@@ -411,8 +443,7 @@ internal sealed class CodyDrawingFollow : IDisposable
 
     private static bool OwnerIsForeground(ForegroundApp app)
     {
-        nint front = GetAncestor(GetForegroundWindow(), 3);
-        return front == app.WindowHandle && !IsIconic(front);
+        return CodyDrawingOwner.IsCurrent(app);
     }
 
     private RectD OriginalBox(Mark mark)
@@ -432,6 +463,9 @@ internal sealed class CodyDrawingFollow : IDisposable
     private bool IsOnDisplay(RectD box, Bounds viewport) =>
         CodyDrawingGeometry.Visible(box, viewport.Rect, surface);
 
+    private bool CanUseCapturePosition(Mark mark, Bounds viewport) => !contextChanged && !capturePositionInvalidated &&
+        viewport.Equals(origin) && owner.WindowTitle == WindowTitle() && IsOnDisplay(OriginalBox(mark), viewport);
+
     private void ResizeSurface(Bounds viewport)
     {
         if (resizeSurface == null) return;
@@ -448,10 +482,11 @@ internal sealed class CodyDrawingFollow : IDisposable
         surface = requested;
     }
 
-    private void Hide()
+    private void Hide(Func<Mark, bool> where = null)
     {
         foreach (var mark in marks.Values)
         {
+            if (where != null && !where(mark)) continue;
             mark.Visible = false;
             Paint(mark);
         }

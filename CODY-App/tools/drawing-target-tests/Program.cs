@@ -80,3 +80,23 @@ Check(CodyDrawingLegacyTarget.Read(proxies,viewport,[new(7,box,null,true)],()=>t
 var otherDoc=new LegacyFixture(15,legacyDoc.Bounds,legacyDoc.Name,legacyDoc.Url);
 var wrongIdentity=proxies with{Element=new(otherDoc.Proxy())};
 Check(CodyDrawingLegacyTarget.Read(wrongIdentity,viewport,[new(5,box,proxyAnchor,false)],()=>true).Targets.Length==0,"matching names, URL and bounds cannot substitute a different MSAA document identity");
+
+// Firefox may hit-test to a placeholder or its chrome instead of the page.
+var firefoxRoot=new LegacyFixture(14,viewport);
+firefoxRoot.Add(new LegacyFixture(15,viewport,"Placeholder"));
+firefoxRoot.Add(new LegacyFixture(15,viewport,"Browser chrome","chrome://browser/content/browser.xhtml"));
+var firefoxPage=firefoxRoot.Add(new LegacyFixture(15,new RectD(0,40,1000,760),"Same title","https://example.test/one"));
+var firefoxImage=firefoxPage.Add(new LegacyFixture(40,new RectD(200,180,80,80),"Speaker"));
+var firefoxDocument=new CodyDrawingLegacyTarget.Document(new(firefoxRoot.Proxy()),new(firefoxPage.Proxy()),null,firefoxPage.Url,Firefox:true);
+var firefoxFrame=CodyDrawingLegacyTarget.Read(firefoxDocument,viewport,[new(8,box,null,true)],()=>true);
+var firefoxAnchor=firefoxFrame.Targets.Single().Anchor;
+Check(firefoxAnchor!=null,"Firefox placeholders and browser chrome do not invalidate a real page anchor");
+firefoxImage.Bounds=new RectD(200,90,80,80);
+Check(CodyDrawingLegacyTarget.Read(firefoxDocument,viewport,[new(8,box,firefoxAnchor,false)],()=>true).Targets.Single().Bounds==firefoxImage.Bounds,
+    "an available Firefox page anchor follows the original element's geometry");
+firefoxRoot.Children.Remove(firefoxPage);
+Check(CodyDrawingLegacyTarget.Read(firefoxDocument,viewport,[new(8,box,firefoxAnchor,false)],()=>true)==null,
+    "a Firefox placeholder-only frame means the content provider is unavailable");
+firefoxRoot.Add(new LegacyFixture(15,firefoxPage.Bounds,firefoxPage.Name,firefoxPage.Url));
+Check(CodyDrawingLegacyTarget.Read(firefoxDocument,viewport,[new(8,box,firefoxAnchor,false)],()=>true).Targets.Length==0,
+    "a different Firefox content document with the same title and URL still hides the old ring");

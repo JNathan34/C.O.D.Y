@@ -118,7 +118,7 @@ internal static class CodyDrawingLegacyTarget
         }
     }
 
-    internal sealed record Document(Node Root, Node Element, Node Tab, string Url, nint Window = 0)
+    internal sealed record Document(Node Root, Node Element, Node Tab, string Url, nint Window = 0, bool Firefox = false)
     { internal string Status = "captured"; }
     internal sealed class Anchor(Node element, RectD original, bool control)
     {
@@ -139,14 +139,16 @@ internal static class CodyDrawingLegacyTarget
         }
     }
 
-    internal static Document Capture(nint window, RectD viewport, bool browser, Func<bool> valid)
+    internal static Document Capture(nint window, RectD viewport, bool browser, Func<bool> valid, bool firefox = false)
     {
         using var dpi = new PhysicalCoordinates();
         valid = WithinBudget(valid, 900);
         Guid iid = typeof(Accessible).GUID;
         if (AccessibleObjectFromWindow(window, 0xFFFFFFFC, ref iid, out var provider) < 0 || provider == null) return null;
         var root = new Node(provider);
-        var document = DocumentAt(root, viewport, valid);
+        var document = firefox
+            ? ActiveDocumentAt(window, viewport, valid, IsFirefoxPage) ?? ActiveFirefoxDocument(root, viewport, valid)
+            : DocumentAt(root, viewport, valid);
         Node contentRoot = root;
         if (document == null)
         {
@@ -162,7 +164,13 @@ internal static class CodyDrawingLegacyTarget
                     if (AccessibleObjectFromWindow(child, 0xFFFFFFFC, ref childIid, out var childProvider) < 0 || childProvider == null) return true;
                     var candidate = new Node(childProvider);
                     if (candidate.Bounds is not { } bounds || !bounds.Contains(new PointD(viewport.X + viewport.Width / 2, viewport.Y + viewport.Height / 2))) return true;
-                    if (DocumentAt(candidate, viewport, valid) is { } found) { document = found; contentRoot = candidate; return false; }
+                    var found = firefox ? ActiveFirefoxDocument(candidate, viewport, valid) : DocumentAt(candidate, viewport, valid);
+                    if (found != null)
+                    {
+                        document = found;
+                        contentRoot = candidate;
+                        return false;
+                    }
                 }
                 catch (COMException) { }
                 return true;
@@ -175,7 +183,7 @@ internal static class CodyDrawingLegacyTarget
             int budget = 500;
             tab = Find(root, node => node.Role == 37 && (node.State & 2) != 0 && node.Visible, ref budget, valid);
         }
-        return new Document(contentRoot, document, tab, document.Value, window);
+        return new Document(contentRoot, document, tab, document.Value, window, firefox);
     }
 
     internal static CodyDrawingTarget.Frame Read(Document document, RectD viewport,
@@ -193,23 +201,30 @@ internal static class CodyDrawingLegacyTarget
         // A retained renderer HWND can remain alive underneath a different tab
         // or view in the same top-level window. Resolve the currently visible
         // owner child instead of asking that old renderer about itself.
-        var current = document.Window == 0 ? DocumentAt(document.Root, viewport, valid) :
-            ActiveDocumentAt(document.Window,viewport,valid);
-        if(current==null && document.Window!=0)
+        var current = document.Firefox
+            ? ReadActiveFirefoxDocument(document, viewport, valid)
+            : document.Window == 0 ? DocumentAt(document.Root, viewport, valid)
+                : ActiveDocumentAt(document.Window, viewport, valid);
+        if(current==null && document.Window!=0 && !document.Firefox)
         {
             // A restored renderer can retain live providers while its native
             // entry point is unavailable. Require actual focus inside this
-            // exact document, with its owner foreground, before recovering.
+            // exact document, with its owner current, before recovering. The
+            // caller's validity guard also permits the Island over that owner;
+            // inspect the owner's input thread rather than the Island's focus.
             var nativeFocus=new GuiThreadInfo{Size=(uint)Marshal.SizeOf<GuiThreadInfo>()};
-            if(GetGUIThreadInfo(0,ref nativeFocus) && GetAncestor(nativeFocus.Active,3)==document.Window &&
+            uint ownerThread=GetWindowThreadProcessId(document.Window,out _);
+            if(ownerThread!=0 && valid() && GetGUIThreadInfo(ownerThread,ref nativeFocus) && GetAncestor(nativeFocus.Active,3)==document.Window &&
                 document.Element.Focused(valid) is { } focused && (focused.State&4)!=0 &&
                 Within(focused,document.Element,valid))
                 current=document.Element;
         }
-        document.Status = current == null ? "no active document" :
-            !Within(current, document.Element, valid) ? "different document" :
-            !document.Element.Visible ? "document offscreen" :
-            document.Element.Value != document.Url ? "document URL changed" : "active";
+        document.Status = !document.Element.Visible ? "document offscreen" :
+            document.Element.Value != document.Url ? "document URL changed" :
+            current == null ? "no active document" :
+            !Within(current, document.Element, valid) ? "different document" : "active";
+        // An incomplete provider read does not prove that the page changed.
+        if (document.Status == "no active document") return null;
         if (document.Status != "active") return new CodyDrawingTarget.Frame([]);
         var readings = new List<CodyDrawingTarget.Reading>();
         foreach (var query in queries)
@@ -222,7 +237,7 @@ internal static class CodyDrawingLegacyTarget
                     anchor = new CodyDrawingTarget.Anchor(null, null, legacy.Original, legacy.Control, legacy);
                 readings.Add(new CodyDrawingTarget.Reading(query.Id, anchor, anchor?.Read()));
             }
-            catch (COMException) { readings.Add(new CodyDrawingTarget.Reading(query.Id, anchor, null)); }
+            catch (COMException) { readings.Add(new CodyDrawingTarget.Reading(query.Id, anchor, null, Unavailable: true)); }
         }
         return new CodyDrawingTarget.Frame(readings.ToArray());
     }
@@ -256,19 +271,45 @@ internal static class CodyDrawingLegacyTarget
         return text;
     }
 
-    private static Node DocumentAt(Node root, RectD viewport, Func<bool> valid)
+    // Gecko can report a placeholder document or its own chrome before the
+    // page's accessible document is available. Only a real content document
+    // can establish or invalidate a Firefox drawing anchor.
+    private static Node ReadActiveFirefoxDocument(Document document, RectD viewport, Func<bool> valid)
+    {
+        if (document.Window == 0) return ActiveFirefoxDocument(document.Root, viewport, valid);
+        if (ActiveDocumentAt(document.Window, viewport, valid, IsFirefoxPage) is { } current) return current;
+        Guid iid = typeof(Accessible).GUID;
+        return AccessibleObjectFromWindow(document.Window, 0xFFFFFFFC, ref iid, out var root) >= 0 && root != null
+            ? ActiveFirefoxDocument(new Node(root), viewport, valid)
+            : null;
+    }
+
+    private static Node ActiveFirefoxDocument(Node root, RectD viewport, Func<bool> valid)
+    {
+        if (DocumentAt(root, viewport, valid, IsFirefoxPage) is { } hit) return hit;
+        var point = new PointD(viewport.X + viewport.Width / 2, viewport.Y + viewport.Height / 2);
+        int budget = 140;
+        return Find(root, node => IsFirefoxPage(node) && node.Bounds is { } bounds && bounds.Contains(point),
+            ref budget, valid);
+    }
+
+    private static bool IsFirefoxPage(Node node) => node.Role == 15 && node.Visible &&
+        Uri.TryCreate(node.Value, UriKind.Absolute, out var location) &&
+        location.Scheme is not ("chrome" or "resource");
+
+    private static Node DocumentAt(Node root, RectD viewport, Func<bool> valid, Func<Node, bool> accepts = null)
     {
         var point = new PointD(viewport.X + viewport.Width / 2, viewport.Y + viewport.Height / 2);
         Node document = null;
         int depth = 0;
         for (var node = root.Hit(point, valid); node != null && depth++ < 64 && valid(); node = node.Parent)
         {
-            if (node.Role == 15 && node.Visible) document = node;
+            if (accepts != null ? accepts(node) : node.Role == 15 && node.Visible) document = node;
             if (Same(node, root)) return document;
         }
         return null;
     }
-    private static Node ActiveDocumentAt(nint window, RectD viewport, Func<bool> valid)
+    private static Node ActiveDocumentAt(nint window, RectD viewport, Func<bool> valid, Func<Node, bool> accepts = null)
     {
         var screenPoint=new PointD(viewport.X+viewport.Width/2,viewport.Y+viewport.Height/2);
         var chain=VisibleWindowPath(window,screenPoint);
@@ -279,7 +320,7 @@ internal static class CodyDrawingLegacyTarget
         {
             Guid iid=typeof(Accessible).GUID;
             if (AccessibleObjectFromWindow(chain[index],0xFFFFFFFC,ref iid,out var provider)<0 || provider==null) continue;
-            try { if (DocumentAt(new Node(provider),viewport,valid) is { } active) return active; }
+            try { if (DocumentAt(new Node(provider),viewport,valid,accepts) is { } active) return active; }
             catch (COMException) { }
         }
         return null;
@@ -346,6 +387,7 @@ internal static class CodyDrawingLegacyTarget
         internal int Left,Top,Right,Bottom;
     }
     [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint thread,ref GuiThreadInfo info);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint window,out uint pid);
     [DllImport("user32.dll")] private static extern nint GetAncestor(nint window,uint flags);
     [DllImport("user32.dll")] private static extern bool ScreenToClient(nint window,ref NativePoint point);
     [DllImport("user32.dll")] private static extern nint ChildWindowFromPointEx(nint parent,NativePoint point,uint flags);
