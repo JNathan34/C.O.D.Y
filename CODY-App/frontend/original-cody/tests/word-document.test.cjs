@@ -58,14 +58,15 @@ function fixture({changed=false,planner,voiceText}={}){
 }
 
 test('reported two-turn Word request generates a plan and edits the same open document locally',async()=>{
-  const f=fixture();
+  const f=fixture({planner:()=>({steps:[paragraph]})});
   assert.equal((await f.send('put some pictures and words in this document make it look like a proper document')).word,true);
   await f.settled();
   assert.match(f.messages.at(-1).text,/What should/);
   assert.equal(f.edits.length,0);
+  assert.equal(f.calls.length,0);
   assert.equal((await f.send('just make it about you cody')).word,true);
   await f.settled();
-  assert.match(f.calls[1].args.text,/proper document[\s\S]*about you cody/);
+  assert.match(f.calls[0].args.text,/proper document[\s\S]*about you cody/);
   assert.equal(f.edits[0].action,'word.document');
   assert.equal(f.edits[0].args.target.window,target.window);
   assert.match(f.messages.at(-1).text,/local Word commands/);

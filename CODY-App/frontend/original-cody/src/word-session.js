@@ -4,6 +4,8 @@ const {wordIntent,directPlan,requestedPaths,validatePlan,referenceLayout}=requir
 const {parseWordCommand,parseWordInsertion}=require('./control/word-edit');
 const {isImageAttachment}=require('./attachments');
 
+const DraftWithoutTopic=/^(?:put|add|insert) (?:some )?(?:pictures|photos|images) and (?:some )?(?:words|text) (?:in|into) (?:this|the|my) (?:Word )?document(?:[,.]?\s+(?:and )?make it look like a (?:proper|professional) document)?[.!]?$/i;
+
 class WordSession {
   constructor({controller,engine,localMemoryOnly=()=>false,canDraft=()=>true,readReferenceLayout=referenceLayout}){
     Object.assign(this,{controller,engine,localMemoryOnly,canDraft,readReferenceLayout});
@@ -16,6 +18,11 @@ class WordSession {
     if(localRoute)return false;
     if(directPlan(text))return true;
     return wordIntent(text,capabilityId==='plugin:word',this.pending.has(chatId));
+  }
+  ask(chatId,question,text,target,files){
+    if(!this.pending.has(chatId)&&this.pending.size>=30)this.pending.delete(this.pending.keys().next().value);
+    this.pending.set(chatId,{text,target,files});
+    return {reply:question,question:true};
   }
   async run({chatId,text,files=[],signal,onProgress=()=>{}}){
     if(/^\s*(?:cancel|never mind|stop)\s*[.!]?$/i.test(text)){
@@ -45,9 +52,13 @@ class WordSession {
     if(!plan){
       if(!this.canDraft())throw Error('Choose C.O.D.Y.’s built-in AI connection to draft Word content.');
       if(this.localMemoryOnly())throw Error('Enable your conversational AI connection to draft Word content. Direct Word commands are available locally.');
-      onProgress('Drafting content for Word…');
       const context={...snapshot.context};
       const references=attachments.filter(file=>/\.(?:docx?|rtf|odt|pdf|txt|md)$/i.test(file));
+      if(!previous&&!references.length&&DraftWithoutTopic.test(text.trim())&&context.paragraphs?.every(paragraph=>!paragraph.text.trim())&&
+        !context.pictureCount&&!context.inlinePictureCount){
+        return this.ask(chatId,'What should the document be about?',request,snapshot.target,attachments);
+      }
+      onProgress('Drafting content for Word…');
       if(references.length){
         if(!this.controller.permissions().filesRead)throw Error("Permission 'filesRead' is disabled");
         const layouts=[];
@@ -70,9 +81,7 @@ class WordSession {
       if(signal?.aborted)return {cancelled:true,reply:'Word request cancelled.'};
       if(typeof generated.question==='string'&&!generated.steps){
         if(!generated.question.trim()||generated.question.length>1000)throw Error('Word returned an invalid clarification.');
-        if(this.pending.size>=30)this.pending.delete(this.pending.keys().next().value);
-        this.pending.set(chatId,{text:request,target:snapshot.target,files:attachments});
-        return {reply:generated.question,question:true};
+        return this.ask(chatId,generated.question,request,snapshot.target,attachments);
       }
       if(typeof generated.answer==='string'&&!generated.steps){
         this.pending.delete(chatId);
