@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.33 — 19 November 2026
+
+- Add named-window selection, custom splits, three- and four-window layouts, and monitor placement. Fix confirmation after a successful split.
+- Use attached DOCX formatting references, ask for missing drafting topics, and fix saving Word documents with wrapped pictures.
+- Keep drawing overlays visible over the original app and unchanged view.
+
+
 ## 0.15.32 — 19 November 2026
 
 - Fix Ctrl-drag for 3D models across retained and replacement drawing canvases, including transparent models and backgrounds.
