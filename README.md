@@ -2,7 +2,7 @@
   <img src="CODY-App/frontend/original-cody/assets/brand/cody-256.png" width="112" alt="C.O.D.Y mascot">
 </p>
 
-<h1 align="center">C.O.D.Y.</h1>
+<h1 align="center">C.O.D.Y</h1>
 <p align="center">A Windows desktop assistant for voice, conversation and getting things done.</p>
 <p align="center">
   <a href="https://github.com/JNathan34/C.O.D.Y/releases/latest">Download for Windows</a> ·
