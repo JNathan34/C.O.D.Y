@@ -1,5 +1,69 @@
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[Text.Encoding]::UTF8
+if($payload.mode -eq 'reference-layout'){
+    # Read only the document structure. Never open the reference in Word.
+    Add-Type -AssemblyName System.IO.Compression
+    $file=[string]$payload.path
+    if([IO.Path]::GetExtension($file) -ne '.docx'){throw 'Choose a .docx formatting reference.'}
+    $source=[IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+    $archive=$null
+    try{
+        $archive=[IO.Compression.ZipArchive]::new($source,[IO.Compression.ZipArchiveMode]::Read,$true)
+        $part=$archive.GetEntry('word/document.xml')
+        if(!$part -or $part.Length -gt 2000000){throw 'The Word formatting reference could not be read.'}
+        $settings=[Xml.XmlReaderSettings]::new()
+        $settings.DtdProcessing=[Xml.DtdProcessing]::Prohibit
+        $settings.MaxCharactersInDocument=2000000
+        $stream=$part.Open()
+        try{
+            $reader=[Xml.XmlReader]::Create($stream,$settings)
+            try{$xml=[Xml.XmlDocument]::new();$xml.Load($reader)}
+            finally{$reader.Dispose()}
+        }finally{$stream.Dispose()}
+    }finally{
+        if($archive){$archive.Dispose()}
+        $source.Dispose()
+    }
+    $namespaces=[Xml.XmlNamespaceManager]::new($xml.NameTable)
+    $wordNamespace='http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    $namespaces.AddNamespace('w',$wordNamespace)
+    $namespaces.AddNamespace('wp','http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing')
+    function ReferenceValue($node,$query,$attribute='val'){
+        $item=$node.SelectSingleNode($query,$namespaces)
+        if($item){$item.GetAttribute($attribute,$wordNamespace)}
+    }
+    $number=0
+    $paragraphs=@(foreach($paragraph in ($xml.SelectNodes('/w:document/w:body/w:p',$namespaces) | Select-Object -First 60)){
+        $number++
+        $layout=@{paragraph=$number}
+        foreach($field in @(
+            @{name='style';query='w:pPr/w:pStyle';attribute='val'},
+            @{name='align';query='w:pPr/w:jc';attribute='val'},
+            @{name='beforeTwips';query='w:pPr/w:spacing';attribute='before'},
+            @{name='afterTwips';query='w:pPr/w:spacing';attribute='after'},
+            @{name='lineSpacing';query='w:pPr/w:spacing';attribute='line'}
+        )){
+            $value=ReferenceValue $paragraph $field.query $field.attribute
+            if($value){$layout[$field.name]=$value.Substring(0,[Math]::Min($value.Length,48))}
+        }
+        if($paragraph.SelectSingleNode('w:pPr/w:pageBreakBefore[not(@w:val="0" or @w:val="false" or @w:val="off")] | .//w:br[@w:type="page"]',$namespaces)){$layout.pageBreak=$true}
+        if($paragraph.SelectSingleNode('w:pPr/w:numPr',$namespaces)){$layout.list=$true}
+        if($paragraph.SelectSingleNode('w:r/w:rPr/w:b[not(@w:val="0" or @w:val="false" or @w:val="off")]',$namespaces)){$layout.boldRuns=$true}
+        $picture=$paragraph.SelectSingleNode('.//wp:anchor | .//wp:inline',$namespaces)
+        if($picture){
+            $position=$picture.SelectSingleNode('wp:positionH/wp:align',$namespaces)
+            $wrap=$picture.SelectSingleNode('wp:wrapSquare | wp:wrapTight | wp:wrapTopAndBottom | wp:wrapThrough | wp:wrapNone',$namespaces)
+            $width=$picture.SelectSingleNode('wp:extent',$namespaces)
+            $layout.picture=@{kind=$picture.LocalName;wrap=$wrap.LocalName}
+            if($position -and $position.InnerText -in 'left','right','center','inside','outside'){$layout.picture.align=$position.InnerText}
+            [long]$extent=0
+            if($width -and [long]::TryParse($width.GetAttribute('cx'),[ref]$extent) -and $extent -gt 0){$layout.picture.widthPoints=[Math]::Round($extent/12700)}
+        }
+        if($layout.Count -gt 1){$layout}
+    })
+    @{ok=$true;paragraphs=$paragraphs}|ConvertTo-Json -Depth 6 -Compress
+    return
+}
 try {$word=[Runtime.InteropServices.Marshal]::GetActiveObject('Word.Application')}
 catch {throw 'Open Microsoft Word and choose a document first.'}
 
@@ -8,6 +72,9 @@ function Fingerprint($document) {
     # Exclude those IDs while retaining text, styles, pictures and layout.
     $value=[regex]::Replace([string]$document.Content.WordOpenXML,'\s+w:rsid\w*="[^"]*"','')
     $value=[regex]::Replace($value,'<w:rsids>[\s\S]*?</w:rsids>','')
+    # Word regenerates these IDs when it exports a floating drawing range.
+    # Keep the image data, anchor geometry, and wrap properties in the hash.
+    $value=[regex]::Replace($value,'\s+wp14:(?:anchorId|editId)="[^"]*"','')
     $hash=[Security.Cryptography.SHA256]::Create()
     try {return [Convert]::ToBase64String($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($value)))}
     finally {$hash.Dispose()}
