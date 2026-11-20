@@ -30,7 +30,7 @@ internal static class CodyDrawingOwner
         Remember(GetForegroundWindow());
     }
 
-    private static bool Own(int pid) => pid == Environment.ProcessId || pid == Volatile.Read(ref clientPid);
+    internal static bool Own(int pid) => pid == Environment.ProcessId || pid == Volatile.Read(ref clientPid);
     private static nint Root(nint window) => GetAncestor(window, 3);
     private static nint Front()
     {

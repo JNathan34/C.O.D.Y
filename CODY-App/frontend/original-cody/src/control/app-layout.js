@@ -44,14 +44,16 @@ async function focusOrLaunchApp(app,{runner=windows.runPowerShell,title,newWindo
     throw Error('Windows could not verify the focused application.');
   return result;
 }
-async function manageWindow({app,title,operation,display,width,height},{runner=windows.runPowerShell}={}){
-  const clean=normalizeApp(app);
-  if(!clean||!['inspect','focus','restore','minimize','maximize','move','resize'].includes(operation))throw Error('Choose a supported window operation.');
+async function manageWindow({app,title,windowName,operation,display,width,height},{runner=windows.runPowerShell}={}){
+  const clean=windowName===undefined?normalizeApp(app):validateTitle(windowName);
+  const supported=windowName===undefined?['inspect','focus','restore','minimize','maximize','move','resize']:['inspect','focus','restore','minimize','maximize'];
+  if(!clean||!supported.includes(operation))throw Error('Choose a supported window operation.');
   if(title!==undefined)title=validateTitle(title);
   if(operation==='move'&&(!Number.isInteger(display)||display<1||display>64))throw Error('Choose a valid monitor number.');
   if(operation==='resize'&&[width,height].some(size=>!Number.isInteger(size)||size<1||size>16384))throw Error('Choose a valid window width and height.');
   const source=windows.psQuote(path.join(__dirname,'../../windows/app-layout.ps1').replace('app.asar'+path.sep,'app.asar.unpacked'+path.sep));
-  const raw=await runner(`try { & ${source} -AppsJson ${windows.psQuote(JSON.stringify([clean]))} -Mode manage${optionsArg({title,operation,display,width,height})} } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`,{timeout:12000});
+  const apps=windowName===undefined?[clean]:[];
+  const raw=await runner(`try { & ${source} -AppsJson ${windows.psQuote(JSON.stringify(apps))} -Mode manage${optionsArg({title,windowName:windowName===undefined?undefined:clean,operation,display,width,height})} } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`,{timeout:12000});
   const result=typeof raw==='string'?JSON.parse(raw):raw;
   if(result?.app!==clean||result.operation!==operation||(operation==='inspect'?!Array.isArray(result.windows):result.verified!==true))throw Error('Windows did not verify the requested window operation.');
   return result;

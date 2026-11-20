@@ -2,12 +2,13 @@ param([Parameter(Mandatory=$true)][string]$AppsJson,[ValidateSet('split','pin','
 $ErrorActionPreference='Stop'
 [string[]]$layoutApps=ConvertFrom-Json -InputObject $AppsJson
 $options=ConvertFrom-Json -InputObject $OptionsJson
+$namedWindow=$Mode -eq 'manage' -and -not $layoutApps.Count -and -not [string]::IsNullOrWhiteSpace([string]$options.windowName)
 $processNames=@{
   firefox=@('firefox');plezy=@('plezy');chrome=@('chrome');edge=@('msedge');notepad=@('notepad');paint=@('mspaint');calculator=@('CalculatorApp','Calculator','calc');'file explorer'=@('explorer');spotify=@('Spotify');settings=@('SystemSettings')
   word=@('WINWORD');discord=@('Discord')
 }
 if($Mode -eq 'split' -and ($layoutApps.Count -lt 2 -or $layoutApps.Count -gt 4 -or @($layoutApps | Select-Object -Unique).Count -ne $layoutApps.Count)){throw 'Split screen requires two to four different supported apps.'}
-if($Mode -ne 'split' -and $layoutApps.Count -ne 1){throw 'Choose one supported app to pin or unpin.'}
+if($Mode -ne 'split' -and !$namedWindow -and $layoutApps.Count -ne 1){throw 'Choose one app window.'}
 foreach($layoutApp in $layoutApps){if(-not $processNames.ContainsKey([string]$layoutApp)){throw 'Unsupported split-screen app.'}}
 Add-Type -TypeDefinition @'
 using System;
@@ -56,7 +57,7 @@ public static class CodyAppLayout {
       uint pid;GetWindowThreadProcessId(hwnd,out pid);
       try{
         using(var process=Process.GetProcessById((int)pid)){
-          bool matches=false;foreach(var name in names)if(string.Equals(process.ProcessName,name,StringComparison.OrdinalIgnoreCase)){matches=true;break;}
+          bool matches=names.Length==0;foreach(var name in names)if(string.Equals(process.ProcessName,name,StringComparison.OrdinalIgnoreCase)){matches=true;break;}
           if(!matches)return true;
           if(explorer){var cls=new StringBuilder(128);GetClassName(hwnd,cls,128);if(cls.ToString()!="CabinetWClass")return true;}
           var placement=new Placement{Size=Marshal.SizeOf(typeof(Placement))};if(!GetWindowPlacement(hwnd,ref placement))return true;
@@ -107,6 +108,15 @@ function Find-LayoutWindow([string]$Name,[string]$Title){
   if($active -and -not $Title){return $active}
   $choices=($matches | Select-Object -First 5 | ForEach-Object {$_.Title}) -join '; '
   throw "Which $Name window? Put its title in quotes. Matching windows: $choices"
+}
+function Find-NamedWindows([string]$name){
+  $all=@([CodyAppLayout]::FindAll([string[]]@(),$false))
+  $exact=@($all | Where-Object {$_.Title -eq $name})
+  if($exact.Count){return $exact}
+  $processName=$name -replace '(?i)\.exe$',''
+  $aliases=@{'visual studio code'=@('code');vscode=@('code');'microsoft excel'=@('excel');'microsoft powerpoint'=@('powerpnt');powerpoint=@('powerpnt');'microsoft outlook'=@('outlook','olk');outlook=@('outlook','olk');'microsoft teams'=@('teams','ms-teams');teams=@('teams','ms-teams')}
+  $names=if($aliases.ContainsKey($processName)){$aliases[$processName]}else{@($processName)}
+  return $all | Where-Object {$names -contains $_.Process}
 }
 function Resolve-LayoutLaunch([string]$Name){
   if($Name -eq 'plezy'){$candidate=Join-Path $env:LOCALAPPDATA 'Programs\Plezy\plezy.exe';if(Test-Path -LiteralPath $candidate -PathType Leaf){return $candidate};throw 'Plezy is not installed at its normal location.'}
@@ -164,14 +174,26 @@ if($Mode -eq 'focus'){
   @{app=$app;pid=$window.Pid;title=$window.Title;focused=$true;reused=$reused;launched=(-not $reused)} | ConvertTo-Json -Compress;return
 }
 if($Mode -eq 'manage'){
-  $app=$layoutApps[0];$operation=[string]$options.operation
+  $operation=[string]$options.operation
+  if($namedWindow){
+    if($operation -notin 'inspect','focus','restore','minimize','maximize'){throw 'Choose a supported operation for the open window.'}
+    $app=[string]$options.windowName
+    $matches=@(Find-NamedWindows $app)
+  }else{$app=$layoutApps[0]}
   if($operation -eq 'inspect'){
-    $windows=@(Get-LayoutWindows $app | Where-Object {-not $options.title -or $_.Title.IndexOf([string]$options.title,[StringComparison]::OrdinalIgnoreCase) -ge 0} |
+    $candidates=if($namedWindow){$matches}else{Get-LayoutWindows $app}
+    $windows=@($candidates | Where-Object {-not $options.title -or $_.Title.IndexOf([string]$options.title,[StringComparison]::OrdinalIgnoreCase) -ge 0} |
       ForEach-Object {@{title=$_.Title;pid=$_.Pid;minimized=[CodyAppLayout]::Minimized($_)}})
-    $running=$null -ne (Get-Process -Name $processNames[$app] -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $running=if($namedWindow){$windows.Count -gt 0}else{$null -ne (Get-Process -Name $processNames[$app] -ErrorAction SilentlyContinue | Select-Object -First 1)}
     @{app=$app;operation=$operation;windows=$windows;running=$running} | ConvertTo-Json -Compress -Depth 4;return
   }
-  $window=Find-LayoutWindow $app ([string]$options.title)
+  if($namedWindow){
+    if($matches.Count -gt 1){
+      $choices=($matches | Select-Object -First 5 | ForEach-Object {$_.Title}) -join '; '
+      throw "Several windows match '$app'. Put the exact window title in quotes. Matching windows: $choices"
+    }
+    $window=$matches | Select-Object -First 1
+  }else{$window=Find-LayoutWindow $app ([string]$options.title)}
   if(-not $window){throw "$app has no open window."}
   switch($operation){
     'focus' {

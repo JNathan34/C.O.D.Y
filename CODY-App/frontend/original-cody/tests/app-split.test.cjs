@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {parseAppCommand}=require('../src/app-commands');
-const {splitApps,validateSplitApps}=require('../src/control/app-layout');
+const {splitApps,manageWindow,validateSplitApps}=require('../src/control/app-layout');
 const {runPowerShell}=require('../src/control/windows');
 const {ComputerController}=require('../src/control/controller');
 const {IslandUtilities}=require('../src/island-utilities');
@@ -24,6 +24,16 @@ test('window commands preserve titles, placement and explicit new-window intent'
   assert.deepEqual(parseAppCommand('Is Notepad already open? Bring it to the front.'),{action:'window.manage',args:{app:'notepad',operation:'focus'}});
   assert.deepEqual(parseAppCommand('Open a new document in Word'),{action:'app.open',args:{app:'word',newWindow:true}});
 });
+test('ordinary focus requests target existing windows, including apps outside the launch list',()=>{
+  for(const text of ['Switch to Word','Bring Word to the foreground','Change the app focus to Microsoft Word','Go back to Word'])
+    assert.deepEqual(parseAppCommand(text),{action:'window.manage',args:{app:'word',operation:'focus'}},text);
+  assert.deepEqual(parseAppCommand('Switch to Visual Studio Code'),{action:'window.manage',args:{windowName:'Visual Studio Code',operation:'focus'}});
+  assert.deepEqual(parseAppCommand('Activate “Budget - Excel”'),{action:'window.manage',args:{windowName:'Budget - Excel',operation:'focus'}});
+  assert.deepEqual(parseAppCommand('List open windows'),{action:'window.list',args:{}});
+  assert.deepEqual(parseAppCommand('Change app focus'),{action:'window-choose',args:{}});
+  for(const text of ['Is the door open?','Go to Google','Switch to dark mode','Focus Word and send an email'])
+    assert.equal(parseAppCommand(text),null,text);
+});
 test('unsupported and repeated apps cannot reach the Windows layout runner',async()=>{
   let ran=false;for(const apps of [['firefox','unknown'],['plex','plezy'],['firefox'],['firefox','plezy','chrome','word','notepad'],['firefox',"plezy';Remove-Item"]])await assert.rejects(splitApps(apps,{runner:()=>{ran=true;}}));assert.equal(ran,false);
   assert.deepEqual(validateSplitApps(['Mozilla Firefox','Plex']),['firefox','plezy']);
@@ -42,12 +52,16 @@ class CodyAppLayout {
   static [void] UsePhysicalPixels() {}
   static [hashtable] WorkArea() { return @{Left=0;Top=0;Width=1600;Height=900} }
   static [hashtable[]] FindAll([string[]]$names,[bool]$explorer) {
+    if($names.Length -eq 0){
+      return @(@{Pid=2;Title='Project - Visual Studio Code';Process='Code'},@{Pid=3;Title='Budget - Excel';Process='EXCEL'},@{Pid=3;Title='Notes - Excel';Process='EXCEL'})
+    }
     if($names[0] -eq 'WINWORD'){
       return @(@{Pid=1;Title='Budget - Word';Bounds=$null},@{Pid=1;Title='Notes - Word';Bounds=$null})
     }
     return @(@{Pid=1;Title=$names[0];Bounds=$null})
   }
   static [bool] Foreground([hashtable]$window) { return $false }
+  static [bool] Minimized([hashtable]$window) { return $false }
   static [void] Restore([hashtable]$window) {}
   static [void] Place([hashtable]$window,[int]$left,[int]$top,[int]$width,[int]$height) {
     $window.Bounds=@{Left=$left;Top=$top;Width=$width;Height=$height}
@@ -76,11 +90,18 @@ function Add-Type { param([string]$TypeDefinition) }
   assert.deepEqual(grid.windows[3].bounds,{x:800,y:450,width:800,height:450});
   const three=await splitApps(['firefox','word','notepad'],{runner,titles:[null,'Budget',null]});
   assert.deepEqual(three.windows[2].bounds,{x:0,y:450,width:1600,height:450});
+  const code=await manageWindow({windowName:'Visual Studio Code',operation:'focus'},{runner});
+  assert.equal(code.title,'Project - Visual Studio Code');
+  const budget=await manageWindow({windowName:'Budget - Excel',operation:'focus'},{runner});
+  assert.equal(budget.title,'Budget - Excel');
+  await assert.rejects(manageWindow({windowName:'Excel',operation:'focus'},{runner}),/Several windows.*Budget - Excel.*Notes - Excel/);
+  await assert.rejects(manageWindow({windowName:'Missing Window',operation:'focus'},{runner}),/no open window/);
 });
 test('both app and window permissions apply, and a denied split cannot launch apps',async()=>{
   let ran=false;const runner=async()=>{ran=true;return '{}';};
   const disabled=new ComputerController({readPermissions:()=>({enabled:true,level:'approve-safe',applications:true,windows:false}),runner});
   await assert.rejects(disabled.execute('app.split',{apps:['firefox','plezy']},{origin:'chat'}),/windows/);assert.equal(ran,false);
+  await assert.rejects(disabled.execute('window.manage',{windowName:'Visual Studio Code',operation:'focus'},{origin:'chat'}),/windows/);assert.equal(ran,false);
   const denied=new ComputerController({readPermissions:()=>({enabled:true,level:'ask',applications:true,windows:true}),confirm:async()=>false,runner});
   assert.equal((await denied.execute('app.split',{apps:['firefox','plezy']},{origin:'chat'})).cancelled,true);assert.equal(ran,false);
 });

@@ -41,7 +41,8 @@ function ensureArgs(action,args){
     }
     case 'app.split':return {apps:validateSplitApps(args.apps),...(args.titles===undefined?{}:{titles:args.titles}),...(args.ratio===undefined?{}:{ratio:args.ratio})};
     case 'window.manage':return {
-      app:str(args.app,60,'application'),operation:str(args.operation,20,'window operation'),
+      ...(args.windowName===undefined?{app:str(args.app,60,'application')}:{windowName:str(args.windowName,256,'window title or app name')}),
+      operation:str(args.operation,20,'window operation'),
       ...(args.title===undefined?{}:{title:str(args.title,256,'window title')}),
       ...(args.display===undefined?{}:{display:integer(args.display,1,64,'monitor number')}),
       ...(args.width===undefined?{}:{width:integer(args.width,1,16384,'window width')}),
@@ -193,7 +194,9 @@ class ComputerController {
       (clean.key.toLowerCase()==='insert'&&clean.modifiers.includes('shift'))))
       throw Error('Use foreground Computer Use for an explicitly requested paste into Firefox.');
     if(context.origin==='chat' && policy.risk!=='low'&&!['word.edit','word.document'].includes(action)&&!['full','custom'].includes(this.permissions().level))throw Error('This action requires the dedicated controls in the C.O.D.Y GUI');
-    const wordTarget=action==='word.edit'?await captureWordTarget({runner:this.runner}):undefined;
+    const wordTarget=action==='word.edit'?(clean.operation==='insert'
+      ?(await wordDocument.snapshot({runner:this.runner})).target
+      :await captureWordTarget({runner:this.runner})):undefined;
     if(wordTarget)context={...context,wordTarget};
     const overwrite=[];
     if(action==='word.document'){
@@ -216,6 +219,7 @@ class ComputerController {
     }
     let result;
     const wordAction=action==='word.edit'||action==='word.document';
+    if(wordAction&&context.signal?.aborted)return {cancelled:true};
     const changesLayout=['app.open','app.split','window.pin'].includes(action)||(action==='window.manage'&&clean.operation!=='inspect');
     if(wordAction&&this.wordApplying)throw Error('Word is finishing its previous edit. Try again when it completes.');
     if(changesLayout&&this.layoutApplying)throw Error('A window operation is already in progress.');
@@ -240,9 +244,9 @@ class ComputerController {
       }
       case 'app.open':result=await focusOrLaunchApp(await this.layoutApp(clean.app),{...clean,runner:this.runner});break;
       case 'app.split':result=await splitApps(await Promise.all(clean.apps.map(app=>this.layoutApp(app))),{...clean,runner:this.runner});break;
-      case 'window.manage':result=await manageWindow({...clean,app:await this.layoutApp(clean.app)},{runner:this.runner});break;
+      case 'window.manage':result=await manageWindow(clean.app?{...clean,app:await this.layoutApp(clean.app)}:clean,{runner:this.runner});break;
       case 'text.proofread':if(!this.proofread)throw Error('Spelling correction is unavailable.');result=await this.proofread(clean.target);if(typeof result?.changed!=='boolean')throw Error('Spelling correction outcome was not verified.');break;
-      case 'word.edit':result=await editWord(clean,{runner:this.runner,target:wordTarget});break;
+      case 'word.edit':result=await editWord(clean,{runner:this.runner,target:wordTarget,signal:context.signal});break;
       case 'word.document':result=await wordDocument.execute(clean.plan,clean.target,{runner:this.runner,signal:context.signal,overwrite});break;
       case 'window.pin':result=await appPin(await this.layoutApp(clean.app),clean.pinned,{runner:this.runner});break;
       case 'audio.set':result=this.nativeAudio?await this.nativeAudio.set(clean.level):await this.runner(windows.audioSet(clean.level));break;
@@ -330,6 +334,7 @@ class ComputerController {
       }
     }
     }
+    if(wordAction&&result?.cancelled)return {cancelled:true};
     try{this.logAction({action,status:'completed',origin:context.origin});}catch{}
     return {ok:true,action,result};
     }catch(e){try{this.logAction({action,status:'failed',origin:context.origin,error:String(e.message).slice(0,160)});}catch{}throw e;}

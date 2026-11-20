@@ -145,11 +145,18 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(speak&&!localMemoryOnly()&&!result.error&&!result.cancelled)void engine.request('speak',{turn:operation.turn,text:result.confirmation||result.reply}).catch(error=>sendUI('diagnostic',error.message));
     return result;
   }
-  async function runWord(operation,text){
+  function wordRoute(text,chatId,capabilityId,route,files,currentMessageId){
+    if(wordSession.matches(text,chatId,capabilityId,route))return {retry:null};
+    if(capabilityId||route||files?.length)return null;
+    const retry=wordSession.followUp(text,store.chat(chatId)?.messages,currentMessageId);
+    return retry?{retry}:null;
+  }
+  async function runWord(operation,text,{retry=null}={}){
     operation.word=true;operation.abort??=new AbortController();
     if(!operation.user)operation.user=sendMessage('user',text);
     sendUI('busy',{busy:true});publishProgress(operation,'Reading the Word document…');
     const result=await wordSession.run({chatId:operation.chatId,text,files:operation.files||[],signal:operation.abort.signal,
+      wordSelected:operation.capabilityId==='plugin:word',retry,
       onProgress:message=>{if(active===operation)publishProgress(operation,message);}
     });
     if(active!==operation)return result;
@@ -164,7 +171,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     const operation=active?.voice&&active.turn===data.turn?active:null;
     const text=operation?.wake?stripWakeText(data.text):data.text;
     const route=operation&&!operation.files?.length?utilities?.match(text,{spoken:true}):null;
-    const word=operation&&wordSession.matches(text,operation.chatId,'',route);
+    const word=operation&&wordRoute(text,operation.chatId,'',route,operation.files,operation.user?.id);
     const handled=Boolean(operation&&(operation.files?.length||route||word||localMemoryText(text,localMemoryOnly())));
     if(operation&&!operation.voiceClassified){
       operation.quietUtility=usesUtilityCard(route);
@@ -192,7 +199,12 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   });
   engine.on('response',data=>{if(!active||active.turn!==data.turn)return;if(!active.answer)active.answer=sendMessage('assistant',data.text);else replace(active.answer,data.text);});
   engine.on('failure',data=>{finish(data.Message);sendUI('native-phase',{state:'Idle'});});
-  engine.on('offline',()=>{finish('CODY engine disconnected. Restart C.O.D.Y.');sendUI('native-phase',{state:'Idle'});});
+  engine.on('offline',()=>{
+    // Local Word edits can finish without the engine. In-flight drafting
+    // receives its own IPC rejection and reports it through runWord.
+    if(!active?.word)finish('C.O.D.Y. disconnected. Send your request again to reconnect.');
+    sendUI('native-phase',{state:'Idle'});
+  });
   engine.on('diagnostic',text=>sendUI('diagnostic',text));
   engine.on('job-report',report=>{
     const chatId=turnChats.get(report.turn);if(!chatId||!store.chat(chatId)||typeof report.text!=='string'||!report.text.trim())return;
@@ -310,9 +322,10 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(active||changingMemoryMode)return {error:'Another operation is in progress'};
     if(!text&&!files.length)return {error:'Enter a message or attach a file.'};
     const localRoute=capabilityId?null:files.length?null:utilities?.match(text);
-    if(wordSession.matches(text,chatId,capabilityId,localRoute)){
-      const operation=active={turn:randomUUID(),chatId,word:true,abort:new AbortController(),files,attachmentBatch:batch,mention:cleanMention};
-      void runWord(operation,text).catch(error=>{if(active===operation)finish(error.message);});
+    const word=wordRoute(text,chatId,capabilityId,localRoute,files);
+    if(word){
+      const operation=active={turn:randomUUID(),chatId,word:true,abort:new AbortController(),files,attachmentBatch:batch,mention:cleanMention,capabilityId};
+      void runWord(operation,text,word).catch(error=>{if(active===operation)finish(error.message);});
       return {started:true,local:true,word:true};
     }
     const selected=capabilityId?localMentionRoute(capabilityId,text,utilities):null;
@@ -388,9 +401,10 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
       if(operation.wake){result.utilityText=stripWakeText(result.utilityText||result.transcript||'');if(!result.utilityText||isListeningCancellation(result.utilityText)){finish();return {...result,empty:!result.utilityText,cancelled:Boolean(result.utilityText)};}}
       const matchedRoute=result.utilityText?utilities?.match(result.utilityText,{spoken:true}):null;
       const route=operation.files?.length&&matchedRoute?.action!=='text.proofread'?null:matchedRoute;
+      const word=result.utilityText&&wordRoute(result.utilityText,operation.chatId,'',route,operation.files,operation.user?.id);
       if(result.controlStopped){operation.cancelled=true;if(!operation.user&&result.transcript)operation.user=sendMessage('user',result.transcript);operation.answer=sendMessage('assistant','Stopped.');finish();}
-      else if(result.utilityText&&wordSession.matches(result.utilityText,operation.chatId,'',route)){
-        await runWord(operation,result.utilityText);
+      else if(word){
+        await runWord(operation,result.utilityText,word);
       }
       else if(localMemoryText(result.utilityText,localMemoryOnly())){
         if(operation.user)replace(operation.user,'Private memory request');
@@ -428,7 +442,16 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   };
   handle('native-end',endVoice);
   handle('native-stop-speech',async()=>{if(engine.status.state==='Responding')await engine.request('cancel');return true;});
-  const cancel=async()=>{if(active){active.cancelled=engine.status?.state!=='Listening';active.abort?.abort();}await cancelExternal();cancelLocalApprovals();utilities?.cancel();await gameVoice?.cancel();await engine.request('cancel');finish();return true;};
+  const cancel=async()=>{
+    if(active?.word){
+      active.abort.abort();
+      cancelLocalApprovals();
+      if(engine.connected)void engine.request('cancel').catch(()=>{});
+      return true;
+    }
+    if(active){active.cancelled=engine.status?.state!=='Listening';active.abort?.abort();}
+    await cancelExternal();cancelLocalApprovals();utilities?.cancel();await gameVoice?.cancel();await engine.request('cancel');finish();return true;
+  };
   handle('stop-turn',cancel);handle('voice-cancel',cancel);
   handle('new-chat',async()=>{rps?.close();await cancel();await engine.request('fresh');const chat=store.newChat();sendUI('chats-changed',store.publicState());return chat;});
   handle('select-chat',async id=>{rps?.close();await cancel();await engine.request('fresh');store.select(id);sendUI('chats-changed',store.publicState());return store.chat(id);});

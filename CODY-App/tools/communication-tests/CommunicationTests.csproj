@@ -1,1 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net9.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><Compile Include="../../work/Cody.Engine/Cody/App/Cody/CodyCommunication.cs"/></ItemGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net9.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../work/Cody.Engine/Cody/App/Cody/CodyCommunication.cs"/>
+    <Compile Include="../../work/Cody.Core/Cody/Core/Platform/TextInsertOutcome.cs"/>
+    <Compile Include="../../work/Cody.Core/Cody/Core/Platform/TextEntryFeedback.cs"/>
+  </ItemGroup>
+</Project>

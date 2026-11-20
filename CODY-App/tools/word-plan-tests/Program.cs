@@ -66,3 +66,18 @@ catch (InvalidOperationException error) when (error.Message.Contains("Service un
     if (host.Real.Core.BrainClient.Calls != before + 1) throw new Exception("Service error retried");
 }
 Console.WriteLine($"{checks} Word reply and retry checks passed.");
+
+const string draft = "WORD_DRAFT_BEGIN\nThe first paragraph.\n\nThe second paragraph.\nWORD_DRAFT_END";
+host.Real.Core.BrainClient.Error = null;
+host.Real.Core.BrainClient.Replies.Enqueue(Say("I can write a draft."));
+host.Real.Core.BrainClient.Replies.Enqueue("```js\n" + Say("Here is the draft.") + Say(draft) + "\n```");
+var originalProse = await CodyWordPlan.Generate(host, "Draft a note about gardening in Word", "{}", "[]", insertOnly: true);
+var draftSteps = originalProse.GetProperty("steps");
+if (draftSteps.GetArrayLength() != 2 ||
+    draftSteps[0].GetProperty("text").GetString() != "The first paragraph." ||
+    draftSteps[1].GetProperty("text").GetString() != "The second paragraph." ||
+    draftSteps[1].GetProperty("type").GetString() != "paragraph")
+    throw new Exception("Word did not receive just the prose as two paragraphs.");
+foreach (string invalid in new[] { Say("I can help"), draft[..^4], Say(draft) + Say(draft.Replace("first", "other")), plan })
+    if (CodyWordPlanReply.TryParseDraft(invalid, out _)) throw new Exception("Accepted an incomplete or ambiguous prose draft.");
+Console.WriteLine("Word prose drafting and invalid-reply checks passed.");

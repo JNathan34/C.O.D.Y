@@ -1,4 +1,5 @@
 using HeyClicky.App.Cody;
+using HeyClicky.Core.Platform;
 int checks=0;void Check(bool ok,string name){if(!ok)throw new Exception(name);checks++;Console.WriteLine("PASS "+name);}
 string goal="Complete the quiz quickly.";
 string fact=CodyCommunication.DriveFact(goal,null);
@@ -12,4 +13,8 @@ Check(fact.Contains("explicitly requested live narration"),"An explicit request 
 Check(CodyCommunication.DriveFact(goal,"Helper").Contains("only this screen step")&&CodyCommunication.DriveFact(goal,"Helper").Contains("output paths"),"Background helper scope and handoff outputs remain intact");
 Check(!CodyCommunication.WaitForActionNarration(true),"Cody does not wait 1.6 seconds for narration before each action group");
 Check(CodyCommunication.WaitForActionNarration(false),"The original engine mode retains its existing timing");
+Check(TextEntryFeedback.Message(new("refused","own_window")).Contains("chat box has focus"),"Focus in C.O.D.Y. is reported clearly");
+Check(TextEntryFeedback.Message(new("refused","secure_field")).Contains("protected field"),"Protected fields still advise manual entry");
+const string partial="The focused field changed; typing stopped. Check the partial text before retrying.";
+Check(TextEntryFeedback.Message(new("failed",partial))==partial,"A partial typing result keeps its warning");
 Console.WriteLine($"{checks} communication checks passed");

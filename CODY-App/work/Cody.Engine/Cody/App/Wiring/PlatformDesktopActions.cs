@@ -79,7 +79,8 @@ public sealed class PlatformDesktopActions : IDesktopActions
 			return new("refused", "Use the normal Computer Use approval flow to type into this field.");
 		nint window = GetForegroundWindow();
 		GetWindowThreadProcessId(window, out uint pid);
-		if (window == 0 || pid == Environment.ProcessId) return new("refused", "no_focused_text_field");
+		if (window == 0 || pid == 0) return new("refused", "no_focused_text_field");
+		if (CodyDrawingOwner.Own((int)pid)) return new("refused", "own_window");
 		try
 		{
 			using var process=Process.GetProcessById((int)pid);

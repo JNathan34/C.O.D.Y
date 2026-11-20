@@ -277,6 +277,52 @@ function ReviseText($range,$text) {
 
 # One Word undo record covers the local editing batch. File writes are performed
 # only after the editable operations have succeeded.
+function CheckEditCancelled {
+    if($payload.cancelPath -and [IO.File]::Exists($payload.cancelPath)){
+        throw [OperationCanceledException]::new('Word editing was cancelled.')
+    }
+}
+
+function WriteTypedText($cursor,[string]$text) {
+    $caret=$cursor.Duplicate
+    $caret.Collapse(1)
+    $start=$caret.Start
+    $expectedEnd=$doc.Content.End
+    $caret.Select()
+    $characters=[Globalization.StringInfo]::GetTextElementEnumerator($text)
+    $frame=[Text.StringBuilder]::new()
+    while($characters.MoveNext()){
+        [void]$frame.Append($characters.GetTextElement())
+        for($i=1;$i -lt $charactersPerFrame -and $characters.MoveNext();$i++){
+            [void]$frame.Append($characters.GetTextElement())
+        }
+        CheckEditCancelled
+        $active=$word.Selection.Range
+        if([string]$word.ActiveWindow.Hwnd -ne $payload.target.window -or $word.ActiveDocument.FullName -cne $doc.FullName -or
+           $active.StoryType -ne 1 -or $active.Start -ne $caret.Start -or $active.End -ne $caret.Start -or
+           $doc.Content.End -ne $expectedEnd){
+            $script:typingInterrupted=$true
+            throw 'The Word document or cursor changed. Typing stopped. Text already typed was kept.'
+        }
+        $value=$frame.ToString()
+        $caret.Text=$value
+        if($caret.Text -cne $value){throw 'Word could not verify the typed text.'}
+        $caret.Collapse(0)
+        $caret.Select()
+        $expectedEnd=$doc.Content.End
+        [void]$frame.Clear()
+        Start-Sleep -Milliseconds 18
+    }
+    return $doc.Range($start,$caret.Start)
+}
+
+$typingLength=0
+foreach($step in $steps){
+    if($step.type -in 'insert','paragraph'){$typingLength+=([string]$step.text).Length}
+}
+# Keep character-by-character typing for ordinary drafts. For a long document,
+# use several characters per frame so the animation does not take minutes.
+$charactersPerFrame=[int][Math]::Max(1,[Math]::Ceiling($typingLength/900))
 $script:selection=$word.Selection.Range.Duplicate
 $script:cursor=$script:selection.Duplicate
 $script:cursor.Collapse(1)
@@ -284,10 +330,12 @@ $completed=0
 $editing=$false
 $undoStarted=$false
 $fileWriting=$false
+$script:typingInterrupted=$false
 try {
     $word.UndoRecord.StartCustomRecord('C.O.D.Y. document edit')
     $undoStarted=$true
     foreach($step in $steps){
+        CheckEditCancelled
         if([string]$word.ActiveWindow.Hwnd -ne $payload.target.window -or $word.ActiveDocument.FullName -cne $doc.FullName){
             throw 'The active Word document changed during editing.'
         }
@@ -306,10 +354,17 @@ try {
                     $script:cursor.Collapse(0)
                 }
                 $text=([string]$step.text).Replace("`r`n","`r").Replace("`n","`r")
-                $range=$script:cursor.Duplicate
-                $range.Text=$text+"`r"
+                $range=WriteTypedText $script:cursor ($text+"`r")
                 if($range.Text -cne $text+"`r"){throw 'Word could not verify an inserted paragraph.'}
                 ApplyFormat $range $step
+                $script:cursor=$range.Duplicate
+                $script:cursor.Collapse(0)
+            }
+            'insert' {
+                $editing=$true
+                $text=([string]$step.text).Replace("`r`n","`r").Replace("`n","`r")
+                $range=WriteTypedText $script:cursor $text
+                if($range.Text -cne $text){throw 'Word could not verify the typed text.'}
                 $script:cursor=$range.Duplicate
                 $script:cursor.Collapse(0)
             }
@@ -375,6 +430,7 @@ try {
         }
         $completed++
     }
+    if(!$fileWriting){CheckEditCancelled}
     if($undoStarted){$word.UndoRecord.EndCustomRecord();$undoStarted=$false}
     if([string]$word.ActiveWindow.Hwnd -eq $payload.target.window){$script:cursor.Select()}
     @{ok=$true;completed=$completed;document=$doc.Name;execution='Word COM';message='Word document updated.';
@@ -382,10 +438,13 @@ try {
       pages=$doc.ComputeStatistics(2)}|ConvertTo-Json -Compress
 }catch{
     $failure=$_.Exception.Message
+    $cancelled=$_.Exception -is [OperationCanceledException]
     if($undoStarted){$word.UndoRecord.EndCustomRecord();$undoStarted=$false}
+    if($script:typingInterrupted){throw $failure}
     if($editing -and !$fileWriting){
         if((Fingerprint $doc) -ceq $payload.target.fingerprint){
             if($null -ne $payload.target.saved){$doc.Saved=[bool]$payload.target.saved}
+            if($cancelled){@{ok=$true;cancelled=$true}|ConvertTo-Json -Compress;return}
             throw ($failure+' No document edits were applied.')
         }
         try {
@@ -395,8 +454,10 @@ try {
             }
             if($null -ne $payload.target.saved){$doc.Saved=[bool]$payload.target.saved}
         }catch{throw ($failure+' Word could not verify a full rollback. Check the document before retrying.')}
+        if($cancelled){@{ok=$true;cancelled=$true}|ConvertTo-Json -Compress;return}
         throw ($failure+' Word undid this editing batch.')
     }
     if($fileWriting){throw ($failure+' Some edits or file writes may have completed. Check the document before retrying.')}
+    if($cancelled){@{ok=$true;cancelled=$true}|ConvertTo-Json -Compress;return}
     throw $failure
 }

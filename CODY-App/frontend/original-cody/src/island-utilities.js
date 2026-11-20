@@ -74,7 +74,7 @@ class IslandUtilities {
     if(/^(?:(?:show|open|view)(?: me)? (?:my |the )?(?:background )?tasks|background tasks)$/i.test(commandText(input,{preserveShow:true})))return {kind:'local',action:'background-tasks'};
     if(isProofreadCommand(input))return {kind:'direct',action:'text.proofread',args:{}};
     const word=parseWordCommand(input);if(word)return {kind:'direct',...word};
-    const appLayout=parseAppCommand(input);if(appLayout)return {kind:'direct',...appLayout,text:input};
+    const appLayout=parseAppCommand(input);if(appLayout)return {kind:appLayout.action==='window-choose'?'local':'direct',...appLayout,text:input};
     const monitor=this.monitors?.match(input);if(monitor)return {kind:'local',action:'island-monitors',monitor};
     const capture=this.capture?.match(input);if(capture)return {kind:'local',action:'screen-capture',command:capture};
     const game=this.rps?.parse(input);if(game)return {kind:"local",action:"rps",game};
@@ -113,6 +113,10 @@ class IslandUtilities {
     try{
       let reply,confirmation;
       switch(route.action){
+        case 'window-choose':{
+          reply='Which app should I bring to the front? Say “Switch to Word” or “List open windows”.';
+          break;
+        }
         case 'text-context-help':{
           // Only an explicit user request triggers native field detection.
           // No field value or selected text is displayed, logged, or sent to a model.
@@ -228,6 +232,12 @@ class IslandUtilities {
             }else if(operation==='move')reply=`Moved ${name} to monitor ${display}.`;
             else reply=`${{focus:'Focused',restore:'Restored',minimize:'Minimised',maximize:'Maximised',resize:'Resized'}[operation]} ${name}.`;
             confirmation=reply;show({kind:'utility',text:operation==='inspect'?'Window status':'Window updated',detail:name,icon:'external-link'});
+          }
+          else if(action==='window.list'){
+            const titles=Array.isArray(result.result)?result.result.map(window=>window.title).filter(Boolean).slice(0,12):[];
+            reply=titles.length?'Open windows: '+titles.join(', ')+'.':'No open windows found.';
+            confirmation=titles.length?'The open windows are listed in chat.':reply;
+            show({kind:'utility',text:'Open windows',detail:titles.length+' shown',icon:'external-link'});
           }
           else if(action==='window.pin'){const name=appLabel(args.app);reply=result.result?.wasOpen===false?`${name} isn't open.`:args.pinned?`${name} pinned on top.`:`${name} unpinned.`;confirmation=reply;this.showCompact();show({kind:'utility',text:result.result?.wasOpen===false?'Not open':args.pinned?'Pinned on top':'Unpinned',detail:name,icon:'external-link'});}
           else if(action==='word.edit'){reply=result.result.message;confirmation=reply;show({kind:'utility',text:'Word updated',detail:result.result.document||'Active document',icon:'file-text'});}

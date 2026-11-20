@@ -1,11 +1,29 @@
 'use strict';
 const {psQuote,runPowerShell}=require('./windows');
+const wordDocument=require('./word-document');
 const OPERATIONS=new Set(['heading1','heading2','bold','italic','page-break','save']);
-function parseWordInsertion(input){
- const match=/^\s*(?:please\s+)?(?:type|insert|write|add)(?:\s+(?:this|the following)(?:\s+text)?)?(?:\s+(?:in|into|to)\s+(?:(?:the|my|this)\s+)?(?:word(?:\s+document)?|document))?(?:\s*:\s*|\s+)([\s\S]+)$/i.exec(String(input||''));
+const WORD_TARGET='(?:(?:the|my|this)\\s+)?(?:(?:current|open|active)\\s+)?(?:(?:Microsoft\\s+)?Word(?:\\s+doc(?:ument)?)?|doc(?:ument)?)';
+const DESTINATION='(?:in|into|to)\\s+'+WORD_TARGET;
+const BEFORE_TEXT=new RegExp('^('+DESTINATION+')\\s*:\\s*([\\s\\S]+)$','i');
+const AFTER_TEXT=new RegExp('^([\\s\\S]+?)\\s+('+DESTINATION+')(?:,?\\s+please)?[.!?]*$','i');
+const NO_LITERAL_TEXT=new RegExp('^(?:'+DESTINATION+')[.!?]*$','i');
+const DRAFT_REQUEST=/^(?:(?:a|an|one|two|three|\d+)\s+(?:(?:new|short|brief|long|detailed)\s+)*(?:sentences?|paragraphs?|introduction|report|summary|overview|letter|email|message|essay|story|note|poem|list|document)\b|something\b|some\s+(?:stuff|text|words)\b|this(?:\s+text)?$|the following(?:\s+text)?$)/i;
+function parseWordInsertion(input,{wordSelected=true}={}){
+ const command=String(input||'').trim().replace(/^(?:(?:please|(?:can|could|would) you)\s+)+/i,'');
+ const match=/^(type|insert|write|add)(?=\s|:)\s*([\s\S]+)$/i.exec(command);
  if(!match)return null;
- let text=match[1];
- if(text.length>=2&&((text.startsWith('"')&&text.endsWith('"'))||(text.startsWith('“')&&text.endsWith('”'))))text=text.slice(1,-1);
+ const verb=match[1].toLowerCase();
+ const body=match[2];
+ const prefixed=BEFORE_TEXT.exec(body);
+ const suffixed=prefixed?null:AFTER_TEXT.exec(body);
+ if(!wordSelected&&!prefixed&&!suffixed)return null;
+ const content=prefixed?.[2]??suffixed?.[1]??body;
+ const labeled=/^(?:(?:this|the following)(?:\s+text)?\s*)?:\s*([\s\S]+)$/i.exec(content);
+ let text=labeled?.[1]??content;
+ const quoted=/^(?:"([\s\S]*)"|“([\s\S]*)”)$/.exec(text);
+ if(quoted)text=quoted[1]??quoted[2];
+ else if(!prefixed&&!labeled&&(verb!=='type'||NO_LITERAL_TEXT.test(text)||DRAFT_REQUEST.test(text)))return null;
+ if(!text.trim())return null;
  return {action:'word.edit',args:{operation:'insert',text}};
 }
 function parseWordCommand(input){
@@ -44,23 +62,6 @@ async function captureWordTarget({runner=runPowerShell}={}){
     !Number.isInteger(target.start)||target.start<0||!Number.isInteger(target.length)||target.length<1||target.story!==1)
   throw Error('Place the cursor in the main text of an editable Word document.');
  return target;
-}
-function wordInsertionScript(args,target){
- if(!target)throw Error('Select an open Word document first.');
- return [...WORD_CONNECTION,
-  "[Console]::InputEncoding=[Text.Encoding]::UTF8",
-  "$payload=[Console]::In.ReadToEnd()|ConvertFrom-Json",
-  "$target=$payload.target",
-  "if($doc.FullName -cne $target.fullName -or [string]$word.ActiveWindow.Hwnd -ne $target.window -or $doc.Content.End -ne $target.length){throw 'The Word document changed. Place the cursor and send the request again.'}",
-  "if($doc.ReadOnly -or $doc.ProtectionType -ne -1){throw 'The Word document is not editable.'}",
-  "$selection=$word.Selection.Range",
-  "if($selection.StoryType -ne 1 -or $selection.Start -ne $target.start){throw 'The Word cursor moved. Send the request again.'}",
-  "$range=$doc.Range([int]$target.start,[int]$target.start)",
-  "$range.Text=[string]$payload.text",
-  "if($range.Text -cne [string]$payload.text){throw 'Word could not verify the inserted text. Check the document before trying again.'}",
-  "$range.Collapse(0);$range.Select()",
-  "@{ok=$true;operation='insert';message='Text inserted in Word.';document=$doc.Name}|ConvertTo-Json -Compress"
- ].join('\n');
 }
 function wordOperations(){
  return [
@@ -110,12 +111,17 @@ function wordScript(args,target){
  wordOperations()
  ].join('\n');
 }
-async function editWord(args,{runner=runPowerShell,target}={}){
+async function editWord(args,{runner=runPowerShell,target,signal}={}){
  const clean=validateWordArgs(args);
- const input=clean.operation==='insert'?JSON.stringify({text:clean.text.replace(/\r\n|\n/g,'\r'),target}):undefined;
- const raw=await runner(clean.operation==='insert'?wordInsertionScript(clean,target):wordScript(clean,target),{timeout:18000,input});
+ if(clean.operation==='insert'){
+  if(!target?.fingerprint)throw Error('Select an open Word document first.');
+  const result=await wordDocument.execute({steps:[{type:'insert',text:clean.text}]},target,{runner,signal});
+  if(result.cancelled)return result;
+  return {message:'Text inserted in Word.',document:result.document,operation:'insert'};
+ }
+ const raw=await runner(wordScript(clean,target),{timeout:18000});
  let data;try{data=typeof raw==='string'?JSON.parse(raw):raw;}catch{throw Error('Word did not confirm editing operation.');}
  if(data?.ok!==true||data.operation!==clean.operation||typeof data.message!=='string'||!data.message.trim())throw Error('Word did not verify requested edit.');
  return {message:data.message,document:String(data.document||'').slice(0,180),operation:clean.operation};
 }
-module.exports={parseWordCommand,parseWordInsertion,validateWordArgs,wordScript,wordInsertionScript,captureWordTarget,editWord};
+module.exports={WORD_TARGET,parseWordCommand,parseWordInsertion,validateWordArgs,wordScript,captureWordTarget,editWord};

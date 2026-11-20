@@ -10,6 +10,41 @@ namespace HeyClicky.App.Cody;
 // into document text. The local Word controller still validates every plan step.
 internal static class CodyWordPlanReply
 {
+    internal static bool TryParseDraft(string raw, out JsonElement plan)
+    {
+        plan = default;
+        var wrapped = SayLines.InOrder(raw, completeOnly: true);
+        var drafts = ParseDrafts(new[] { raw }.Concat(FencedBlocks(raw, "text"))
+            .Concat(wrapped).Concat(wrapped.SelectMany(line => FencedBlocks(line, "text"))))
+            .Distinct(StringComparer.Ordinal).Take(2).ToArray();
+        if (drafts.Length != 1) return false;
+        var paragraphs = drafts[0].Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (paragraphs.Length is 0 or > 120) return false;
+        plan = JsonSerializer.SerializeToElement(new
+        {
+            steps = paragraphs.Select(text => new { type = "paragraph", text, style = "normal" })
+        });
+        return true;
+    }
+
+    private static IEnumerable<string> ParseDrafts(IEnumerable<string> replies)
+    {
+        const string begin = "WORD_DRAFT_BEGIN\n";
+        const string end = "\nWORD_DRAFT_END";
+        foreach (string reply in replies)
+        {
+            string value = reply.Replace("\r\n", "\n").Trim();
+            if (!value.StartsWith(begin, StringComparison.Ordinal) || !value.EndsWith(end, StringComparison.Ordinal))
+                continue;
+            if (value.Length <= begin.Length + end.Length) continue;
+            string text = value[begin.Length..^end.Length].Trim();
+            if (text.Length is > 0 and <= 25000 && !text.Contains('\0') &&
+                !text.Contains("WORD_DRAFT_BEGIN", StringComparison.Ordinal) &&
+                !text.Contains("WORD_DRAFT_END", StringComparison.Ordinal))
+                yield return text;
+        }
+    }
+
     internal static bool TryParse(string raw, out JsonElement plan)
     {
         // JSON must be tried before scanning say() calls: document prose can itself
@@ -36,7 +71,7 @@ internal static class CodyWordPlanReply
         return true;
     }
 
-    private static IEnumerable<string> FencedBlocks(string text)
+    private static IEnumerable<string> FencedBlocks(string text, string language = "json")
     {
         string[] lines = text.Replace("\r\n", "\n").Split('\n');
         int start = -1;
@@ -49,7 +84,7 @@ internal static class CodyWordPlanReply
                 yield return string.Join("\n", lines.Skip(start).Take(index - start));
                 start = -1;
             }
-            else if (line == "```" || line.Equals("```json", StringComparison.OrdinalIgnoreCase)) start = index + 1;
+            else if (line == "```" || line.Equals("```" + language, StringComparison.OrdinalIgnoreCase)) start = index + 1;
         }
     }
 

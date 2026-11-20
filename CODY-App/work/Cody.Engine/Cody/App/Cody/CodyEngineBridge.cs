@@ -324,7 +324,8 @@ public static class CodyEngineBridge
                     case "proofread":return await CodyProofread.Run(host,Text("target"));
                     case "word-plan":
                         if(session.State!=VoiceState.Idle)throw new InvalidOperationException("Finish the current voice session before drafting a Word document.");
-                        return await CodyWordPlan.Generate(host,Text("text"),Text("context"),Text("assets"));
+                        return await CodyWordPlan.Generate(host,Text("text"),Text("context"),Text("assets"),
+                            request.TryGetProperty("insertOnly",out var insertOnly)&&insertOnly.ValueKind==JsonValueKind.True);
                     case "drive-stop": CancelCurrent();return new {stopped=true};
                     case "approval-state":
                         host.ClickyDriveConsent?.SyncCodyApprovals();Consent.Sweep();return Consent.Snapshot();

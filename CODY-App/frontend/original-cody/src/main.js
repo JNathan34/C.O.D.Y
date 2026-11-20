@@ -857,7 +857,19 @@ else app.whenReady().then(()=>{
   if(process.argv.includes("--verify-performance"))void require("../../../tools/verify-performance.cjs")({win,island,store,engine:nativeEngine});
   if(process.argv.includes("--verify-island-utilities"))void require("../../../tools/verify-island-utilities.cjs")({win,island,store,engine:nativeEngine,desktopTimer});
   if(process.argv.includes("--verify-native-ui")||process.argv.includes("--verify-native-mic"))void require("../../../tools/verify-original-gui.cjs")({win,island,store,engine:nativeEngine});
-  void nativeEngine.start().then(async()=>{await nativeEngine.request('microphone-mute',{muted:island.preferences().microphoneMuted===true});const status=await nativeEngine.refresh();await nativeEngine.request('text-client',{clientPid:process.pid});nativeLinksReady=true;void deliverNativeLinks();controlOverlay.update(await nativeEngine.request('drive-state'));return status;}).then(status=>sendUI("status",{connected:true,detail:status.signedIn?"HeyClicky connected":"HeyClicky sign-in required"})).catch(error=>sendUI("diagnostic",error.message));
+  nativeEngine.on('connected',()=>{
+    void (async()=>{
+      await nativeEngine.request('microphone-mute',{muted:island.preferences().microphoneMuted===true});
+      const status=await nativeEngine.refresh();
+      await nativeEngine.request('text-client',{clientPid:process.pid});
+      controlOverlay.update(await nativeEngine.request('drive-state'));
+      nativeLinksReady=true;
+      void deliverNativeLinks();
+      sendUI('status',{connected:true,detail:status.signedIn?'HeyClicky connected':'HeyClicky sign-in required'});
+    })().catch(error=>sendUI('diagnostic',error.message));
+  });
+  nativeEngine.on('offline',()=>{nativeLinksReady=false;sendUI('status',{connected:false,detail:'HeyClicky disconnected'});});
+  void nativeEngine.start().catch(error=>sendUI('diagnostic',error.message));
   try{desktopTimer.restore();refreshIslandCards();}catch(error){sendUI('diagnostic','Could not restore timer: '+error.message);}
   stopPushToTalk=startPushToTalk(value=>island.handleHotkey(value));
   // Warm the ChatGPT browser in the background. No model calls are made here.

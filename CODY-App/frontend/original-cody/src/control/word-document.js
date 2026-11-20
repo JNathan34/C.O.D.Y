@@ -1,5 +1,7 @@
 'use strict';
 const path=require('node:path');
+const fs=require('node:fs');
+const os=require('node:os');
 const {runPowerShell,psQuote}=require('./windows');
 
 const STYLES=new Set(['normal','title','heading1','heading2','label']);
@@ -11,8 +13,8 @@ const SCRIPT=path.join(__dirname,'../../windows/word-document.ps1').replace('app
 function wordIntent(text,selected=false,pending=false){
   if(selected||pending)return true;
   if(/\b(?:picture|photo|image)\b.*\b(?:wrap|top right|right side)\b|\b(?:move|put)\b.*\b(?:new|next) page\b|\bformat\b.*\b(?:explanations|paragraphs|labels|spacing)\b/i.test(text))return true;
-  return /\b(?:Word (?:document|file|window|app)|(?:in|into|using|with|Microsoft) Word|(?:edit|format|save|open) Word|(?:this|my|the|current|open) document)\b/i.test(text)&&
-    /\b(?:make|create|write|type|draft|revise|rewrite|edit|format|read|show|summarise|summarize|put|insert|add|append|layout|lay out|picture|photo|wrap|export|save|open)\b/i.test(text);
+  return /\b(?:Word (?:doc(?:ument)?|file|window|app)|(?:in|into|using|with|Microsoft) Word|(?:edit|format|save|open) Word|(?:this|my|the|current|open) doc(?:ument)?)\b/i.test(text)&&
+    /\b(?:make|create|write|type|draft|compose|introduce|revise|rewrite|edit|format|read|show|summarise|summarize|put|insert|add|append|layout|lay out|picture|photo|wrap|export|save|open)\b/i.test(text);
 }
 
 function formatting(step){
@@ -188,12 +190,25 @@ async function referenceLayout(file,{runner=runPowerShell}={}){
 }
 
 async function execute(plan,target,{runner=runPowerShell,signal,overwrite=[]}={}){
-  if(signal?.aborted)throw Error('Word editing cancelled.');
-  // Let Word finish or roll back its undo record once an atomic batch has begun.
-  const result=decode(await runner(script(),{timeout:0,input:JSON.stringify({mode:'execute',plan,target,overwrite})}));
-  if(result.ok!==true||result.completed!==plan.steps.length||typeof result.document!=='string')
-    throw Error('Word did not verify every requested document operation.');
-  return result;
+  if(signal?.aborted)return {cancelled:true};
+  const directory=signal?fs.mkdtempSync(path.join(os.tmpdir(),'cody-word-edit-')):null;
+  const cancelPath=directory?path.join(directory,'cancel'):null;
+  // Signal the Word helper and let it verify its own undo record before returning.
+  const abort=()=>{try{fs.writeFileSync(cancelPath,'');}catch{}};
+  signal?.addEventListener('abort',abort,{once:true});
+  try{
+    const result=decode(await runner(script(),{timeout:0,input:JSON.stringify({mode:'execute',plan,target,overwrite,cancelPath})}));
+    if(result.ok===true&&result.cancelled===true)return {cancelled:true};
+    if(result.ok!==true||result.completed!==plan.steps.length||typeof result.document!=='string')
+      throw Error('Word did not verify every requested document operation.');
+    return result;
+  }finally{
+    signal?.removeEventListener('abort',abort);
+    if(directory){
+      try{fs.unlinkSync(cancelPath);}catch{}
+      try{fs.rmdirSync(directory);}catch{}
+    }
+  }
 }
 
 module.exports={wordIntent,formatting,validatePlan,requestedPaths,directPlan,script,snapshot,referenceLayout,execute};

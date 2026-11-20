@@ -4285,13 +4285,9 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 				{
 					corrections.Add("I couldn't drop that straight into the field, so it's on your clipboard. Press Control V to paste it.");
 				}
-				else if (textInsertOutcome.Status == "refused" && textInsertOutcome.Reason == "secure_field")
-				{
-					corrections.Add("I didn't fill that in, it's a password field, so type that one yourself.");
-				}
 				else if (textInsertOutcome.Status != "inserted")
 				{
-					corrections.Add("I didn't fill that in, that field didn't look safe to type into.");
+					corrections.Add(TextEntryFeedback.Message(textInsertOutcome));
 				}
 			}
 			break;
@@ -4639,14 +4635,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			jsonObject["status"] = "refused";
 			jsonObject["reason"] = textInsertOutcome.Reason ?? "unsafe_target";
 			JsonObject jsonObject2 = jsonObject;
-			jsonObject2["message"] = textInsertOutcome.Reason switch
-			{
-				"no_focused_text_field" => "No editable text field has focus right now. If the user means a visible field, type it into the field you see with typeText(x, y, text) in your drawing.", 
-				"own_window" => "Focus is in HeyClicky's own UI, not an app text field. Insert it once the user is in their field.", 
-				"secure_field" => "The focused field is a password/secure field — text is never inserted there. Tell the user to type it themselves.", 
-				"address_bar" => "The focused field is the browser's address bar — not a valid insert target for composed text.", 
-				_ => "That field didn't look safe to type into.", 
-			};
+			jsonObject2["message"] = TextEntryFeedback.Message(textInsertOutcome);
 			result = ToolResults.Json(jsonObject);
 			break;
 		}
@@ -4662,7 +4651,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			{
 				["status"] = "failed",
 				["reason"] = textInsertOutcome.Reason ?? "paste_failed",
-				["message"] = "Couldn't insert into the focused field. Type it into the field you see with typeText(x, y, text) in your drawing instead."
+				["message"] = TextEntryFeedback.Message(textInsertOutcome)
 			});
 			break;
 		}

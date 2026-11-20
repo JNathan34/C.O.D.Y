@@ -9,23 +9,27 @@ const {nativeLayout}=require('./native-layout');
 class NativeEngine extends EventEmitter {
   constructor(){super();this.pending=new Map();this.connected=false;this.status={signedIn:false,state:'Starting'};}
   async start(){
+    if(this.closed)throw Error('C.O.D.Y. is shutting down.');
+    if(this.connected)return this;
     if(this.starting)return this.starting;
-    this.starting=(async()=>{
+    const startup=this.startEngine();
+    this.starting=startup;
+    try{return await startup;}finally{if(this.starting===startup)this.starting=null;}
+  }
+  async startEngine(){
       const {app}=require('electron');
       const layout=nativeLayout({packaged:app.isPackaged,resourcesPath:process.resourcesPath,userData:app.getPath('userData')});
       this.pipeName=layout.pipeName;
       try{await this.connect();return this;}catch{}
       if(!fs.existsSync(layout.executable))throw Error('C.O.D.Y.’s bundled engine files are missing. Reinstall the complete C.O.D.Y. package.');
       let failure;
-      this.child=spawn(layout.executable,['--cody-engine','--background','--allow-capture'],{cwd:layout.directory,env:layout.environment,windowsHide:true,stdio:'ignore'});
-      this.child.on('error',error=>{failure=error;this.emit('diagnostic',error.message);});
-      this.child.on('exit',code=>{if(!this.connected)failure=Error('C.O.D.Y.’s bundled engine exited during startup (code '+code+').');});
+      const child=this.child=spawn(layout.executable,['--cody-engine','--background','--allow-capture'],{cwd:layout.directory,env:layout.environment,windowsHide:true,stdio:'ignore'});
+      child.on('error',error=>{failure=error;this.emit('diagnostic',error.message);});
+      child.on('exit',code=>{if(!this.connected)failure=Error('C.O.D.Y.’s bundled engine exited during startup (code '+code+').');});
       const deadline=Date.now()+120000;
       while(Date.now()<deadline){if(this.closed)throw Error('C.O.D.Y. startup cancelled.');if(failure)throw failure;try{await this.connect();return this;}catch{await new Promise(resolve=>setTimeout(resolve,500));}}
-      this.child?.kill();
+      child.kill();
       throw Error('C.O.D.Y.’s bundled engine did not start. Restart C.O.D.Y. and check its engine log.');
-    })();
-    return this.starting;
   }
   connect(){return new Promise((resolve,reject)=>{
     const socket=net.connect('\\\\.\\pipe\\'+this.pipeName);let buffer='';let accepted=false;socket.setEncoding('utf8');

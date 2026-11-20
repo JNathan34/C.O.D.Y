@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {parseWordCommand,parseWordInsertion,validateWordArgs,wordScript,wordInsertionScript,editWord}=require('../src/control/word-edit');
+const {parseWordCommand,parseWordInsertion,validateWordArgs,wordScript,editWord}=require('../src/control/word-edit');
 const {localMentionRoute}=require('../src/mentions');
 const {ComputerController}=require('../src/control/controller');
 const {IslandUtilities}=require('../src/island-utilities');
@@ -38,6 +38,11 @@ test('Word mention preserves literal text and routes only explicit Word operatio
  assert.deepEqual(localMentionRoute('plugin:word','type '+text,{}).route,
   {action:'word.edit',args:{operation:'insert',text}});
  assert.equal(parseWordInsertion('insert into my Word document: “Hello world.”').args.text,'Hello world.');
+ assert.equal(parseWordInsertion('write a draft about gardening'),null);
+ assert.equal(parseWordInsertion('type a paragraph about gardening in Word'),null);
+ assert.equal(parseWordInsertion('type two short sentences about gardening in Word'),null);
+ assert.equal(parseWordInsertion('type into Word'),null);
+ assert.equal(parseWordInsertion('type Hello there',{wordSelected:false}),null);
  assert.equal(localMentionRoute('plugin:word','add a page break',{}).route.args.operation,'page-break');
  assert.equal(localMentionRoute('plugin:word','2+2',{}).route,undefined);
  assert.equal(parseWordCommand('type '+text),null,'ordinary chat typing is not silently redirected to Word');
@@ -46,31 +51,31 @@ test('Word mention preserves literal text and routes only explicit Word operatio
 });
 
 test('Word insertion captures the document before approval and validates the same document and cursor',async()=>{
- const target={document:'Notes.docx',fullName:'C:\\Docs\\Notes.docx',window:'1234',start:7,story:1,length:25};
+ const target={document:'Notes.docx',fullName:'C:\\Docs\\Notes.docx',window:'1234',start:7,end:7,fingerprint:'contents-at-approval'};
  const scripts=[];let approved=false;
+ const text="' ; Remove-Item C:\\ -Recurse; '#";
  const controller=new ComputerController({
   readPermissions:()=>({enabled:true,level:'ask',keyboardMouse:true,uiAutomation:true,applications:true}),
-  runner:async script=>{
+  runner:async (script,{input})=>{
    scripts.push(script);
-   if(scripts.length===1)return JSON.stringify(target);
+   if(scripts.length===1)return JSON.stringify({ok:true,target});
    assert.ok(approved);
-   return JSON.stringify({ok:true,operation:'insert',message:'Text inserted in Word.',document:target.document});
+   const payload=JSON.parse(input);
+   assert.deepEqual(payload.target,target);
+   assert.deepEqual(payload.plan.steps,[{type:'insert',text}]);
+   assert.doesNotMatch(script,/Remove-Item|SendKeys|Clipboard/);
+   return JSON.stringify({ok:true,completed:1,document:target.document});
   },
-  confirm:async({summary})=>{assert.equal(scripts.length,1);assert.match(summary,/Notes.docx/);assert.match(summary,/Hello/);approved=true;return true;}
+  confirm:async({summary})=>{assert.equal(scripts.length,1);assert.match(summary,/Notes.docx/);assert.ok(summary.includes(text));approved=true;return true;}
  });
- assert.equal((await controller.execute('word.edit',{operation:'insert',text:'Hello'},{origin:'chat'})).result.document,'Notes.docx');
- assert.match(scripts[1],/doc.FullName -cne/);
- assert.match(scripts[1],/selection.Start -ne/);
- assert.doesNotMatch(scripts[1],/GetForegroundWindow|Start-Process|SendKeys|Clipboard/);
- const injection="'; Remove-Item C:\\ -Recurse; '#";
- assert.ok(!wordInsertionScript({text:injection},target).includes(injection));
+ assert.equal((await controller.execute('word.edit',{operation:'insert',text},{origin:'chat'})).result.document,'Notes.docx');
 });
 
 test('declining Word insertion never runs the write script',async()=>{
  let calls=0;
  const controller=new ComputerController({
   readPermissions:()=>({enabled:true,level:'ask',keyboardMouse:true,uiAutomation:true,applications:true}),
-  runner:async()=>{calls++;return {document:'Notes',fullName:'Notes',window:'123',start:0,story:1,length:1};},
+  runner:async()=>{calls++;return {ok:true,target:{document:'Notes',fullName:'Notes',window:'123',start:0,end:0,fingerprint:'original'}};},
   confirm:async()=>false
  });
  assert.equal((await controller.execute('word.edit',{operation:'insert',text:'Hello'},{origin:'chat'})).cancelled,true);

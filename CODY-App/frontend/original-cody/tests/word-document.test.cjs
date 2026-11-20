@@ -6,6 +6,7 @@ const {validatePlan}=require('../src/control/word-document');
 const {WordSession}=require('../src/word-session');
 const {installNativeIpc}=require('../src/native-ipc');
 const {ComputerController}=require('../src/control/controller');
+const {IslandUtilities}=require('../src/island-utilities');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 
 const target={document:'Notes.docx',fullName:'C:\\Docs\\Notes.docx',window:'123',fingerprint:'unchanged',start:0,end:0};
@@ -22,17 +23,17 @@ test('Word plan accepts only attached images and explicit output paths',()=>{
   assert.throws(()=>validatePlan({steps:[{type:'paragraph',text:'hi',fontSize:1000}]}),/font/);
 });
 
-function fixture({changed=false,planner,voiceText}={}){
-  const engine=new EventEmitter(),handlers=new Map(),calls=[],edits=[],messages=[];
+function fixture({changed=false,planner,voiceText,history=[],paragraphs=[],utilities={match:()=>null}}={}){
+  const engine=new EventEmitter(),handlers=new Map(),calls=[],edits=[],messages=[...history];
   const wc={mainFrame:{}};
   let reads=0;
   const controller={
-    readWord:async()=>({ok:true,target:{...target,...(changed&&reads++?{window:'456'}:{})},context:{paragraphs:[]}}),
+    readWord:async()=>({ok:true,target:{...target,...(changed&&reads++?{window:'456'}:{})},context:{paragraphs}}),
     execute:async(action,args)=>{edits.push({action,args});return {ok:true,result:{document:'Notes.docx'}};}
   };
   engine.request=async(command,args)=>{
     calls.push({command,args});
-    if(command==='begin'||command==='utility-route')return {};
+    if(command==='begin'||command==='utility-route'||command==='speak')return {};
     if(command==='end')return {utilityText:voiceText};
     assert.equal(command,'word-plan','document drafting cannot reach general submit or agent actions');
     const count=calls.filter(call=>call.command==='word-plan').length;
@@ -40,8 +41,8 @@ function fixture({changed=false,planner,voiceText}={}){
   };
   installNativeIpc({
     ipcMain:{removeHandler(){},handle:(name,fn)=>handlers.set(name,fn)},engine,controller,
-    utilities:{match:()=>null},getWindow:()=>({webContents:wc}),getState:()=>({}),
-    sendUI(){},store:{data:{activeChatId:'one',settings:{},chats:[]},chat:()=>({}),save(){},publicState:()=>({}),
+    utilities,getWindow:()=>({webContents:wc}),getState:()=>({}),
+    sendUI(){},store:{data:{activeChatId:'one',settings:{},chats:[]},chat:()=>({messages}),save(){},publicState:()=>({}),
       addMessage(chatId,role,text){const message={id:String(messages.length),role,text};messages.push(message);return message;}}
   });
   const send=(text,capabilityId='')=>handlers.get('send-message')({sender:wc,senderFrame:wc.mainFrame},{chatId:'one',text,capabilityId});
@@ -116,19 +117,122 @@ test('Word drafting through an inline mention never becomes literal instruction 
   assert.equal(f.edits[0].args.plan.steps[0].text,paragraph.text);
 });
 
-test('simple writing requests from the screenshot draft into Word without typing the instruction',async()=>{
+test('generic writing and introductions work in Word without the AI connection',async()=>{
   for(const text of [
     'Can you write something introducing yourself in this Word document, please?',
-    'write something in this document'
+    'write something in this document',
+    'write some stuff in the document',
+    'tell me about yourself in the word doc',
+    'Could you describe yourself in my open Word document?',
+    'In this Word doc, tell me about yourself.',
+    'Tell me in the Word doc about yourself.'
   ]){
-    const f=fixture({planner:()=>({steps:[paragraph]})});
+    const f=fixture({planner:()=>assert.fail('Generic writing should work locally')});
     assert.equal((await f.send(text)).word,true);
     await f.settled();
-    assert.deepEqual(f.calls.map(call=>call.command),['word-plan']);
-    assert.equal(f.calls[0].args.text,text);
+    assert.equal(f.calls.length,0);
     assert.equal(f.edits.length,1);
-    assert.equal(f.edits[0].args.plan.steps[0].text,paragraph.text);
+    assert.match(f.edits[0].args.plan.steps[0].text,/I’m C\.O\.D\.Y\./);
   }
+});
+
+test('ordinary chat and requests about Word are kept out of document edits',()=>{
+  const session=new WordSession({controller:{},engine:{}});
+  for(const text of ['Tell me about yourself','Tell me about Microsoft Word','Explain what is written in this Word doc'])
+    assert.equal(session.matches(text,'one','',null),false,text);
+});
+
+const earlierWordAttempt=[
+  {id:'prior-request',role:'user',text:'tell me about yourself in the word doc'},
+  {id:'unsafe-field',role:'assistant',text:"I didn't fill that in, that field didn't look safe to type into."},
+  {id:'prior-retry',role:'user',text:'just do it'},
+  {id:'old-agent',role:'assistant',text:'I’ll try direct control to focus Word and type.'}
+];
+
+test('a confirmation after the old Word failure writes locally once',async()=>{
+  const f=fixture({history:earlierWordAttempt});
+  assert.equal((await f.send('just do it')).word,true);
+  await f.settled();
+  assert.match(f.edits[0].args.plan.steps[0].text,/I’m C\.O\.D\.Y\./);
+  assert.equal(f.calls.length,0);
+  await f.send('try again');await f.settled();
+  assert.equal(f.edits.length,1);
+  assert.match(f.messages.at(-1).text,/already updated/);
+});
+
+test('an older attempt with an uncertain result does not replay into a populated document',async()=>{
+  const f=fixture({history:earlierWordAttempt,paragraphs:[paragraph]});
+  assert.equal((await f.send('just do it')).word,true);
+  await f.settled();
+  assert.equal(f.edits.length,0);
+  assert.equal(f.calls.length,0);
+  assert.match(f.messages.at(-1).text,/already has content/);
+  const session=new WordSession({controller:{},engine:{}});
+  assert.equal(session.followUp('just do it',[...earlierWordAttempt,{role:'user',text:'Tell me a joke'}]),null);
+});
+
+test('a spoken confirmation of the Word request is handled before agent submission',async()=>{
+  const text='just do it';
+  const f=fixture({voiceText:text,history:earlierWordAttempt});
+  await f.invoke('native-begin');
+  const turn=f.calls[0].args.turn;
+  f.engine.emit('classify-utility',{turn,text});
+  assert.equal(f.calls[1].args.handled,true);
+  await f.invoke('native-end');
+  assert.equal(f.edits.length,1);
+  assert.deepEqual(f.calls.map(call=>call.command),['begin','utility-route','end']);
+});
+
+test('typed and spoken window switches take the local route without a model request',async()=>{
+  const text='Switch to Word',actions=[];
+  const utilities=new IslandUtilities({showCard(){},controller:{async execute(action,args){
+    actions.push({action,args});return {ok:true,result:{...args,verified:true}};
+  }}});
+  const typed=fixture({utilities});
+  assert.equal((await typed.send(text)).utility,true);
+  await typed.settled();
+  assert.deepEqual(typed.calls,[]);
+  assert.match(typed.messages.at(-1).text,/Focused Word/);
+  const spoken=fixture({utilities,voiceText:text});
+  await spoken.invoke('native-begin');
+  spoken.engine.emit('classify-utility',{turn:spoken.calls[0].args.turn,text});
+  assert.equal(spoken.calls[1].args.handled,true);
+  await spoken.invoke('native-end');
+  assert.deepEqual(spoken.calls.map(call=>call.command),['begin','utility-route','end','speak']);
+  assert.deepEqual(actions,[{action:'window.manage',args:{app:'word',operation:'focus'}},{action:'window.manage',args:{app:'word',operation:'focus'}}]);
+});
+
+test('literal Word typing works without a plugin mention and uses the exact supplied text',async()=>{
+  const f=fixture({planner:()=>assert.fail('Literal typing should work locally')});
+  assert.equal((await f.send('Could you type “One line.\nAnother line!” in Word, please?')).word,true);
+  await f.settled();
+  assert.equal(f.calls.length,0);
+  assert.deepEqual(f.edits,[{action:'word.edit',args:{operation:'insert',text:'One line.\nAnother line!'}}]);
+});
+
+test('“write in this Word doc” and “about yourself” complete locally, even during engine loss',async()=>{
+  const f=fixture({planner:()=>assert.fail('The reported requests should not require the engine')});
+  assert.equal((await f.send('write in this word doc')).word,true);
+  await f.settled();
+  assert.match(f.messages.at(-1).text,/What should I write about/);
+  assert.equal(f.edits.length,0);
+  assert.equal((await f.send('about yourself')).word,true);
+  f.engine.emit('offline');
+  await f.settled();
+  assert.equal(f.calls.length,0);
+  assert.equal(f.edits.length,1);
+  assert.match(f.edits[0].args.plan.steps[0].text,/I’m C\.O\.D\.Y\./);
+  assert.match(f.messages.at(-1).text,/Updated Notes.docx/);
+});
+
+test('original prose uses a text-only draft while compound edits keep the full planner',async()=>{
+  const f=fixture({planner:()=>({steps:[paragraph]})});
+  await f.send('write a short paragraph about bee gardens in Word');await f.settled();
+  await f.send('describe the solar system in this Word doc');await f.settled();
+  await f.send('write a short paragraph about bee gardens in Word and save the document');await f.settled();
+  await f.send('tell me about yourself in the Word doc and then save it');await f.settled();
+  assert.deepEqual(f.calls.map(call=>call.args.insertOnly),[true,true,false,false]);
+  assert.equal(f.edits.length,4);
 });
 
 test('routine formatting and a chosen right-wrapped picture execute without an AI request',async()=>{
