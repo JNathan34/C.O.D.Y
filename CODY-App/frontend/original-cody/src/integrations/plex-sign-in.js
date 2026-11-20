@@ -1,5 +1,6 @@
 'use strict';
 const {endpoint}=require('./self-hosted');
+const SERVER_CHOICE_MS=15*60*1000;
 
 // The browser handles account credentials. PINs and discovery tokens stay in
 // this main-process session; the renderer receives names and server IDs only.
@@ -9,6 +10,7 @@ class PlexSignIn {
     this.phase='idle';this.message='';this.session=null;
   }
   snapshot(){
+    if(this.session&&!this.current(this.session))this.expire(this.session);
     return {phase:this.phase,message:this.message,servers:this.session?.servers?.map(server=>({
       id:server.id,name:server.name,owned:server.owned
     }))||[]};
@@ -21,9 +23,21 @@ class PlexSignIn {
   }
   close(){this.cancel();}
   current(session){return this.session===session&&!session.abort.signal.aborted&&this.now()<session.expires;}
+  setExpiry(session,duration){
+    this.clearTimer(this.expiryTimer);
+    const expires=session.expires=this.now()+duration;
+    this.expiryTimer=this.setTimer(()=>{
+      // An old PIN timer can already be queued when authentication completes.
+      if(session.expires===expires)this.expire(session);
+    },duration);
+    this.expiryTimer?.unref?.();
+  }
   expire(session){
     if(this.session!==session)return;
-    this.cancel();this.phase='expired';this.message='Plex sign-in expired. Select Sign in with Plex to try again.';
+    const choosing=this.phase==='servers'||this.phase==='discovering';
+    this.cancel();this.phase='expired';
+    this.message=choosing?'Plex server selection timed out. Sign in again to refresh your server list.':
+      'Plex sign-in expired. Select Sign in with Plex to try again.';
   }
   async json(url,{token,method='GET',signal,clientId}={}){
     let response;
@@ -54,9 +68,7 @@ class PlexSignIn {
         throw Error('Plex could not start sign-in. Try again.');
       session.pin=pin.id;session.code=pin.code;
       const seconds=Number(pin.expiresIn);
-      session.expires=this.now()+Math.min(600,Number.isFinite(seconds)&&seconds>0?seconds:300)*1000;
-      this.expiryTimer=this.setTimer(()=>this.expire(session),session.expires-this.now());
-      this.expiryTimer?.unref?.();
+      this.setExpiry(session,Math.min(600,Number.isFinite(seconds)&&seconds>0?seconds:300)*1000);
       const query=new URLSearchParams({clientID:clientId,code:pin.code,'context[device][product]':'C.O.D.Y.'});
       try{await this.openBrowser('https://app.plex.tv/auth#?'+query);}
       catch{throw Error('Could not open Plex sign-in in your browser. Try again.');}
@@ -76,15 +88,25 @@ class PlexSignIn {
   }
   async check(session=this.session){
     if(!session||!this.current(session)){if(session)this.expire(session);return;}
+    if(!['waiting','discovering'].includes(this.phase)||session.polling)return;
+    this.clearTimer(this.pollTimer);
+    session.polling=true;
     try{
-      const pin=await this.json('https://plex.tv/api/v2/pins/'+session.pin+'?code='+encodeURIComponent(session.code),
-        {clientId:session.clientId,signal:session.abort.signal});
-      if(!this.current(session))return;
-      if(!pin.authToken){this.schedule(session);return;}
-      if(typeof pin.authToken!=='string'||pin.authToken.length>1024||/[\r\n]/.test(pin.authToken))
-        throw Error('Plex returned an invalid sign-in response.');
+      if(!session.authToken){
+        const pin=await this.json('https://plex.tv/api/v2/pins/'+session.pin+'?code='+encodeURIComponent(session.code),
+          {clientId:session.clientId,signal:session.abort.signal});
+        if(!this.current(session))return;
+        if(!pin.authToken){this.schedule(session);return;}
+        if(typeof pin.authToken!=='string'||pin.authToken.length>1024||/[\r\n]/.test(pin.authToken))
+          throw Error('Plex returned an invalid sign-in response.');
+        session.authToken=pin.authToken;
+        delete session.pin;
+        delete session.code;
+        this.phase='discovering';this.message='Signed in to Plex. Finding your media servers…';
+        this.setExpiry(session,SERVER_CHOICE_MS);
+      }
       const resources=await this.json('https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1',
-        {token:pin.authToken,clientId:session.clientId,signal:session.abort.signal});
+        {token:session.authToken,clientId:session.clientId,signal:session.abort.signal});
       if(!this.current(session))return;
       if(!Array.isArray(resources))throw Error('Plex could not find your servers. Try signing in again.');
       session.servers=resources.filter(server=>
@@ -97,15 +119,20 @@ class PlexSignIn {
         owned:server.owned===true||server.owned===1,key:server.accessToken,
         connections:server.connections
       }));
-      this.phase='servers';this.message=session.servers.length?'Signed in to Plex. Choose your media server.':
-        'This Plex account has no media servers. Add a server to your account, then sign in again.';
-      if(session.servers.length===1)await this.select(session.servers[0].id);
+      delete session.authToken;
+      if(!session.servers.length){
+        this.cancel();this.phase='error';
+        this.message='This Plex account has no media servers. Add a server to your account, then sign in again.';
+        return;
+      }
+      this.phase='servers';this.message='Signed in to Plex. Choose your media server.';
+      this.setExpiry(session,SERVER_CHOICE_MS);
     }catch(error){
       if(!this.current(session))return;
-      if([404,410].includes(error.status)){this.expire(session);return;}
+      if(!session.authToken&&[404,410].includes(error.status)){this.expire(session);return;}
       if([401,403].includes(error.status)){this.cancel();this.phase='error';this.message=error.message;return;}
       this.message=error.message+' Retrying…';this.schedule(session);
-    }
+    }finally{session.polling=false;}
   }
   async select(id){
     const session=this.session;
@@ -113,6 +140,10 @@ class PlexSignIn {
     if(this.phase!=='servers')throw Error('Wait for Plex sign-in to finish.');
     const server=session.servers.find(server=>server.id===id);
     if(!server)throw Error('Choose a server from your Plex account.');
+    // Connection probes have their own request timeouts. Let a choice made
+    // before expiry finish even if the picker deadline passes during a probe.
+    this.clearTimer(this.expiryTimer);
+    session.expires=Infinity;
     this.phase='connecting';this.message='Connecting to '+server.name+'…';
     const connections=[];
     for(const connection of server.connections){
@@ -137,7 +168,8 @@ class PlexSignIn {
     }catch(error){
       if(this.session!==session)return this.snapshot();
       this.phase='servers';this.message=error.message;
-      throw error;
+      this.setExpiry(session,SERVER_CHOICE_MS);
+      return this.snapshot();
     }
   }
 }

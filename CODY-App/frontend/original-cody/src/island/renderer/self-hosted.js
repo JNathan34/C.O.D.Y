@@ -3,7 +3,7 @@
  const api=window.assistant?.selfHosted,area=document.querySelector('[data-content="integrations"]');
  const status=document.getElementById('self-hosted-status'),results=document.getElementById('self-hosted-results');
  if(!api||!area||!status||!results)return;
- let state,busy=false,plexState=null,plexTimer,plexLoading=false,lastSearch=[],plexFeedback='';
+ let state,busy=false,plexState=null,plexTimer,plexLoading=false,lastSearch=[],plexFeedback='',plexRevision=0;
  const plexApi=api.plexSignIn;
  const plexButton=document.getElementById('plex-sign-in');
  const plexTest=document.getElementById('plex-test');
@@ -88,21 +88,27 @@
  function renderPlex(){
   if(!plexButton)return;
   const phase=plexState?.phase;
-  const pending=['starting','waiting','servers','connecting'].includes(phase);
+  const pending=['starting','waiting','discovering','servers','connecting'].includes(phase);
   const connected=state?.services?.plex?.connected===true;
   plexButton.hidden=connected&&!pending;
-  plexButton.disabled=busy||!plexApi||['starting','waiting','connecting'].includes(phase)||state?.available===false;
+  plexButton.disabled=busy||!plexApi||pending||state?.available===false;
   plexButton.textContent='Sign in with Plex';
   plexTest.hidden=!connected;
   plexTest.disabled=busy||pending||!connected;
   plexDisconnect.hidden=!connected;
   plexCancel.hidden=!pending;
   plexCancel.disabled=false;
-  plexStatus.textContent=plexFeedback||(pending||['error','expired'].includes(phase)?plexState?.message:'')||'';
-  plexStatus.hidden=!plexStatus.textContent;
-  const selected=plexServers.value;
-  plexServers.replaceChildren(...(plexState?.servers||[]).map(server=>new Option(server.name+(server.owned?'':' (shared)'),server.id)));
-  if([...plexServers.options].some(option=>option.value===selected))plexServers.value=selected;
+  const message=plexFeedback||(pending||['error','expired'].includes(phase)?plexState?.message:'')||'';
+  if(plexStatus.textContent!==message)plexStatus.textContent=message;
+  plexStatus.hidden=!message;
+  const servers=(plexState?.servers||[]).map(server=>({value:server.id,label:server.name+(server.owned?'':' (shared)')}));
+  const options=[...plexServers.options];
+  // Replacing the options closes an open native dropdown even if the list is unchanged.
+  if(servers.length!==options.length||servers.some((server,i)=>server.value!==options[i].value||server.label!==options[i].text)){
+   const selected=plexServers.value;
+   plexServers.replaceChildren(...servers.map(server=>new Option(server.label,server.value)));
+   if(servers.some(server=>server.value===selected))plexServers.value=selected;
+  }
   plexServerForm.hidden=phase!=='servers'||!plexServers.options.length;
   plexServerForm.querySelector('button').disabled=busy||phase!=='servers';
   plexPanel.hidden=!pending&&!plexStatus.textContent;
@@ -110,32 +116,46 @@
   if(pending)plexTimer=setTimeout(()=>void syncPlex(),1500);
  }
  async function syncPlex(){
-  if(!plexApi||plexLoading)return;
+  if(!plexApi||plexLoading||busy)return;
   plexLoading=true;
+  const revision=plexRevision;
   try{
    const previous=plexState?.phase;
-   plexState=await plexApi.state();
-   if(plexState.phase==='connected'&&previous!=='connected'){
-    state=await api.status();
+   const next=await plexApi.state();
+   if(revision!==plexRevision)return;
+   if(next.phase==='connected'&&previous!=='connected'){
+    const saved=await api.status();
+    if(revision!==plexRevision)return;
+    state=saved;
+    plexState=next;
     plexFeedback='';
     render();
-   }else renderPlex();
-  }catch(error){plexFeedback=error.message;renderPlex();}
+   }else{plexState=next;renderPlex();}
+  }catch(error){if(revision===plexRevision){plexFeedback=error.message;renderPlex();}}
   finally{plexLoading=false;}
  }
  async function load(){
+  const revision=plexRevision;
   try{
-   state=await api.status();
-   if(plexApi)plexState=await plexApi.state();
+   const [saved,next]=await Promise.all([api.status(),plexApi?.state()]);
+   if(revision!==plexRevision)return;
+   state=saved;
+   if(next)plexState=next;
    render();
    if(!state.available)status.textContent='Windows encrypted credential storage is unavailable. Connections cannot be saved.';
   }
   catch(error){status.textContent='Cannot load media connections: '+error.message;}
  }
+ async function invokePlex(method,...args){
+  const revision=++plexRevision;
+  try{
+   const next=await plexApi[method](...args);
+   if(revision===plexRevision){plexState=next;renderPlex();}
+  }catch(error){if(revision===plexRevision)throw error;}
+ }
  plexButton?.addEventListener('click',()=>void work(async()=>{
   plexFeedback='';
-  plexState=await plexApi.start();
-  renderPlex();
+  await invokePlex('start');
  },'plex'));
  plexTest?.addEventListener('click',()=>void work(async()=>{
   const result=await api.read('plex','test');
@@ -143,14 +163,19 @@
   plexFeedback='Connection verified'+(result.name?' — '+text(result.name):'')+'.';
  },'plex',false));
  plexCancel?.addEventListener('click',async()=>{
-  try{plexFeedback='';plexState=await plexApi.cancel();renderPlex();}
+  try{plexFeedback='';await invokePlex('cancel');}
   catch(error){plexFeedback=error.message;renderPlex();}
  });
  plexServerForm?.addEventListener('submit',event=>{
   event.preventDefault();
   void work(async()=>{
-   plexState=await plexApi.select(plexServers.value);
+   const id=plexServers.value;
+   const server=plexState.servers.find(server=>server.id===id);
+   if(!server)return;
+   plexState={...plexState,phase:'connecting',message:'Connecting to '+server.name+'…'};
    renderPlex();
+   try{await invokePlex('select',id);}
+   catch(error){await load();throw error;}
   },'plex');
  });
  async function work(action,service,reload=true){

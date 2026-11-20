@@ -16,7 +16,7 @@ function fixture(t,{resources=[resource()],fetcher,openBrowser}={}){
     decryptString:bytes=>Buffer.from(bytes.toString(),'base64').toString()};
   const file=path.join(directory,'connections.dat');
   const service=new SelfHosted({file,cipher});
-  const calls=[],opened=[];
+  const calls=[],opened=[],timers=[];
   let claimed=false,clock=1000;
   const defaultFetch=async(url,options)=>{
     if(url.includes('/pins?'))return reply({id:123,code:'private-sign-in-code',expiresIn:300});
@@ -25,11 +25,15 @@ function fixture(t,{resources=[resource()],fetcher,openBrowser}={}){
     const match=resources.find(server=>url.startsWith(server.connections[0].uri));
     return reply({MediaContainer:{machineIdentifier:match?.clientIdentifier}});
   };
-  const auth=new PlexSignIn({service,now:()=>clock,setTimer:()=>({unref(){}}),clearTimer(){},
+  const auth=new PlexSignIn({service,now:()=>clock,setTimer:(run,ms)=>{
+    const timer={run,ms,cleared:false,unref(){}};
+    timers.push(timer);
+    return timer;
+  },clearTimer(timer){if(timer)timer.cleared=true;},
     openBrowser:async url=>{opened.push(url);if(openBrowser)await openBrowser(url);},
     fetcher:async(url,options)=>{calls.push({url,options});return (fetcher||defaultFetch)(url,options);}
   });
-  return {auth,service,file,cipher,calls,opened,claim:()=>claimed=true,advance:milliseconds=>clock+=milliseconds};
+  return {auth,service,file,cipher,calls,opened,timers,claim:()=>claimed=true,advance:milliseconds=>clock+=milliseconds};
 }
 
 test('Plex browser sign-in discovers the server and securely retains its server token',async t=>{
@@ -43,6 +47,9 @@ test('Plex browser sign-in discovers the server and securely retains its server 
   await f.auth.check();
   assert.equal(f.auth.snapshot().phase,'waiting');
   f.claim();await f.auth.check();
+  assert.equal(f.auth.snapshot().phase,'servers');
+  assert.equal(f.calls.some(call=>call.url.endsWith('/identity')),false);
+  await f.auth.select('server-one');
   assert.equal(f.auth.snapshot().phase,'connected');
   const status=f.service.status().services.plex;
   assert.equal(status.name,'My Plex');
@@ -69,6 +76,55 @@ test('multiple and shared Plex servers require a choice from the discovered acco
   await assert.rejects(f.auth.select('https://arbitrary.example.com'),/Choose a server/);
   await f.auth.select('server-two');
   assert.equal(f.service.status().services.plex.name,'Shared Plex');
+});
+
+test('the server picker survives a queued PIN expiry and a slow choice can still connect',async t=>{
+  let resolveProbe;
+  const servers=[resource(),resource('server-two',false)];
+  const f=fixture(t,{fetcher:async url=>{
+    if(url.includes('/pins?'))return reply({id:123,code:'private-sign-in-code',expiresIn:2});
+    if(url.includes('/pins/'))return reply({authToken:'private-account-token'});
+    if(url.includes('/resources?'))return reply(servers);
+    return new Promise(resolve=>resolveProbe=resolve);
+  }});
+  await f.auth.start();
+  const pinTimer=f.timers.find(timer=>timer.ms===2000);
+  f.advance(1900);
+  await f.auth.check();
+  const choiceTimer=f.timers.at(-1);
+  assert.equal(pinTimer.cleared,true);
+  f.advance(200);
+  pinTimer.run();
+  assert.deepEqual(f.auth.snapshot().servers.map(server=>server.id),['server-one','server-two']);
+  const select=f.auth.select('server-two');
+  f.advance(choiceTimer.ms);
+  choiceTimer.run();
+  assert.equal(f.auth.snapshot().phase,'connecting');
+  resolveProbe(reply({MediaContainer:{machineIdentifier:'server-two'}}));
+  assert.equal((await select).phase,'connected');
+  assert.equal(f.service.status().services.plex.name,'Shared Plex');
+});
+
+test('approved discovery retries without polling the PIN again, and a failed server stays available to retry',async t=>{
+  let discoveries=0,probes=0;
+  const f=fixture(t,{fetcher:async url=>{
+    if(url.includes('/pins?'))return reply({id:123,code:'private-sign-in-code',expiresIn:2});
+    if(url.includes('/pins/'))return reply({authToken:'private-account-token'});
+    if(url.includes('/resources?'))return ++discoveries===1?{ok:false,status:503}:reply([resource()]);
+    return ++probes===1?{ok:false,status:503}:reply({MediaContainer:{machineIdentifier:'server-one'}});
+  }});
+  await f.auth.start();
+  await f.auth.check();
+  assert.equal(f.auth.snapshot().phase,'discovering');
+  f.advance(2100);
+  await f.auth.check();
+  assert.equal(f.auth.snapshot().phase,'servers');
+  assert.equal((await f.auth.select('server-one')).phase,'servers');
+  assert.match(f.auth.snapshot().message,/could not be reached/);
+  assert.equal(f.auth.snapshot().servers.length,1);
+  assert.equal(f.calls.filter(call=>call.url.includes('/pins/')).length,1);
+  assert.equal(f.timers.filter(timer=>!timer.cleared&&timer.ms===1500).length,0);
+  assert.equal((await f.auth.select('server-one')).phase,'connected');
 });
 
 test('cancelled Plex sign-in never opens a late browser window or overwrites the connection',async t=>{
@@ -100,6 +156,7 @@ test('server identity mismatch cannot save a discovered access token',async t=>{
     return reply({MediaContainer:{machineIdentifier:'different-server'}});
   }});
   await f.auth.start();await f.auth.check();
+  await f.auth.select('server-one');
   assert.equal(f.auth.snapshot().phase,'servers');
   assert.equal(f.service.status().services.plex.connected,false);
   assert.match(f.auth.snapshot().message,/could not be reached/);

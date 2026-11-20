@@ -226,6 +226,7 @@
   }
   function busy(value){
     app.busy=Boolean(value);island.backendBusy=app.busy;
+    if(!app.busy&&island.getState()==='thinking')island.setState(wakeListening()?'listening':'idle');
     $('quick-input').disabled=app.busy;$('new-chat').disabled=app.busy;
     $('core-history').disabled=app.busy;
     renderHistory();
