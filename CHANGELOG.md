@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.35 — 20 November 2026
+
+- Switch, list and manage open windows with local commands that use no agent quota.
+- Route Word introductions and confirmed retries to the local Word editor. Show text as it is typed and clear the Island’s thinking state when the edit finishes.
+- Keep Plex sign-in active while you choose a media server.
+
 ## 0.15.34 — 19 November 2026
 
 - Disable automatic drawing movement and target tracking during scrolling.
