@@ -17,8 +17,8 @@ function captureCommand(input,{recording=false}={}){
   return null;
 }
 class ScreenCapture extends EventEmitter{
-  constructor({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,annotations,now=Date.now,captureImage=captureScreenshot}){
-    super();Object.assign(this,{BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,annotations,now,captureImage});
+  constructor({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,annotations,monitorAccess,now=Date.now,captureImage=captureScreenshot}){
+    super();Object.assign(this,{BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures,videos,annotations,monitorAccess,now,captureImage});
     this.status='idle';this.elapsed=0;this.bytes=0;this.pending=new Map();this.tail=Promise.resolve();
     const authorize=event=>{if(event.sender!==this.worker?.webContents||event.senderFrame!==event.sender.mainFrame)throw Error('Untrusted screen recorder');};
     ipcMain.handle('screen-recorder-chunk',async(event,value)=>{
@@ -36,21 +36,46 @@ class ScreenCapture extends EventEmitter{
   snapshot(){const now=this.now();return {status:this.status,elapsedMs:this.elapsed+(this.status==='recording'?now-this.segment:0),capturedAt:now,bytes:this.bytes,savedPath:this.lastSaved||null,screenshotPath:this.lastScreenshot||null,error:this.error||null};}
   publish(){const state=this.snapshot();this.emit('change',state);return state;}
   match(text){return captureCommand(text,{recording:this.active});}
-  async source(thumbnail=false){
-    const display=this.screen.getPrimaryDisplay(),scale=display.scaleFactor||1;
-    const sources=await this.desktopCapturer.getSources({types:['screen'],thumbnailSize:thumbnail?{width:Math.round(display.size.width*scale),height:Math.round(display.size.height*scale)}:{width:0,height:0}});
-    const source=sources.find(item=>String(item.display_id)===String(display.id))||(sources.length===1?sources[0]:null);
-    if(!source)throw Error('Primary screen is unavailable.');return {source,display};
+  async source(displayId){
+    const state=await this.monitorAccess?.refresh();
+    const display=this.monitorAccess?this.monitorAccess.requireDisplay(displayId,state):this.screen.getPrimaryDisplay();
+    const sources=await this.desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:0,height:0}});
+    const source=sources.find(item=>String(item.display_id)===String(display.id))||(!this.monitorAccess?.restricted&&displayId===undefined&&sources.length===1?sources[0]:null);
+    if(!source)throw Error('The selected monitor is unavailable.');
+    const key=this.monitorAccess?.mapped(state).find(item=>item.display?.id===display.id)?.monitor.id;
+    return {source,display,key};
+  }
+  async validateSource({display,key}){
+    if(!this.monitorAccess)return;
+    const state=await this.monitorAccess.refresh();
+    this.monitorAccess.requireDisplay(display.id,state);
+    if(key&&!this.monitorAccess.mapped(state).some(item=>item.monitor.id===key&&item.display?.id===display.id))throw Error('The selected monitor changed during screen capture.');
+  }
+  async recordingDisplayChanged(){
+    const selection=this.recordingSource;
+    if(!this.active||!selection)return;
+    try{await this.validateSource(selection);}
+    catch(error){if(this.active&&this.recordingSource===selection)await this.fail(error,{discard:true});}
+  }
+  async frameSource(displayId){
+    const selection=await this.source(displayId),{source,display}=selection,scale=display.scaleFactor||1;
+    const factor=Math.min(scale,1600/display.size.width,900/display.size.height);
+    const png=await this.captureImage({BrowserWindow:this.BrowserWindow,sourceId:source.id,width:Math.round(display.size.width*factor),height:Math.round(display.size.height*factor)});
+    await this.validateSource(selection);
+    const thumbnail=this.nativeImage.createFromBuffer(png);
+    if(thumbnail.isEmpty())throw Error('Windows returned an empty screenshot.');
+    return {name:source.name,display_id:String(display.id),thumbnail};
   }
   filename(prefix,extension){return `${prefix} ${new Date(this.now()).toISOString().replace(/[:.]/g,'-')} ${randomUUID().slice(0,6)}.${extension}`;}
   async screenshot({annotated=false}={}){
-    const {source,display}=await this.source(),scale=display.scaleFactor||1;
+    const selection=await this.source(),{source,display}=selection,scale=display.scaleFactor||1;
     // The overlay's render queue must finish before capturing the live screen.
     // A normal screenshot hides C.O.D.Y's ink, whereas explicit annotated
     // capture keeps it visible and never alters the underlying document.
     await this.annotations?.serial;
     const capture=()=>this.captureImage({BrowserWindow:this.BrowserWindow,sourceId:source.id,width:Math.round(display.size.width*scale),height:Math.round(display.size.height*scale)});
     const png=this.annotations?.overlay?await this.annotations.overlay.withoutAnnotations(capture,{includeAnnotations:annotated}):await capture();
+    await this.validateSource(selection);
     const image=this.nativeImage.createFromBuffer(png);if(image.isEmpty())throw Error('Windows returned an empty screenshot.');
     await fs.mkdir(this.pictures,{recursive:true});const file=path.join(this.pictures,this.filename(annotated?'Annotated Screenshot':'Screenshot','png'));
     await fs.writeFile(file,png,{flag:'wx'});this.lastScreenshot=file;
@@ -80,10 +105,12 @@ class ScreenCapture extends EventEmitter{
       if(this.active)return {reply:'Screen recording is already active.',state:this.snapshot()};
       this.status='starting';this.error=null;this.elapsed=0;this.bytes=0;this.sequence=0;this.session=randomUUID();this.publish();
       try{
-        const {source,display}=await this.source();await fs.mkdir(this.videos,{recursive:true});
+        const selection=await this.source(),{source,display}=selection;this.recordingSource=selection;
+        await fs.mkdir(this.videos,{recursive:true});
         this.output=path.join(this.videos,this.filename('Screen recording','mp4'));this.partial=this.output+'.partial';
         this.file=await fs.open(this.partial,'wx');await this.makeWorker();
         await this.request('start',{sourceId:source.id,width:Math.round(display.size.width*(display.scaleFactor||1)),height:Math.round(display.size.height*(display.scaleFactor||1))});
+        await this.validateSource(selection);
         this.segment=this.now();this.status='recording';this.publish();return {reply:'Screen recording started.',confirmation:'Done.'};
       }catch(error){await this.fail(error);throw error;}
     }
@@ -106,12 +133,13 @@ class ScreenCapture extends EventEmitter{
     }
     throw Error('Unknown screen capture action.');
   }
-  destroyWorker(){const worker=this.worker;this.worker=null;if(worker&&!worker.isDestroyed())worker.destroy();}
-  async fail(error){
+  destroyWorker(){const worker=this.worker;this.worker=null;this.recordingSource=null;if(worker&&!worker.isDestroyed())worker.destroy();}
+  async fail(error,{discard=false}={}){
+    if(this.status==='error')return;
     this.status='error';this.error=error.message;
     for(const request of this.pending.values()){clearTimeout(request.timer);request.reject(error);}this.pending.clear();
     this.destroyWorker();const file=this.file;this.file=null;if(file)await file.close().catch(()=>{});
-    if(this.partial){if(this.bytes)await fs.rename(this.partial,this.output.replace(/\.mp4$/i,'.partial.mp4')).catch(()=>{});else await fs.unlink(this.partial).catch(()=>{});}
+    if(this.partial){if(this.bytes&&!discard)await fs.rename(this.partial,this.output.replace(/\.mp4$/i,'.partial.mp4')).catch(()=>{});else await fs.unlink(this.partial).catch(()=>{});}
     this.publish();
   }
   reveal(kind){const file=kind==='screenshot'?this.lastScreenshot:this.lastSaved;if(!file)return false;this.shell.showItemInFolder(file);return true;}

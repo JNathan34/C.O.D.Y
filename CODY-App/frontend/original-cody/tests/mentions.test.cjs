@@ -31,13 +31,15 @@ function fixture({unavailable=false}={}){
   return {invoke,messages,calls,catalog};
 }
 
-test('the mentions picker combines local tools with the native inventory',async()=>{
+test('the mentions picker preserves Computer Use and omits other local and native tools',async()=>{
   const f=fixture();
+  f.catalog.push({id:'skill:browser',name:'Browser Control',kind:'skill'},
+    {id:'tool:computer-use',name:'Computer Use',kind:'tool'},{id:'tool:timer',name:'Timer',kind:'tool'});
   const local=await f.invoke('mentions-list',true);
-  assert.ok(local.items.some(item=>item.id==='tool:calculator'));
+  assert.deepEqual(local.items.map(item=>item.id),['plugin:word']);
   assert.equal(f.calls.length,0);
   const all=await f.invoke('mentions-list');
-  assert.ok(all.items.some(item=>item.id==='plugin:higgsfield'));
+  assert.deepEqual(all.items.map(item=>item.id),['plugin:word','plugin:higgsfield','skill:browser','tool:computer-use']);
 });
 
 test('a mentioned local tool runs only the matching action',async()=>{

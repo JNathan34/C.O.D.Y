@@ -62,6 +62,7 @@ let sendProviderMessage,cancelProviderTurn;
 const {IslandUtilities}=require('./island-utilities');
 const {RockPaperScissors}=require('./rock-paper-scissors');
 const {ScreenCapture}=require('./screen-capture');
+const {MonitorAccess}=require('./monitor-access');
 const {IslandMonitors}=require('./island-monitors');
 const {BrightnessMonitor}=require('./brightness-monitor');
 const {Attachments,attachmentNames,isImageAttachment}=require('./attachments');
@@ -70,6 +71,7 @@ const {ControlOverlay}=require('./control-overlay');
 const {KeywordWakeListener}=require('./voice/keyword-wake-listener');
 let controlOverlay,wakeListener;
 const nativeEngine=new NativeEngine();
+const monitorAccess=new MonitorAccess({screen,engine:nativeEngine});
 let actionAudit,assistantModes,selfHosted,plexSignIn,overseerrRequestFlow;
 async function openPreferredWebLink(rawUrl){
   const url=new URL(rawUrl);
@@ -224,12 +226,22 @@ function registerIpc(){
   ipcMain.handle('backend-refresh',e=>{fromAnnotationUI(e);return heyclicky.refresh();});
   const fromCody=e=>{if(!win||e.sender!==win.webContents)throw Error('Computer controls are only accessible from the C.O.D.Y interface')};
   const fromAnnotationUI=e=>{fromCody(e);if(e.senderFrame!==win.webContents.mainFrame)throw Error('Annotations require the trusted main C.O.D.Y frame');};
+  ipcMain.handle('monitor-access-state',e=>{fromAnnotationUI(e);return monitorAccess.refresh();});
+  ipcMain.handle('monitor-access-configure',async(e,settings)=>{
+    fromAnnotationUI(e);
+    if(screenCapture?.active||activeTurn||starting)throw Error('Finish or stop the current request or screen recording before changing monitor access.');
+    const result=await monitorAccess.configure(settings);
+    captures.clear();annotations.clearImmediate('monitor access changed');scene.clearImmediate('monitor access changed');
+    island.positionDisplay();
+    sendUI('monitor-access-changed',result);
+    return result;
+  });
   registerMemoryIpc({ipcMain,dialog,window:()=>win,authorise:fromAnnotationUI,memory,error:memoryError,codex:codexAgent,withFileDialog:island.withFileDialog,onAccessChange:()=>{if(activeTurn?.engine==='codex-bridge')activeTurn.abortController.abort();for(const chat of store.data.chats)delete chat.codexBridgeThreadId;store.save();}});
   ipcMain.handle('annotations-settings',e=>{fromAnnotationUI(e);return annotations.status();});
   ipcMain.handle('annotations-configure',(e,patch)=>{fromAnnotationUI(e);const result=annotations.configure(patch);store.settings({annotations:result.settings});sendUI('settings-changed',store.data.settings);return result;});
   ipcMain.handle('annotations-clear',e=>{fromAnnotationUI(e);annotations.clearImmediate('cleared by user');return {cleared:true};});
   // Explicit trusted demo buttons render fixed local visuals, without AI or computer automation.
-  ipcMain.handle('annotations-demo',async e=>{fromAnnotationUI(e);return annotations.execute('draw.batch',{commands:demoCommands(screen.getPrimaryDisplay().bounds).filter(command=>annotations.settings.spotlight||command.action!=='draw.spotlight')},{origin:'gui'});});
+  ipcMain.handle('annotations-demo',async e=>{fromAnnotationUI(e);const display=monitorAccess.requireDisplay(undefined,await monitorAccess.refresh());return annotations.execute('draw.batch',{commands:demoCommands(display.bounds).filter(command=>annotations.settings.spotlight||command.action!=='draw.spotlight')},{origin:'gui'});});
   ipcMain.handle('annotations-speech',(e,event)=>{
     fromAnnotationUI(e);const data=typeof event==='string'?{phase:event}:event;
     if(!data||Object.keys(data).some(key=>!['phase','scopeId','segmentId','currentTime'].includes(key))||!['playing','paused','resumed','progress','finished','cancelled'].includes(data.phase)||data.scopeId!==undefined&&(typeof data.scopeId!=='string'||data.scopeId.length>100)||data.currentTime!==undefined&&(!Number.isFinite(data.currentTime)||data.currentTime<0))throw Error('Invalid speech playback event');
@@ -257,6 +269,7 @@ function registerIpc(){
     if(id==='plex'&&method==='sessions')return selfHosted.plexSessions();
     if(id==='plex'&&method==='recent')return selfHosted.plexRecent();
     if(id==='plex'&&method==='test')return selfHosted.plexTest();
+    if(id==='overseerr'&&method==='test')return selfHosted.overseerrTest();
     if(id==='overseerr'&&method==='requests')return selfHosted.overseerrRequests();
     if(id==='overseerr'&&method==='search')return selfHosted.overseerrSearch(query);
     throw Error('Unknown self-hosted read request.');
@@ -644,8 +657,24 @@ else app.whenReady().then(()=>{
     if(store.chat(timer.chatId)){const message=store.addMessage(timer.chatId,'assistant','Your timer is up.','local');sendUI('message-added',{chatId:timer.chatId,message});}
   });
   captures=new CaptureRegistry({screen});
-  annotations=new AnnotationManager({overlay:new AnnotationOverlay({BrowserWindow,ipcMain,screen}),screen,captures,settings:store.data.settings.annotations,refreshTarget:(reference,cache)=>controller.refreshAnnotationTarget(reference,cache)});
-  scene=new SceneManager({adapter:new SceneWindow({BrowserWindow,ipcMain}),screen,assets:new AssetRegistry(),settings:store.data.settings.visuals});
+  const visualScreen={
+    getAllDisplays:()=>{const main=monitorAccess.primary()?.id;return monitorAccess.all().sort((a,b)=>Number(b.id===main)-Number(a.id===main));},
+    getPrimaryDisplay:()=>monitorAccess.primary()||screen.getPrimaryDisplay(),
+    screenToDipRect:(window,rect)=>screen.screenToDipRect(window,rect)
+  };
+  annotations=new AnnotationManager({overlay:new AnnotationOverlay({BrowserWindow,ipcMain,screen}),screen:visualScreen,captures,settings:store.data.settings.annotations,refreshTarget:(reference,cache)=>controller.refreshAnnotationTarget(reference,cache)});
+  scene=new SceneManager({adapter:new SceneWindow({BrowserWindow,ipcMain}),screen:visualScreen,assets:new AssetRegistry(),settings:store.data.settings.visuals});
+  island.setDisplayProvider(()=>monitorAccess.primary());
+  const refreshMonitors=()=>monitorAccess.refresh().then(state=>{
+    island.positionDisplay();sendUI('monitor-access-changed',state);
+  }).catch(()=>{});
+  void refreshMonitors();
+  for(const event of ['display-added','display-removed','display-metrics-changed'])screen.on(event,()=>{
+    captures.clear();
+    if(monitorAccess.restricted){annotations.clearImmediate('monitor changed');scene.clearImmediate('monitor changed');}
+    void refreshMonitors();
+    void screenCapture?.recordingDisplayChanged();
+  });
   visualLedger=new VisualLedger();
   scene.on('diagnostic',message=>sendUI('diagnostic','3D visuals: '+message));
   annotations.on('diagnostic',message=>sendUI('diagnostic','Annotations: '+message));
@@ -677,7 +706,7 @@ else app.whenReady().then(()=>{
     canUseLocalTools:()=>assistantModes.isLocalControlAllowed(),
     writePermissions:settings=>{store.settings({computerControl:settings});if(nativeEngine.connected&&(store.data.settings.nativePermissions?.enabled!==settings.enabled||store.data.settings.nativePermissions?.level!==settings.level))void nativeEngine.request("permissions-configure",{enabled:settings.enabled,level:settings.level}).catch(error=>sendUI("diagnostic",error.message));},
     getWorkingFolder:()=>store.data.settings.workingFolder,
-    clipboard,desktopCapturer,browserBridge:firefoxBridge,spotify,annotations,scene,captures,visualLedger,
+    clipboard,desktopCapturer,browserBridge:firefoxBridge,spotify,annotations,scene,captures,visualLedger,monitorAccess,
     logAction:event=>{backendCapabilities.observe(event);actionAudit.append(event);},
     confirm:async({action,summary})=>{
       const id='local-'+require('node:crypto').randomUUID();
@@ -695,7 +724,8 @@ else app.whenReady().then(()=>{
   controller.nativeAudio={set:level=>nativeEngine.request("audio-set",{level}),mute:muted=>nativeEngine.request("audio-mute",{muted})};
   controller.nativeKeyboard=(text,words)=>nativeEngine.request('keyboard-entry',{text,words});
   rps=new RockPaperScissors();rps.on("change",state=>{sendUI("rps-state",state);refreshIslandCards();});
-  screenCapture=new ScreenCapture({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures:path.join(app.getPath('pictures'),'C.O.D.Y'),videos:path.join(app.getPath('videos'),'C.O.D.Y'),annotations});
+  screenCapture=new ScreenCapture({BrowserWindow,ipcMain,desktopCapturer,screen,clipboard,nativeImage,shell,pictures:path.join(app.getPath('pictures'),'C.O.D.Y'),videos:path.join(app.getPath('videos'),'C.O.D.Y'),annotations,monitorAccess});
+  controller.captureDisplay=id=>screenCapture.frameSource(id);
   let lastSavedCapture=null;screenCapture.on('change',state=>{sendUI('capture-state',state);refreshIslandCards();if(state.status==='starting')island.collapse();if(state.status==='saved'&&state.savedPath!==lastSavedCapture){lastSavedCapture=state.savedPath;showQuickCard({kind:'utility',text:'Recording saved',detail:'Click to open',icon:'camera',captureKind:'recording'});}if(state.status==='error')showQuickCard({kind:'utility',text:'Recording error',detail:state.error,icon:'circle-alert'});});
   monitors=new IslandMonitors({settingsFile:path.join(app.getPath('userData'),'island-monitors.json'),weather,readDesktopFrames:()=>nativeEngine.request('desktop-frames'),fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact({automatic:true});lastMonitorActive=state.active;});
@@ -769,6 +799,7 @@ else app.whenReady().then(()=>{
     void nativeEngine.request('speech-subtitles-configure',{enabled}).catch(error=>sendUI('diagnostic','Subtitles: '+error.message));
   };
   nativeEngine.on('speech-subtitle',line=>subtitles.show(line));
+  nativeEngine.on('speech-subtitle-end',()=>subtitles.finishSpeech());
   for(const event of ['speech-subtitle-clear','offline'])nativeEngine.on(event,()=>subtitles.clear());
   for(const event of ['lock-screen','suspend'])powerMonitor.on(event,()=>subtitles.setSuspended(true));
   for(const event of ['unlock-screen','resume'])powerMonitor.on(event,()=>subtitles.setSuspended(false));

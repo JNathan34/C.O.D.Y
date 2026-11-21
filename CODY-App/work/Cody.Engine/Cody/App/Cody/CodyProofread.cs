@@ -52,7 +52,7 @@ internal static partial class CodyProofread
             Anchor anchor;
             if(pid==clientPid){lock(gate)anchor=recent;if(anchor==null||DateTime.UtcNow-anchor.Time>TimeSpan.FromMinutes(2))return null;}
             else{var element=automation.Focused();if(!Eligible(element,pid))return null;anchor=new(element,hwnd,pid,DateTime.UtcNow);}
-            if(!Eligible(anchor.Element,anchor.Pid))return null;
+            if(!CodyMonitorAccess.AllowsWindow(anchor.Window)||!Eligible(anchor.Element,anchor.Pid))return null;
             string value=anchor.Element.Property(30045) as string;
             if(string.IsNullOrWhiteSpace(value)||value.Length>12000)return null;
             int start=0,length=value.Length;
@@ -114,6 +114,7 @@ internal static partial class CodyProofread
     private static void Validate(Target target)
     {
         var a=target.Anchor;nint foreground=GetForegroundWindow();GetWindowThreadProcessId(foreground,out int frontPid);
+        if(!CodyMonitorAccess.AllowsWindow(a.Window))throw new InvalidOperationException(CodyMonitorAccess.Blocked);
         if(!IsWindow(a.Window)||!Eligible(a.Element,a.Pid)||a.Element.Property(30045) as string!=target.Value)throw new InvalidOperationException("The text box changed. Nothing was replaced; try spell checking again.");
         if(foreground!=a.Window&&frontPid!=clientPid)throw new InvalidOperationException("You switched apps. Nothing was replaced; try spell checking again.");
         if(foreground==a.Window&&a.Element.Property(30008) is not true)throw new InvalidOperationException("You switched text boxes. Nothing was replaced.");

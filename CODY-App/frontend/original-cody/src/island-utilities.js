@@ -2,7 +2,7 @@
 const {routeRequest,localAnswer,localCard}=require('./router');
 const {parseDirectAction}=require('./control/parser');
 const {commandText,repairSpeechCommand}=require('./command-text');
-const {parseMediaCommand,parsePlexAvailability,isPlexSessionRequest}=require('./media-commands');
+const {parseMediaCommand,parsePlexAvailability,isPlexSessionRequest,isOverseerrRequestList}=require('./media-commands');
 const {parseAppCommand}=require('./app-commands');
 const {isProofreadCommand}=require('./proofread-command');
 const {parseSystemCommand}=require('./control/system-settings');
@@ -17,6 +17,7 @@ const DISCORD_PROGRESS={
   deafen:{on:'Deafening…',off:'Undeafening…',toggle:'Toggle deafen…'}
 };
 const discordCard=(text,icon,tooltip)=>({kind:'utility',source:'discord',text,detail:'Discord',icon,tooltip});
+const REQUEST_STATUS={1:'Pending approval',2:'Approved',3:'Declined',4:'Failed',5:'Completed'};
 function brightnessCard(result,delta){
   const levels=(Array.isArray(result.levels)?result.levels:[result.level]).filter(Number.isInteger);
   const low=Math.min(...levels),high=Math.max(...levels);
@@ -47,6 +48,7 @@ class IslandUtilities {
   constructor({selfHosted,overseerrRequests,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,overseerrRequests,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false}={}){
     if(this.selfHosted&&isPlexSessionRequest(input))return {kind:'local',action:'self-hosted-plex-sessions'};
+    if(this.selfHosted&&isOverseerrRequestList(input,this.selfHosted.data?.overseerr))return {kind:'local',action:'self-hosted-overseerr-requests'};
     const availability=this.overseerrRequests&&parsePlexAvailability(input);
     if(availability)return {kind:'local',action:'overseerr-availability',args:availability};
     if(this.textContext&&/^(?:what can you do (?:with|in) this (?:text ?box|field|text)|suggest (?:some )?(?:edits|actions) (?:for|in) this (?:text|field)|help me (?:edit|write) (?:this|the) (?:text|field))$/i.test(commandText(input,{preserveShow:true})))
@@ -55,8 +57,6 @@ class IslandUtilities {
       const text=commandText(input,{preserveShow:true}).toLowerCase();
       if(/^(?:show|check) (?:my )?(?:recent|recently added) plex (?:movies|shows|media)$|^(?:what was|what's) recently added to plex$/.test(text))
         return {kind:'local',action:'self-hosted-plex-recent'};
-      if(/^(?:show|check|list) (?:my )?overseerr requests$|^overseerr requests$/.test(text))
-        return {kind:'local',action:'self-hosted-overseerr-requests'};
       const search=/^(?:search|find) (?:on |in )?overseerr (?:for )?(.+)$/.exec(text);
       if(search&&search[1].length>=2&&search[1].length<=100)return {kind:'local',action:'self-hosted-overseerr-search',query:search[1]};
     }
@@ -142,8 +142,9 @@ class IslandUtilities {
         }
         case 'self-hosted-overseerr-requests':{
           const items=await this.selfHosted.overseerrRequests();
-          reply=items.length?'Overseerr has '+items.length+' recent requests. '+items.slice(0,5).map(x=>x.title).join('; ')+'.':'No recent Overseerr requests found.';
-          show({kind:'utility',text:items.length+' media requests',detail:'Overseerr',icon:'list'});break;
+          const recent=items.slice(0,5).map(({title,status})=>'- '+title+' · '+(REQUEST_STATUS[status]||'Status unknown'));
+          reply=recent.length?['Recent Overseerr requests',...recent].join('\n'):'No recent Overseerr requests found.';
+          show({kind:'utility',text:recent.length+' recent requests',detail:'Overseerr',icon:'list'});break;
         }
         case 'self-hosted-overseerr-search':{
           const items=await this.selfHosted.overseerrSearch(route.query);

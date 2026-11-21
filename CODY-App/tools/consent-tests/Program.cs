@@ -37,6 +37,19 @@ try{
  decision=null;var unrelated=gated.Request("extra-usage","Test","No action",v=>decision=v);Check(decision==null&&gated.Contains(unrelated),"control approval never grants unrelated paid usage");
  CodyPermissions.Load(policyFile);Check(CodyPermissions.Enabled&&CodyPermissions.Automatic,"permission selection survives engine reload");
  try{CodyPermissions.Configure(true,"invalid");throw new Exception("invalid accepted");}catch(ArgumentException){}Check(CodyPermissions.Automatic,"invalid changes preserve the saved policy");
+ foreach (string level in new[]{"ask", "approve-safe", "full", "custom"})
+ {
+     CodyPermissions.Configure(true, level, computerUse: false);
+     Check(CodyPermissions.Enabled && !CodyPermissions.CanUseComputer && !CodyPermissions.CanUseAgentComputer &&
+         CodyPermissions.Decision("takeover-card") == false && CodyPermissions.Decision("job:computer-use") == false,
+         $"Computer Use off blocks native control in {level} mode without disabling the master switch");
+     CodyPermissions.Load(policyFile);
+     Check(!CodyPermissions.CanUseComputer && CodyPermissions.Current.level == level, "Computer Use off survives reload");
+     CodyPermissions.Configure(computerUse: true);
+     bool? expected = level is "full" or "custom" ? true : null;
+     Check(CodyPermissions.CanUseComputer && CodyPermissions.Decision("takeover-card") == expected,
+         $"Computer Use on restores {level} approval behavior");
+ }
  CodyPermissions.Configure(false);Check(CodyPermissions.Decision("job:two")==false,"master switch blocks background control even in automatic mode");
 }finally{System.IO.File.Delete(policyFile);System.IO.Directory.Delete(System.IO.Path.GetDirectoryName(policyFile));}
 Check(CodyEscapeTakeBack.ShouldTakeBack(0x1B,true,0),"physical Esc takes control back");

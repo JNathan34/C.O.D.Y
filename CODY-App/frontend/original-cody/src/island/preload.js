@@ -1,7 +1,9 @@
 'use strict';
 const {contextBridge,ipcRenderer,webUtils}=require('electron');
 const allowedEvents=new Set(['updates-state','status','diagnostic','auth-changed','chats-changed','settings-changed','message-added','message-delta','message-replace','activity','usage','busy','approval','approval-resolved','window-state','quota','web-status','firefox-status','voice-hotkey','timer-changed','island-card','island-task-status','spotify-changed','native-phase','native-meter','rps-state','capture-state','monitor-state','computer-approvals','attachments-state','tasks-changed','tasks-open','browser-setup','browser-setup-open','wake-word-state']);
+allowedEvents.add('monitor-access-changed');
 contextBridge.exposeInMainWorld('assistant',{
+  monitorAccess:{state:()=>ipcRenderer.invoke('monitor-access-state'),configure:value=>ipcRenderer.invoke('monitor-access-configure',value)},
   browserSetup:{state:()=>ipcRenderer.invoke('browser-setup-state'),choose:value=>ipcRenderer.invoke('browser-setup-choice',value),folder:()=>ipcRenderer.invoke('browser-setup-folder')},
   browserPreference:{state:()=>ipcRenderer.invoke('browser-preference-state'),select:id=>ipcRenderer.invoke('browser-preference-select',id)},
   updates:{state:()=>ipcRenderer.invoke('updates-state'),check:()=>ipcRenderer.invoke('updates-check'),download:()=>ipcRenderer.invoke('updates-download'),install:()=>ipcRenderer.invoke('updates-install'),configure:value=>ipcRenderer.invoke('updates-configure',value),releases:()=>ipcRenderer.invoke('updates-releases')},

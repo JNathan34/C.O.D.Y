@@ -60,13 +60,7 @@
     const icon = document.createElement('span');
     icon.className = 'inline-mention-icon';
     icon.setAttribute('aria-hidden', 'true');
-    window.CODYIcons?.set(icon, span.dataset.icon);
-    if (span.dataset.logo) {
-      const image = document.createElement('img');
-      image.alt = '';
-      image.src = span.dataset.logo;
-      image.addEventListener('load', () => icon.replaceChildren(image), {once: true});
-    }
+    window.CODYIcons?.setMention(icon,mention);
     const label = document.createElement('span');
     label.className = 'inline-mention-name';
     label.textContent = String(mention.name || 'Skill');

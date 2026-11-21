@@ -53,7 +53,7 @@ internal static class CodyMentions
         }
         var entry = Available(host).FirstOrDefault(entry => entry.Id == id)
             ?? throw new InvalidOperationException(id == "tool:computer-use"
-                ? "Computer Use is unavailable. Check Settings → Permissions."
+                ? "Computer Use is unavailable. Check Settings → Plugins."
                 : "This capability is unavailable. Check its connection or permissions in Settings, or remove the mention.");
         return new CompanionCapability(entry.Kind, entry.Name, entry.Target);
     }

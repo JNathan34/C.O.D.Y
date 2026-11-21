@@ -146,7 +146,7 @@
             <div class="composer">
               <div id="mention-picker" class="mention-picker" hidden>
                 <div id="mention-status" class="mention-status" role="status"></div>
-                <div id="mention-results" class="mention-results" role="listbox" aria-label="Available capabilities"></div>
+                <div id="mention-results" class="mention-results" role="listbox" aria-label="Available mentions"></div>
               </div>
               <div id="attachment-list" class="attachment-list" aria-label="Attached files" hidden></div>
               <label for="quick-input" class="sr-only">Message C.O.D.Y.</label>
@@ -233,7 +233,7 @@
               <div class="settings-group">
                 <label class="setting-row"><span><strong>Font size</strong><small>Adjust chat text and interface labels.</small></span><select class="scale-select" data-pref="fontScale" aria-label="Font size"><option value="90">90%</option><option value="100">100% (Default)</option><option value="115">115%</option><option value="130">130%</option><option value="150">150%</option></select></label>
                 <label class="setting-row"><span><strong>GUI size</strong><small>Scale the chat, Settings and task panels.</small></span><select class="scale-select" data-pref="guiScale" aria-label="GUI size"><option value="90">90%</option><option value="100">100% (Default)</option><option value="110">110%</option><option value="125">125%</option></select></label>
-                <label class="setting-row"><span><strong>On-screen subtitles</strong><small>Show C.O.D.Y.’s spoken replies above the taskbar, even when your sound is off.</small></span><input type="checkbox" data-pref="speechSubtitles"></label>
+                <label class="setting-row"><span><strong>On-screen subtitles</strong><small>Keep each line visible while Cody reads it. Captions follow Cody’s voice speed.</small></span><input type="checkbox" data-pref="speechSubtitles"></label>
               </div>
             </div>
             <div class="settings-tab" data-content="memory" hidden>
@@ -406,6 +406,8 @@
                   <button type="submit" class="light-action">Connect to server</button>
                 </form>
                 </div>
+                <button type="button" class="light-action" id="overseerr-test" disabled>Test connection</button>
+                <p id="overseerr-status" class="setting-help" role="status" hidden></p>
                 <div class="plugin-connection" data-media-panel="overseerr" hidden>
                 <form data-self-hosted="overseerr">
                   <small id="self-hosted-overseerr-state" class="setting-help">Not connected</small>
@@ -418,15 +420,10 @@
                   <button type="button" class="light-action" data-self-hosted-disconnect="overseerr">Disconnect</button>
                   </div>
                 </form>
-                <div class="plugin-card-actions">
-                  <button type="button" class="light-action" data-self-hosted-read="overseerr:requests">View requests</button>
-                </div>
-                <form id="self-hosted-search-form"><label for="self-hosted-search-query">Movie or TV title</label><input id="self-hosted-search-query" type="search" placeholder="Movie or TV title" maxlength="100" aria-label="Search Overseerr titles" required><button type="submit" class="light-action">Search Overseerr</button></form>
                 <p class="setting-help">Your API key is encrypted on this Windows account and excluded from settings backups.</p>
                 </div>
               </div>
               <p id="self-hosted-status" class="setting-help" role="status"></p>
-              <div id="self-hosted-results" class="settings-group" aria-label="Self-hosted media results"></div>
               <details class="plugin-custom"><summary>Add an MCP plugin</summary><form id="plugins-add-form"><label>Plugin name<input id="plugins-add-name" maxlength="80" required autocomplete="off"></label><label>MCP server URL<input id="plugins-add-url" type="url" maxlength="2048" placeholder="https://example.com/mcp" required autocomplete="off"></label><label>API key (optional)<input id="plugins-add-key" type="password" maxlength="8192" autocomplete="new-password"></label><p class="setting-help">Use an API key if your server needs one, or connect through its browser sign-in.</p><button class="light-action" type="submit" id="plugins-add-submit">Add plugin</button></form></details>
             </div>
             <div class="settings-tab" data-content="agents" hidden>
@@ -478,6 +475,14 @@
   <option value="custom"><span class="access-entry"><span data-access-icon="settings" aria-hidden="true"></span><span><strong>Custom</strong><small class="access-subtext">Choose which permissions C.O.D.Y. can use.</small></span></span></option>
 </select></label><div class="setting-row"><span><strong>Emergency stop</strong><small>Take back control and disable further computer actions.</small></span><button id="core-emergency" class="light-action" type="button">Stop controls</button></div></div>
 <p class="setting-help">Cody controls the mouse and keyboard while computer use is active. Physical mouse and keyboard input is paused during computer use. Press Esc to stop and take back control.</p><p id="core-permission-status" class="setting-help" role="status">Loading backend permissions…</p>
+<h3 class="group-title">MONITOR ACCESS</h3>
+<form id="monitor-access" class="settings-group">
+  <label class="setting-row"><span><strong>Main monitor</strong><small>Choose where the Island appears and which monitor Cody uses first.</small></span><select id="monitor-access-main" disabled><option value="">Windows primary display</option></select></label>
+  <label class="setting-row"><span><strong>Limit monitor access</strong><small>Allow screen viewing, screenshots, recordings and Computer Use only on selected monitors.</small></span><input id="monitor-access-limit" type="checkbox" disabled></label>
+  <div id="monitor-access-list" role="group" aria-label="Allowed monitors" hidden></div>
+  <div class="setting-row"><span><small id="monitor-access-status" role="status">Loading monitors…</small></span><button id="monitor-access-save" class="light-action" type="submit" disabled>Save monitor access</button></div>
+</form>
+<script src="monitor-access.js" defer></script>
 <h3 class="group-title">ACTION HISTORY</h3><div class="settings-group">
  <div class="setting-row"><span><strong>Recent computer actions</strong><small>View the last 80 actions on this PC. No typed text, passwords or browser URLs are saved in this audit log.</small></span><button id="action-history-toggle" class="light-action" type="button" aria-expanded="false" aria-controls="action-history-results">View history</button></div>
 </div><div id="action-history-results" class="settings-group" role="log" aria-live="polite" hidden></div><div id="core-custom-permissions" hidden><h3 class="group-title">CUSTOM PERMISSIONS</h3><p class="setting-help">Enable the access you want C.O.D.Y. to use. Disabled permissions are blocked.</p><div class="settings-group"><label class="setting-row"><span><strong>Computer use</strong><small>Allow native mouse and keyboard control of apps.</small></span><input type="checkbox" data-native-permission="computerUse"></label><label class="setting-row"><span><strong>Background task computer use</strong><small>Let background agents use the mouse and keyboard when computer use is enabled.</small></span><input type="checkbox" data-native-permission="backgroundTasks"></label></div><h3 class="group-title">CODY BACKEND</h3><div class="settings-group"><label class="setting-row"><span><strong>Read on-screen app context</strong><small>Let the assistant include foreground app context in its replies.</small></span><input type="checkbox" data-native-permission="readApps"></label><label class="setting-row"><span><strong>Approve extra task usage automatically</strong><small>Allow background tasks to continue using paid CODY usage without asking each time.</small></span><input type="checkbox" data-native-permission="extraUsage"></label></div><h3 class="group-title">C.O.D.Y. QUICK COMMANDS</h3><p class="setting-help">These switches control built-in C.O.D.Y. commands. CODY background jobs use their own tools and the backend permissions above.</p><div class="settings-group"><label class="setting-row"><span><strong>System information</strong></span><input type="checkbox" data-core-permission="systemInfo"></label>

@@ -78,6 +78,7 @@ public sealed class PlatformDesktopActions : IDesktopActions
 		if (requireAutomatic && !CodyPermissions.Automatic)
 			return new("refused", "Use the normal Computer Use approval flow to type into this field.");
 		nint window = GetForegroundWindow();
+		if (!CodyMonitorAccess.AllowsWindow(window)) return new("refused", CodyMonitorAccess.Blocked);
 		GetWindowThreadProcessId(window, out uint pid);
 		if (window == 0 || pid == 0) return new("refused", "no_focused_text_field");
 		if (CodyDrawingOwner.Own((int)pid)) return new("refused", "own_window");
@@ -88,7 +89,7 @@ public sealed class PlatformDesktopActions : IDesktopActions
 		}
 		catch (ArgumentException) { return new("refused","no_focused_text_field"); }
 		var result = await CodyAccessibilityInput.EnterText(window, text, CodyTextEntryIntent.Replace(words),
-			() => window == GetForegroundWindow() && !ct.IsCancellationRequested && CodyPermissions.CanUseComputer,
+			() => window == GetForegroundWindow() && !ct.IsCancellationRequested && CodyPermissions.CanUseComputer && CodyMonitorAccess.AllowsWindow(window),
 			CodyTextEntryIntent.Paste(words) ? "ctrl+v" : null, ct).ConfigureAwait(false);
 		return result.Handled ? new("inserted") : new(result.Attempted ? "failed" : "refused", result.Reason);
 	}
@@ -98,8 +99,9 @@ public sealed class PlatformDesktopActions : IDesktopActions
 
 	public (string? DisplayName, string? ProcessName) FrontApplication()
 	{
+		if (!CodyMonitorAccess.AllowsWindow(GetForegroundWindow())) return (null, null);
 		ForegroundApp foregroundApp = ForegroundAppInfo.CaptureUserApp();
-		if ((object)foregroundApp != null)
+		if ((object)foregroundApp != null && CodyMonitorAccess.AllowsWindow(foregroundApp.WindowHandle))
 		{
 			return (DisplayName: foregroundApp.AppName, ProcessName: foregroundApp.ProcessName);
 		}

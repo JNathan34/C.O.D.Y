@@ -2838,7 +2838,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 					metrics.MarkRequestSent();
 					return await brainClient.StreamTurnAsync((Utf8JsonWriter writer) =>
 					{
-						WriteTurnBody(writer, new TurnBodyParts(thread, itemsSoFar, context.SessionId, roundTurnToken, userLayer, userLayerSignature, sendEnvironment, words2, request.Fact, timeLabel, frontApp, AppTeachingIds.FrontAppIdentifier(request.FrontApp.ProcessName), highlightGesture, request.Typed, liveState, screenshotBase64, cursorFrame, otherFrames, keepsScreens ? turnNote : null, (round == 0) ? request.AudioSeconds : ((double?)null), request.Trigger, context.DrawingCodeToResend, drawingOnScreen, request.WalkthroughStep, request.Flow ?? flow, settings.Read((AppSettings s) => s.OneBrainModel), settings.Read((AppSettings s) => s.OneBrainReadsApps))
+						WriteTurnBody(writer, new TurnBodyParts(thread, itemsSoFar, context.SessionId, roundTurnToken, userLayer, userLayerSignature, sendEnvironment, words2, request.Fact, timeLabel, frontApp, AppTeachingIds.FrontAppIdentifier(request.FrontApp.ProcessName), highlightGesture, request.Typed, liveState, screenshotBase64, cursorFrame, otherFrames, keepsScreens ? turnNote : null, (round == 0) ? request.AudioSeconds : ((double?)null), request.Trigger, context.DrawingCodeToResend, drawingOnScreen, request.WalkthroughStep, request.Flow ?? flow, settings.Read((AppSettings s) => s.OneBrainModel), settings.Read((AppSettings s) => s.OneBrainReadsApps) && options.AllowForegroundAppReads?.Invoke() != false)
 						{
 							Page = page,
 							PageAccessNoted = pageAccessNoted,
@@ -3607,7 +3607,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 				Log.Warn("Companion", "line 1 read early from the code differs from the engine's line");
 			}
 			spokenLines.Add(text);
-			PublishSpeechSubtitle(lineIndex == firstLine && earlyFirstLineSpoken != null ? SpeechForChatReply(earlyFirstLineSpoken) : speech);
+			if (offset < 0.0) PublishSpeechSubtitle(speech);
 			bool flag2;
 			lock (narration.Gate)
 			{
@@ -3835,7 +3835,6 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		}
 		SetState(VoiceState.Responding);
 		SetResponseText(line);
-		PublishSpeechSubtitle(line);
 		long playDeadline = Environment.TickCount64 + 60000;
 		await Task.Delay(200, ct).ConfigureAwait(continueOnCapturedContext: false);
 		while (StillCurrent() && audio.Buffered > TimeSpan.Zero && Environment.TickCount64 < playDeadline)
@@ -3865,7 +3864,6 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		string text = answer.Trim();
 		if (options.AllowClipboardCopy != null)
 		{
-			PublishSpeechSubtitle(text);
 			return;
 		}
 		if (text.Length != 0 && options.DesktopActions.CopyToClipboard(text))
@@ -4103,8 +4101,11 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			}
 			return;
 		}
-		PublishSpeechSubtitle(line);
-		if (UseSubtitlesWithoutAudio?.Invoke() == true) return;
+		if (UseSubtitlesWithoutAudio?.Invoke() == true)
+		{
+			PublishSpeechSubtitle(line);
+			return;
+		}
 		bool flag = mouthOpening.IsCompletedSuccessfully && mouthOpening.Result;
 		if (!flag)
 		{
@@ -4115,6 +4116,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			mouth.SpeakLine(line, -1);
 			return;
 		}
+		PublishSpeechSubtitle(line);
 		ui.Post(() =>
 		{
 			notch.Present(new NotchPresentation.TextResponse(request.Words ?? "", line, IsThinking: false));
@@ -4865,10 +4867,14 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		try
 		{
 			ct.ThrowIfCancellationRequested();
-			PublishSpeechSubtitle(line);
-			if (UseSubtitlesWithoutAudio?.Invoke() == true) return;
+			if (UseSubtitlesWithoutAudio?.Invoke() == true)
+			{
+				PublishSpeechSubtitle(line);
+				return;
+			}
 			if (!(await mouth.EnsureOpenAsync(ct).ConfigureAwait(continueOnCapturedContext: false)))
 			{
+				PublishSpeechSubtitle(line);
 				Log.Warn("Companion", "drive line not spoken: the mouth didn't open");
 				return;
 			}

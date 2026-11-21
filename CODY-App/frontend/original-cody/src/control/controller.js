@@ -20,6 +20,7 @@ const wordDocument=require('./word-document');
 const {normalizeApp}=require('../app-commands');
 const {validateSystemArgs,buildSystemScript}=require('./system-settings');
 const {validateDiscordArgs,runDiscordCommand}=require('./discord');
+const {BLOCKED:MONITOR_BLOCKED}=require('../monitor-access');
 
 function ensureArgs(action,args){
   if(!args||typeof args!=='object'||Array.isArray(args))throw Error('Action arguments must be an object');
@@ -130,10 +131,10 @@ function actionSummary(action,args,context={}){
   return `${ACTIONS[action].description}\n\n${value}`;
 }
 class ComputerController {
-  constructor({readPermissions,writePermissions,getWorkingFolder,confirm,runner,clipboard,desktopCapturer,logAction,developerRunner,browserBridge,spotify,annotations,scene,captures,visualLedger,canUseLocalTools=()=>true}={}){
+  constructor({readPermissions,writePermissions,getWorkingFolder,confirm,runner,clipboard,desktopCapturer,logAction,developerRunner,browserBridge,spotify,annotations,scene,captures,visualLedger,monitorAccess,canUseLocalTools=()=>true}={}){
     this.annotations=annotations;
     this.canUseLocalTools=canUseLocalTools;
-    Object.assign(this,{scene,captures,visualLedger});
+    Object.assign(this,{scene,captures,visualLedger,monitorAccess});
     this.spotify=spotify;
     this.readPermissions=readPermissions||(()=>DEFAULT_PERMISSIONS);
     this.writePermissions=writePermissions||(()=>{throw Error('Settings unavailable')});
@@ -148,7 +149,7 @@ class ComputerController {
   configure(change){const perms=normalizePermissions(this.readPermissions(),change);this.writePermissions(perms);if(!perms.enabled||!perms.annotations)this.annotations?.clearImmediate('computer controls disabled');if(!perms.enabled||!perms.visual3d)this.scene?.clearImmediate('computer controls disabled');if(!perms.enabled){this.captures?.clear();this.visualLedger?.begin('gui');}return perms;}
   async refreshAnnotationTarget(reference,cache=new Map()){
     const error=permissionError('desktop.inspect',this.permissions());if(error)throw Error(error);
-    if(!cache.has(reference.pid))cache.set(reference.pid,this.runner(uiAutomation.inspect(reference.pid)).then(value=>JSON.parse(value)));
+    if(!cache.has(reference.pid))cache.set(reference.pid,this.inspectDesktop(reference.pid));
     const windows=(await cache.get(reference.pid)).filter(window=>window.pid===reference.pid);
     if(reference.window){const matches=windows.filter(window=>window.title===reference.title);if(matches.length===1)return matches[0].bounds;}
     else{
@@ -156,6 +157,15 @@ class ComputerController {
       if(controls.length===1)return controls[0].bounds;
     }
     throw Error('The observed UI target moved or is ambiguous. Inspect the desktop again');
+  }
+  async inspectDesktop(pid){
+    await this.monitorAccess?.refresh();
+    const windows=JSON.parse(await this.runner(uiAutomation.inspect(pid)));
+    await this.monitorAccess?.refresh();
+    if(!this.monitorAccess?.restricted)return windows;
+    return windows.filter(window=>this.monitorAccess.allowsPhysicalRect(window.bounds)).map(window=>({
+      ...window,controls:(window.controls||[]).filter(control=>this.monitorAccess.allowsPhysicalRect(control.bounds))
+    }));
   }
   catalog(){return availableActions(this.permissions());}
   async layoutApp(app){
@@ -228,6 +238,8 @@ class ComputerController {
     try{this.logAction({action,status:'started',origin:context.origin});}catch{}
     try{
     if(changesLayout&&await this.windowControlBusy?.())throw Error('Wait until the current computer-use task finishes before changing windows.');
+    if(this.monitorAccess&&(/^(draw|scene|model|mouse)\./.test(action)||['screen.list','keyboard.hotkey','desktop.click'].includes(action)))await this.monitorAccess.refresh();
+    if(this.monitorAccess?.restricted&&['mouse.click','desktop.click'].includes(action))throw Error('Use Computer Use for clicks while monitor access is limited.');
     if(action.startsWith('draw.')){
       if(!this.annotations)throw Error('Annotation overlay is unavailable');
       result=this.visualLedger&&action!=='draw.status'?await this.visualLedger.execute(action,clean,context,(args,ctx)=>this.annotations.execute(action,args,ctx)):await this.annotations.execute(action,clean,context);
@@ -265,7 +277,10 @@ class ComputerController {
       case 'window.maximize':result=await this.runner(windows.showWindow(clean.pid,3));break;
       case 'app.close':result=await this.runner(windows.closeApp(clean.pid));break;
       case 'keyboard.hotkey':
-        if(clean.hotkey!=='ctrl+v'){result=await this.runner(windows.hotkey(clean.hotkey));break;}
+        if(clean.hotkey!=='ctrl+v'){
+          if(this.monitorAccess?.restricted)throw Error('Use Computer Use for keyboard shortcuts while monitor access is limited.');
+          result=await this.runner(windows.hotkey(clean.hotkey));break;
+        }
         if(!this.nativeKeyboard)throw Error('Guarded paste is unavailable.');
         result=await this.nativeKeyboard('','paste');
         if(result.status!=='inserted')throw Error(result.reason||'The field refused paste.');
@@ -275,17 +290,21 @@ class ComputerController {
         result=await this.nativeKeyboard(clean.text,human);
         if(result.status!=='inserted')throw Error(result.reason||'The field refused typing.');
         break;
-      case 'mouse.move':result=await this.runner(windows.mouseMove(clean.x,clean.y));break;
+      case 'mouse.move':
+        if(this.monitorAccess&&!this.monitorAccess.allowsPhysicalPoint(clean))throw Error(MONITOR_BLOCKED);
+        result=await this.runner(windows.mouseMove(clean.x,clean.y));break;
       case 'mouse.click':result=await this.runner(windows.mouseClick(clean.button));break;
       case 'clipboard.read':if(!this.clipboard)throw Error('Clipboard unavailable');result=this.clipboard.readText().slice(0,4096);break;
       case 'clipboard.write':if(!this.clipboard)throw Error('Clipboard unavailable');this.clipboard.writeText(clean.text);result='Clipboard updated';break;
       case 'screen.list':{
         const service=this.captures?.screen||this.annotations?.screen||this.scene?.screen;if(!service)throw Error('Display information is unavailable');
-        result={primaryDisplayId:String(service.getPrimaryDisplay().id),displays:service.getAllDisplays().map(display=>({id:String(display.id),label:display.label||'Display',bounds:display.bounds,workArea:display.workArea||display.bounds,scaleFactor:display.scaleFactor}))};break;
+        const main=this.monitorAccess?this.monitorAccess.primary():service.getPrimaryDisplay();
+        const displays=this.monitorAccess?this.monitorAccess.all():service.getAllDisplays();
+        result={primaryDisplayId:main?String(main.id):null,displays:displays.map(display=>({id:String(display.id),label:display.label||'Display',bounds:display.bounds,workArea:display.workArea||display.bounds,scaleFactor:display.scaleFactor}))};break;
       }
       case 'screen.capture':{
         if(!this.desktopCapturer)throw Error('Screen capture unavailable');
-        const capture=()=>this.desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:1600,height:900}});
+        const capture=async()=>this.captureDisplay?[await this.captureDisplay(clean.displayId)]:this.desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:1600,height:900}});
         const capture3d=()=>this.scene?.adapter?this.scene.adapter.withoutVisuals(capture,clean.includeAnnotations===true):capture();
         const sources=this.annotations?.overlay?await this.annotations.overlay.withoutAnnotations(capture3d,{includeAnnotations:clean.includeAnnotations===true}):await capture3d();
         if(!sources.length)throw Error('No screens detected');
@@ -327,7 +346,7 @@ class ComputerController {
         }
         if(action==='archive.create'||action==='archive.extract'){result=archive[action.split('.')[1]](scope.root,clean);break;}
         if(action.startsWith('file.')||action==='folder.create'){result=fileEngine.executeFile(scope.root,action,clean);if(this.permissions().level==='full'&&result&&typeof result==='object')result={...result,accessRoot:scope.root,...(result.backupId||result.id?{backupRoot:scope.root}:{})};break;}
-        if(action==='desktop.inspect'){result=JSON.parse(await this.runner(uiAutomation.inspect(clean.pid)));if(this.annotations)result=this.annotations.observeDesktop(result);break;}
+        if(action==='desktop.inspect'){result=await this.inspectDesktop(clean.pid);if(this.annotations)result=this.annotations.observeDesktop(result);break;}
         if(action==='desktop.click'){result=await this.runner(uiAutomation.click(clean.pid,clean.name));break;}
         if(['terminal.run','code.check','code.test','code.build'].includes(action)){result=await this.developerRunner(scope.root,action,clean);break;}
         throw Error('Unsupported action');

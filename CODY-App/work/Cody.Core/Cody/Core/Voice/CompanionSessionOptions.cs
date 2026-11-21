@@ -22,6 +22,8 @@ public sealed class CompanionSessionOptions
 
 	public Func<string?,bool>? AllowClipboardCopy { get; init; }
 
+	public Func<bool>? AllowForegroundAppReads { get; init; }
+
 	public Func<IScreenDrawingCanvas>? BeginPersistentDrawing { get; init; }
 
 	public Func<ScreenCaptureFrame, bool>? CanContinuePersistentDrawing { get; init; }

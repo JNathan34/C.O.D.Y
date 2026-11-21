@@ -36,7 +36,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 
 	private readonly CompanionSession session;
 
-	private readonly ScreenCaptureService capture;
+	private readonly CodyMonitorCapture capture;
 
 	private readonly DispatcherQueue ui;
 
@@ -212,7 +212,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 	public ClickyTakeOverController(CompanionSession session, ScreenCaptureService capture, DispatcherQueue ui)
 	{
 		this.session = session;
-		this.capture = capture;
+		this.capture = new CodyMonitorCapture(capture);
 		this.ui = ui;
 		Current = this;
 	}
@@ -599,6 +599,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 			text = targetProcessName;
 		}
 		IReadOnlyList<DisplayInfo> displays = capture.GetDisplays();
+		if (CodyMonitorAccess.HasPreference && displays.Count == 0) return null;
 		if (text != null)
 		{
 			RectD? rectD = AppWindowLocator.FrontWindowFrame(text);
@@ -608,7 +609,7 @@ public sealed class ClickyTakeOverController : IClickyDriveTurns
 				return AppWindowLocator.Display(valueOrDefault, displays);
 			}
 		}
-		return AppWindowLocator.FrontmostAppDisplay(displays);
+		return CodyMonitorAccess.HasPreference ? displays.FirstOrDefault() : AppWindowLocator.FrontmostAppDisplay(displays);
 	}
 
 	private ScreenCaptureFrame? CaptureForWork(IReadOnlyList<ScreenCaptureFrame> captures, ScreenCaptureFrame? previous)

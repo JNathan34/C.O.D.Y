@@ -14,8 +14,8 @@ for(const [text,action]of [['pause','media.control'],['play','media.control'],['
   if(action==='app.open')assert.equal(actions[0].args.app,'plezy');
 });
 
-test('typed and spoken Plex activity questions make one direct lookup per turn',async()=>{
-  const text='is anyone watching plex',engine=new EventEmitter(),calls=[],handlers=new Map(),messages=[];
+test('typed and spoken “whose watching plex” make one direct lookup per turn',async()=>{
+  const text='whose watching plex',engine=new EventEmitter(),calls=[],handlers=new Map(),messages=[];
   engine.connected=true;
   engine.request=async(command,args)=>{calls.push({command,args});return command==='end'?{utilityText:text}:{};};
   engine.refresh=()=>assert.fail('Plex activity should stay local');

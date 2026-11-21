@@ -3,14 +3,40 @@
  const api=window.assistant?.plugins,page=document.querySelector('[data-content="integrations"]');if(!api||!page)return;
  const $=id=>document.getElementById(id),list=$('plugins-list'),status=$('plugins-status'),pending=new Map(),busy=new Set();let browserState={offline:true},catalog=null,loading=false,filter='all',confirmRemoval=null,lastLoaded=0;
  let mediaState={services:{}};
+ let computerUse=null,masterControlEnabled=false,savingComputerUse=false;
  const mediaPanels=[...document.querySelectorAll('[data-media-panel]')];
  const plexActions=$('plex-connection-actions');
+ const overseerrTest=$('overseerr-test'),overseerrStatus=$('overseerr-status');
  const visible=()=>!page.hidden&&document.body.classList.contains('settings-open');
  const element=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
  const signin=element('button','light-action','Sign in to Claude Code');signin.id='plugins-signin';signin.hidden=true;status.after(signin);
+ const computerUseSwitch=element('input');computerUseSwitch.type='checkbox';computerUseSwitch.role='switch';
+ const computerUseLabel=element('label','setting-row plugin-switch');
+ computerUseLabel.append(element('span','','Allow Computer Use'),computerUseSwitch);
+ const computerUseStatus=element('p','setting-help plugin-switch-status');
+ computerUseStatus.role='status';computerUseStatus.hidden=true;
  function button(text,action,disabled=false){const node=element('button','light-action',text);node.type='button';node.disabled=disabled;node.addEventListener('click',action);return node;}
+ function updateComputerUse(native,local){
+  masterControlEnabled=(native?.enabled??local?.enabled)===true;
+  const enabled=masterControlEnabled&&native?.computerUse!==false;
+  if(computerUse===enabled)return;
+  computerUse=enabled;render();
+ }
+ computerUseSwitch.addEventListener('change',async()=>{
+  const requested=computerUseSwitch.checked;
+  const change={computerUse:requested};
+  if(requested&&!masterControlEnabled)change.enabled=true;
+  computerUseStatus.textContent='';computerUseStatus.hidden=true;
+  savingComputerUse=true;computerUseSwitch.disabled=true;
+  try{
+   const result=await window.assistant.control.configure(change);
+   updateComputerUse(result.native,result.permissions);
+  }catch(error){computerUseStatus.hidden=false;computerUseStatus.textContent='Could not update Computer Use. '+error.message;}
+  finally{savingComputerUse=false;render();}
+ });
  function all(){return [
   {id:'local-word',name:'Word (Desktop)',description:'Draft and format the Word document open on this PC, or insert pictures with text wrapping. Built into C.O.D.Y.',kind:'word',icon:'file-text',connected:false},
+  {id:'computer-use',name:'Computer Use',description:'Let Cody use the mouse and keyboard in Windows apps.',kind:'computer-use',connected:computerUse===true},
   ...['plex','overseerr'].map(id=>({id:'media-'+id,service:id,name:id==='plex'?'Plex':'Overseerr',kind:'media',
     connected:mediaState.services?.[id]?.connected===true,
     description:id==='plex'?'Connect your Plex account to use your media server.':'Find movies and TV shows, request titles and check your Overseerr requests.'})),
@@ -21,19 +47,31 @@
   $('plugins-signin').hidden=catalog?.signedIn!==false;
   const query=$('plugins-search').value.trim().toLocaleLowerCase(),items=all().filter(p=>(filter!=='connected'||p.connected)&&(!query||(p.name+' '+p.description).toLocaleLowerCase().includes(query)));
   const focused=document.activeElement;
-  const restorePlexFocus=plexActions.contains(focused)||mediaPanels.some(panel=>panel.dataset.mediaPanel==='plex'&&panel.contains(focused));
+  const restoreFocus=focused===computerUseSwitch||focused===overseerrTest||plexActions.contains(focused)||mediaPanels.some(panel=>panel.contains(focused));
   $('plugins-count').textContent=items.length+' '+(items.length===1?'plugin':'plugins');
-  $('self-hosted-settings').append(...mediaPanels,plexActions);
+  $('self-hosted-settings').append(...mediaPanels,plexActions,overseerrTest,overseerrStatus);
   list.replaceChildren();
   if(!items.length){list.append(element('p','setting-help',query?'No plugins match your search.':filter==='connected'?'No plugins connected yet.':'No plugins are available yet.'));return;}
   for(const plugin of items){
    if(plugin.connected)pending.delete(plugin.id);const working=busy.has(plugin.id),waiting=pending.has(plugin.id)||plugin.status==='AwaitingBrowser';
    const card=element('article','plugin-card');card.dataset.pluginId=plugin.id;const heading=element('div','plugin-card-heading'),fallback=element('span','plugin-logo-fallback',plugin.name.slice(0,1).toUpperCase());
-   if(plugin.kind==='word'||plugin.kind==='media'){
-    const icon=element('img');icon.src=plugin.kind==='word'?'assets/task-apps/word.png':'assets/media/'+plugin.service+'.svg';icon.alt='';icon.width=32;icon.height=32;heading.append(icon);
-   }else if(typeof plugin.logo==='string'&&plugin.logo.startsWith('https://')){const icon=document.createElement('img');icon.src=plugin.logo;icon.alt='';icon.loading='lazy';icon.width=32;icon.height=32;icon.addEventListener('error',()=>icon.replaceWith(fallback),{once:true});heading.append(icon);}else{if(plugin.kind==='browser')window.CODYIcons?.set(fallback,'globe');heading.append(fallback);}
+   const bundledLogo=plugin.kind==='word'?'assets/task-apps/word.png':
+    plugin.kind==='media'?'assets/media/'+plugin.service+'.svg':
+    plugin.kind==='computer-use'?window.CODYIcons?.computerUseLogo:
+    plugin.kind==='browser'?window.CODYIcons?.browserLogo(plugin.browser):null;
+   const logo=bundledLogo||(typeof plugin.logo==='string'&&plugin.logo.startsWith('https://')?plugin.logo:null);
+   if(plugin.kind==='browser')window.CODYIcons?.set(fallback,'globe');
+   if(plugin.kind==='computer-use')window.CODYIcons?.set(fallback,'mouse-pointer-2');
+   if(logo){
+    const icon=element('img');icon.alt='';icon.width=32;icon.height=32;
+    if(!bundledLogo)icon.loading='lazy';
+    icon.addEventListener('error',()=>icon.replaceWith(fallback),{once:true});
+    icon.src=logo;heading.append(icon);
+   }else heading.append(fallback);
    const connectedLabel=plugin.service==='plex'&&mediaState.services.plex?.name?'Connected · '+mediaState.services.plex.name:'Connected';
-   const title=element('div');title.append(element('h3','',plugin.name),element('small',plugin.connected?'plugin-connected':'',plugin.connected?connectedLabel:waiting?'Finish sign-in in your browser':plugin.kind==='word'?'Built-in plugin':plugin.kind==='custom'?'MCP plugin · '+plugin.status:plugin.status==='needs_reconnect'?'Needs reconnection':plugin.kind==='local'?'Local plugin':'Available'));heading.append(title);card.append(heading,element('p','plugin-description',plugin.description));
+   const label=plugin.kind==='computer-use'?(computerUse===null?'Loading…':plugin.connected?'On':'Off'):
+    plugin.connected?connectedLabel:waiting?'Finish sign-in in your browser':plugin.kind==='word'?'Built-in plugin':plugin.kind==='custom'?'MCP plugin · '+plugin.status:plugin.status==='needs_reconnect'?'Needs reconnection':plugin.kind==='local'?'Local plugin':'Available';
+   const title=element('div');title.append(element('h3','',plugin.name),element('small',plugin.connected?'plugin-connected':'',label));heading.append(title);card.append(heading,element('p','plugin-description',plugin.description));
    const actions=element('div','plugin-card-actions');
    const remove=(accountId)=>{confirmRemoval={id:plugin.id,accountId};render();};
    if(plugin.kind==='media'&&plugin.service!=='plex'){
@@ -42,9 +80,14 @@
       panel.hidden=!panel.hidden;if(!panel.hidden)panel.querySelector('button,input')?.focus();
       toggle.setAttribute('aria-expanded',String(!panel.hidden));
     });
+    if(plugin.connected)actions.append(overseerrTest);
     toggle.setAttribute('aria-expanded',String(!panel.hidden));actions.append(toggle);
    }else if(plugin.kind==='media'){
     // Reuse the real Plex controls; a second proxy sign-in button is confusing.
+   }else if(plugin.kind==='computer-use'){
+    computerUseSwitch.checked=plugin.connected;
+    computerUseSwitch.disabled=savingComputerUse||computerUse===null;
+    actions.append(computerUseLabel);
    }else if(plugin.kind==='word'){
     actions.append(button('Use in chat',()=>{window.CODYIsland?.setActiveView('chat');const composer=window.CODYInlineComposer;const offset=composer?.selectionOffsets()?.end??0;composer?.insertMention({id:'plugin:word',name:plugin.name,kind:'plugin',icon:'file-text'},offset,offset);document.getElementById('quick-input')?.focus();}));
    }else if(plugin.kind==='browser'){actions.append(button(plugin.connected?'Manage':'Install',()=>window.CODYBrowserSetup?.open(plugin.browser),browserState.busy===true));}else if(confirmRemoval?.id===plugin.id){
@@ -59,11 +102,13 @@
     if(plugin.kind==='custom')actions.append(button('Remove',()=>remove(),working));
    }
    card.append(plugin.kind==='media'&&plugin.service==='plex'?plexActions:actions);
+   if(plugin.kind==='computer-use')card.append(computerUseStatus);
+   if(plugin.service==='overseerr')card.append(overseerrStatus);
    if(plugin.kind==='media')card.append(mediaPanels.find(item=>item.dataset.mediaPanel===plugin.service));
    if(plugin.accounts?.length){const details=document.createElement('details');details.className='plugin-accounts';details.append(element('summary','',plugin.accounts.length+' connected '+(plugin.accounts.length===1?'account':'accounts')));for(const account of plugin.accounts){const row=element('div','plugin-account-row');row.append(element('span','',account.name),button('Disconnect',()=>remove(account.id),working));details.append(row);}card.append(details);}
    list.append(card);
   }
-  if(restorePlexFocus&&focused.isConnected&&focused!==document.activeElement)focused.focus({preventScroll:true});
+  if(restoreFocus&&focused.isConnected&&focused!==document.activeElement)focused.focus({preventScroll:true});
  }
  async function refresh(){
   if(loading)return;loading=true;$('plugins-refresh').disabled=true;status.textContent=catalog?'Refreshing plugins…':'Loading plugins…';
@@ -92,6 +137,10 @@
  const observe=new MutationObserver(()=>{if(visible()&&(!catalog||Date.now()-lastLoaded>30000))void refresh();});observe.observe(page,{attributes:true,attributeFilter:['hidden']});observe.observe(document.body,{attributes:true,attributeFilter:['class']});
  document.addEventListener('cody:browser-setup',event=>{browserState=event.detail||{offline:true};if(catalog)render();});
  document.addEventListener('cody:self-hosted',event=>{mediaState=event.detail;render();});
+ window.assistant.on('settings-changed',settings=>updateComputerUse(settings.nativePermissions,settings.computerControl));
+ void window.assistant.state().then(({settings})=>{
+  if(computerUse===null)updateComputerUse(settings.nativePermissions,settings.computerControl);
+ }).catch(error=>{status.textContent=error.message;});
  window.addEventListener('focus',()=>{if(visible())void refresh();});const timer=setInterval(()=>{if(visible()&&pending.size)void refresh();},3000);
  window.addEventListener('beforeunload',()=>{clearInterval(timer);observe.disconnect();$('plugins-add-key').value='';});
  window.CODYPlugins=Object.freeze({snapshot:()=>({loading,total:all().length,connected:all().filter(x=>x.connected).length,pending:pending.size})});

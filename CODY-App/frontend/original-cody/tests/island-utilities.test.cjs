@@ -18,15 +18,34 @@ test('natural questions about current Plex viewers call the Plex plugin before m
   const {utilities}=setup({selfHosted:{plexSessions:async()=>{
     calls++;return {count:1,sessions:[{viewer:'Plex Viewer',title:'Fixture Movie',state:'playing'}]};
   }},overseerrRequests:{lookup:()=>assert.fail('Plex activity is a server session lookup')}});
-  for(const prompt of ['is anyone watching plex','Is anybody watching on Plex right now?',
-    'Can you check if anyone is watching my Plex server?', 'Show me who’s watching Plex', 'How many people are watching Plex?', 'Plex sessions']){
+  const prompts=['is anyone watching plex','Is anybody watching on Plex right now?',
+    'Can you check if anyone is watching my Plex server?', 'Show me who’s watching Plex', 'How many people are watching Plex?', 'Plex sessions',
+    'whose watching plex', 'Whos currently watching on my Plex server?', 'Who watching Plex now?'];
+  for(const prompt of prompts){
     assert.equal(utilities.match(prompt).action,'self-hosted-plex-sessions',prompt);
     const result=await utilities.run(prompt);
     assert.match(result.reply,/1 Plex viewing session right now.*Plex Viewer.*Fixture Movie.*playing/s);
   }
-  assert.equal(calls,6);
+  assert.equal(calls,prompts.length);
   assert.equal(utilities.match('Is Dune on Plex?').action,'overseerr-availability');
   assert.equal(utilities.match('Who owns Plex?'),null);
+  assert.equal(utilities.match('Whose Plex server is this?'),null);
+});
+test('recent request questions use the connected Overseerr server before title lookup',async()=>{
+  const selfHosted={data:{overseerr:{}},overseerrRequests:async()=>[{title:'Fixture Film',status:1},{title:'Fixture Show',status:5}]};
+  const {utilities,cards}=setup({selfHosted,overseerrRequests:{lookup:()=>assert.fail('Recent requests should not trigger a title lookup')}});
+  for(const prompt of ['show me recent requests','Could you show me the latest Overseerr requests?',
+    'Check recent requests on Overseerr','What are my latest media requests?', 'What’s been requested on Overseerr recently?', 'overseerr requests']){
+    assert.equal(utilities.match(prompt).action,'self-hosted-overseerr-requests',prompt);
+    const result=await utilities.run(prompt);
+    assert.match(result.reply,/Fixture Film · Pending approval.*Fixture Show · Completed/s);
+  }
+  assert.equal(cards.at(-1).detail,'Overseerr');
+  assert.equal(utilities.match('Show me recent API requests'),null);
+  assert.equal(utilities.match('Is Dune on Plex?').action,'overseerr-availability');
+  delete selfHosted.data.overseerr;
+  assert.equal(utilities.match('show me recent requests'),null);
+  assert.equal(utilities.match('show me recent requests on Overseerr').action,'self-hosted-overseerr-requests');
 });
 test('media commands target the actual player and clear an older quick card',async()=>{const {utilities,actions,cleared}=setup();await utilities.run('pause my music','chat');assert.deepEqual(actions,[{action:'media.control',args:{command:'pause',target:'current'}}]);assert.equal(cleared(),1);});
 test('volume cards use the actual resulting volume, including relative changes',async()=>{const {utilities,cards,actions}=setup();await utilities.run('turn the volume down by 10 percent','chat');assert.deepEqual(actions,[{action:'audio.set',args:{level:32}}]);assert.equal(cards.at(-1).text,'42%');});

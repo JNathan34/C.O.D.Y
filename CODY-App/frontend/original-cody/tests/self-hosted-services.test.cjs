@@ -113,6 +113,23 @@ test('Overseerr search and requests use official read-only API paths',async t=>{
  assert.equal(calls[0].options.headers['X-Api-Key'],'test-only-api-key');
  await assert.rejects(f.service.get('plex','/status/sessions'),/Connect your own/);
 });
+test('Overseerr Test connection reads a single request with the saved key and accepts an empty list',async t=>{
+ const calls=[];
+ let response={ok:true,text:async()=>JSON.stringify({results:[]})};
+ const {service}=fixture(t,async(url,options)=>{calls.push({url,options});return response;});
+ await assert.rejects(service.overseerrTest(),/Connect Overseerr/);
+ service.configure('overseerr',{url:'https://requests.example.org/media',key:'fixture-key'});
+ assert.deepEqual(await service.overseerrTest(),{ok:true});
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].url,'https://requests.example.org/media/api/v1/request?take=1&skip=0&sort=added');
+ assert.equal(calls[0].options.headers['X-Api-Key'],'fixture-key');
+ assert.equal(calls[0].options.method,undefined);
+ response={ok:false,status:401};
+ await assert.rejects(service.overseerrTest(),/rejected these credentials/);
+ response={ok:true,text:async()=>JSON.stringify({id:1})};
+ await assert.rejects(service.overseerrTest(),/invalid requests/);
+ assert.equal(service.status().services.overseerr.connected,true);
+});
 test('no encrypted storage means no secret is written to disk',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'cody-media-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const file=path.join(dir,'connections.dat'),service=new SelfHosted({file,cipher:{isEncryptionAvailable:()=>false}});

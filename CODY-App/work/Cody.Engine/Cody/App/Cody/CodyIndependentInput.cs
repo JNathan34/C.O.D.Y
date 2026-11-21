@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -35,7 +36,7 @@ internal static class CodyIndependentInput
     public static async Task GlideAsync(PointD point,double seconds=.45,CancellationToken ct=default){
         if(CodyEngineBridge.EngineMode&&!active)return;
         if(!CodyEngineBridge.EngineMode){await ClickyScreenActuator.GlideAsync(point,seconds,ct);return;}
-        if(!active)return;var from=CurrentPointer;
+        if(!active||!CodyMonitorAccess.AllowsPoint(point))return;var from=CurrentPointer;
         double distance=Math.Sqrt(Math.Pow(point.X-from.X,2)+Math.Pow(point.Y-from.Y,2));
         if(distance<1){MoveTo(point);return;}
         seconds=CodyControlSpeed.GlideSeconds(distance,seconds);
@@ -48,9 +49,10 @@ internal static class CodyIndependentInput
             if(progress>=1)break;await Task.Delay(8,ct);
         }
     }
-    public static void MoveTo(PointD point){if(CodyEngineBridge.EngineMode&&!active)return;if(UsesSystemInput){CodyMouseGuard.MoveTo(point);return;}if(!active)return;lock(gate)pointer=point;var window=left?heldTarget:TargetAt(point);if(window!=hoverTarget){if(hoverTarget!=0)PostMessage(hoverTarget,0x2A3,0,0);hoverTarget=window;}if(window!=0)Send(window,0x200,left?1u:0u,point);}
+    public static void MoveTo(PointD point){if(CodyEngineBridge.EngineMode&&(!active||!CodyMonitorAccess.AllowsPoint(point)))return;if(UsesSystemInput){CodyMouseGuard.MoveTo(point);return;}if(!active)return;lock(gate)pointer=point;var window=left?heldTarget:TargetAt(point);if(window!=hoverTarget){if(hoverTarget!=0)PostMessage(hoverTarget,0x2A3,0,0);hoverTarget=window;}if(window!=0&&CodyMonitorAccess.AllowsWindow(GetAncestor(window,2)))Send(window,0x200,left?1u:0u,point);}
     public static async Task<ClickyActuation> ClickAsync(PointD point,ClickyMouseButton button=ClickyMouseButton.Left,int count=1,ClickyModifierKeys modifiers=ClickyModifierKeys.None){
         if(CodyEngineBridge.EngineMode&&!active)return Refuse("Computer control has stopped.");
+        if(!CodyMonitorAccess.AllowsPoint(point))return Refuse(CodyMonitorAccess.Blocked);
         if(UsesSystemInput){CodyMouseGuard.MoveTo(point);return await ClickyScreenActuator.ClickAsync(point,button,count,modifiers);}
         if(!active)return Refuse("Computer control has stopped.");
         if((modifiers&(ClickyModifierKeys.Alt|ClickyModifierKeys.Windows))!=0)return Refuse("This modifier-click requires an application tool.");
@@ -81,7 +83,9 @@ internal static class CodyIndependentInput
     }
     public static ClickyActuation SetLeftButton(bool down){
         lock(gate){
-        if(CodyEngineBridge.EngineMode&&!active)return ClickyActuation.Refused;if(UsesSystemInput)return ClickyScreenActuator.SetLeftButton(down);if(!active)return ClickyActuation.Refused;var point=CurrentPointer;
+        if(CodyEngineBridge.EngineMode&&!active)return ClickyActuation.Refused;
+        if(down&&!CodyMonitorAccess.AllowsPoint(CurrentPointer))return Refuse(CodyMonitorAccess.Blocked);
+        if(UsesSystemInput)return ClickyScreenActuator.SetLeftButton(down);if(!active)return ClickyActuation.Refused;var point=CurrentPointer;
         if(left==down)return ClickyActuation.Done;
         var window=down?TargetAt(point):heldTarget;if(window==0)return ClickyActuation.Refused;
         if(!Send(window,down?0x201u:0x202u,down?1u:0u,point))return ClickyActuation.Refused;
@@ -92,15 +96,18 @@ internal static class CodyIndependentInput
     public static async Task<ClickyActuation> DragAsync(IReadOnlyList<PointD> path){
         if(CodyEngineBridge.EngineMode&&!active)return Refuse("Computer control has stopped.");
         if(!CodyEngineBridge.EngineMode)return await ClickyScreenActuator.DragAsync(path);if(path.Count<2)return ClickyActuation.Refused;
+        if(CodyMonitorAccess.Restricted&&path.Any(point=>!CodyMonitorAccess.AllowsPoint(point)))return Refuse(CodyMonitorAccess.Blocked);
         MoveTo(path[0]);if(SetLeftButton(true)!=ClickyActuation.Done)return ClickyActuation.Refused;int ticket=generation;
         try{foreach(var point in path){if(!active||ticket!=generation)return ClickyActuation.Refused;MoveTo(point);await Task.Delay(18);}return ClickyActuation.Done;}finally{ReleaseHeldButton();}
     }
     public static Task<ClickyActuation> ScrollAsync(int lines){
-        if(CodyEngineBridge.EngineMode&&!active)return Task.FromResult(ClickyActuation.Refused);if(UsesSystemInput)return ClickyScreenActuator.ScrollAsync(lines);if(!active)return Task.FromResult(ClickyActuation.Refused);var point=CurrentPointer;var window=TargetAt(point);if(window==0)return Task.FromResult(ClickyActuation.Refused);target=window;
+        if(CodyEngineBridge.EngineMode&&!active)return Task.FromResult(ClickyActuation.Refused);
+        if(!CodyMonitorAccess.AllowsPoint(CurrentPointer))return Task.FromResult(Refuse(CodyMonitorAccess.Blocked));
+        if(UsesSystemInput)return ClickyScreenActuator.ScrollAsync(lines);if(!active)return Task.FromResult(ClickyActuation.Refused);var point=CurrentPointer;var window=TargetAt(point);if(window==0)return Task.FromResult(ClickyActuation.Refused);target=window;
         long wheel=((long)(ushort)(short)(Math.Clamp(lines,-240,240)*120))<<16;
         return Task.FromResult(PostMessage(window,0x20A,(nint)wheel,Pack((int)point.X,(int)point.Y))?ClickyActuation.Done:ClickyActuation.Refused);
     }
-    private static nint KeyboardTarget(){if(target==0||!IsWindow(target))return 0;uint thread=GetWindowThreadProcessId(target,out _);var info=new GuiThreadInfo{size=Marshal.SizeOf<GuiThreadInfo>()};return GetGUIThreadInfo(thread,ref info)&&info.focus!=0&&GetAncestor(info.focus,2)==GetAncestor(target,2)?info.focus:target;}
+    private static nint KeyboardTarget(){if(target==0||!IsWindow(target)||!CodyMonitorAccess.AllowsWindow(GetAncestor(target,2)))return 0;uint thread=GetWindowThreadProcessId(target,out _);var info=new GuiThreadInfo{size=Marshal.SizeOf<GuiThreadInfo>()};return GetGUIThreadInfo(thread,ref info)&&info.focus!=0&&GetAncestor(info.focus,2)==GetAncestor(target,2)?info.focus:target;}
     public static async Task<ClickyActuation> TypeAsync(string text,CancellationToken ct=default,bool replace=false,bool paste=false){
         if(CodyEngineBridge.EngineMode&&!active)return Refuse("Computer control has stopped.");
         if(!CodyEngineBridge.EngineMode)return await ClickyScreenActuator.TypeAsync(text,ct);
@@ -114,10 +121,11 @@ internal static class CodyIndependentInput
         nint window=GetForegroundWindow();
         int ticket=generation;
         if(window==0)return Refuse("Click the intended text field first.");
+        if(!CodyMonitorAccess.AllowsWindow(window))return Refuse(CodyMonitorAccess.Blocked);
         if(observedTextWindow!=0&&observedTextWindow!=window)
             return Refuse("The foreground app changed after the last observation. Inspect the intended field again before typing.");
         var result=await CodyAccessibilityInput.EnterText(window,text,replace,
-            ()=>active&&ticket==generation&&!typing.IsCancellationRequested&&GetForegroundWindow()==window,
+            ()=>active&&ticket==generation&&!typing.IsCancellationRequested&&GetForegroundWindow()==window&&CodyMonitorAccess.AllowsWindow(window),
             paste,typing.Token);
         if(!result.Handled)return Refuse(result.Reason??"The field did not accept the keyboard input.");
         LastMethod=result.Method;LastReason="";return ClickyActuation.Done;
@@ -131,7 +139,7 @@ internal static class CodyIndependentInput
             if(!UsesSystemInput)return Refuse("Paste requires foreground keyboard input.");
             return await EnterText("",replace,chord,CancellationToken.None);
         }
-        if(UsesSystemInput)return await ClickyScreenActuator.PressAsync(chord);
+        if(UsesSystemInput)return CodyMonitorAccess.AllowsWindow(GetForegroundWindow())?await ClickyScreenActuator.PressAsync(chord):Refuse(CodyMonitorAccess.Blocked);
         chord=chord.Trim().ToLowerInvariant().Replace("control+","ctrl+").Replace("opt+","alt+");if(!active)return Refuse("Computer control has stopped.");
         if(chord is "win" or "windows" or "meta" or "super"){
             int startTicket=generation;var start=await CodyAccessibilityInput.OpenStart(()=>active&&startTicket==generation);
@@ -150,7 +158,7 @@ internal static class CodyIndependentInput
         ushort key=Key(chord);if(key==0)return Refuse("Unsupported independent key: "+chord+". No key was sent.");var window=KeyboardTarget();if(window==0||!active)return ClickyActuation.Refused;
         uint scan=MapVirtualKey(key,0);if(!PostMessage(window,0x100,(nint)key,(nint)(1|scan<<16)))return ClickyActuation.Refused;await Task.Delay(25);return PostMessage(window,0x101,(nint)key,(nint)(1|scan<<16|0xC0000000))?ClickyActuation.Done:ClickyActuation.Refused;
     }
-    public static async Task<ClickyActuation> HoldAsync(IEnumerable<string> keys,double seconds){if(CodyEngineBridge.EngineMode&&!active)return ClickyActuation.Refused;if(UsesSystemInput)return await ClickyScreenActuator.HoldAsync(keys,seconds);return ClickyActuation.Refused;}
+    public static async Task<ClickyActuation> HoldAsync(IEnumerable<string> keys,double seconds){if(CodyEngineBridge.EngineMode&&!active)return ClickyActuation.Refused;if(UsesSystemInput)return CodyMonitorAccess.AllowsWindow(GetForegroundWindow())?await ClickyScreenActuator.HoldAsync(keys,seconds):Refuse(CodyMonitorAccess.Blocked);return ClickyActuation.Refused;}
     public static void ReleaseStrandedKeysAfterDrive(string when){if(UsesSystemInput)ClickyScreenActuator.ReleaseStrandedKeysAfterDrive(when);}
     private static bool Send(nint window,uint message,uint buttons,PointD point){if(window==0)return false;var p=new NativePoint{X=(int)Math.Round(point.X),Y=(int)Math.Round(point.Y)};return ScreenToClient(window,ref p)&&PostMessage(window,message,(nint)buttons,Pack(p.X,p.Y));}
     private static nint Pack(int x,int y)=>(nint)((uint)(ushort)(short)x|((uint)(ushort)(short)y<<16));
@@ -160,6 +168,7 @@ internal static class CodyIndependentInput
             GetWindowThreadProcessId(window,out uint pid);if(pid==Environment.ProcessId&&window!=probeRoot)continue;
             var title=new StringBuilder(256);GetWindowText(window,title,256);if(title.ToString()=="C.O.D.Y")continue;
             if(DwmGetWindowAttribute(window,14,out int cloaked,4)==0&&cloaked!=0)continue;
+            if(!CodyMonitorAccess.AllowsWindow(window)){LastReason=CodyMonitorAccess.Blocked;return 0;}
             var owner=GetAncestor(window,3);var webProcesses=new HashSet<uint>();
             if(Class(window)=="WinUIDesktopWin32WindowClass"){
                 // A WebView can live in another process and a separate top-level HWND.

@@ -67,6 +67,10 @@ public sealed class RealtimeMouth : IAsyncDisposable
 
 	private int currentLineIndex = -1;
 
+	private string? currentLineText;
+
+	private SpeechPlaybackLine? currentPlaybackLine;
+
 	private bool currentResponseHadAudio;
 
 	private long currentResponseAudioBytes;
@@ -152,6 +156,8 @@ public sealed class RealtimeMouth : IAsyncDisposable
 	public TimeSpan IdleTeardownWindow { get; set; } = IdleTeardown;
 
 	public event Action<int, double>? LineAudioQueued;
+
+	public event Action<SpeechPlaybackLine>? PlaybackLineQueued;
 
 	public event LineAudioChunkHandler? LineAudioChunk;
 
@@ -419,6 +425,7 @@ public sealed class RealtimeMouth : IAsyncDisposable
 			}
 			responseInFlight = true;
 			currentLineIndex = lineIndex;
+			currentLineText = text;
 		}
 		SendLineAsync(text, lineIndex);
 	}
@@ -437,6 +444,7 @@ public sealed class RealtimeMouth : IAsyncDisposable
 			lock (gate)
 			{
 				responseInFlight = false;
+				currentLineText = null;
 				renderings.Remove(lineIndex, out value);
 			}
 			value?.Done.TrySetResult(null);
@@ -565,6 +573,8 @@ public sealed class RealtimeMouth : IAsyncDisposable
 			queuedLines.Clear();
 			suppressAudioUntilNextResponse = cancel;
 			responseInFlight = false;
+			currentLineText = null;
+			currentPlaybackLine = null;
 			enqueuedSecondsSinceFlush = 0.0;
 		}
 		foreach (Rendering item in list)
@@ -661,6 +671,8 @@ public sealed class RealtimeMouth : IAsyncDisposable
 						num = currentLineIndex;
 					}
 					responseInFlight = false;
+					CompletePlaybackLine();
+					currentLineText = null;
 					queuedLines.Clear();
 					AbandonRenderingsLocked(list);
 				}
@@ -768,8 +780,16 @@ public sealed class RealtimeMouth : IAsyncDisposable
 				}
 				arg = enqueuedSecondsSinceFlush;
 			}
+			var publishPlayback = flag ? PlaybackLineQueued : null;
+			if (publishPlayback != null && currentLineText != null)
+			{
+				// The output may already contain cached speech or a gap between lines.
+				// Use the device's queue and playback clock for this line's position.
+				currentPlaybackLine = new SpeechPlaybackLine(currentLineText, audio.Buffered.TotalSeconds + audio.PlayedSeconds);
+			}
 			audio.Enqueue(decodeBuffer.AsSpan(0, bytesWritten));
 			enqueuedSecondsSinceFlush += (double)bytesWritten / 2.0 / (double)audio.SampleRate;
+			if (publishPlayback != null && currentPlaybackLine != null) publishPlayback(currentPlaybackLine);
 		}
 		LineAudioChunk?.Invoke(num, decodeBuffer.AsSpan(0, bytesWritten));
 		if (flag)
@@ -809,6 +829,8 @@ public sealed class RealtimeMouth : IAsyncDisposable
 			{
 				num = currentLineIndex;
 				arg = (double)currentResponseAudioBytes / 2.0 / (double)audio.SampleRate;
+				CompletePlaybackLine();
+				currentLineText = null;
 				renderings.Remove(num, out value6);
 				completedResponses++;
 				responseInFlight = false;
@@ -817,6 +839,7 @@ public sealed class RealtimeMouth : IAsyncDisposable
 					tuple = queuedLines.Dequeue();
 					responseInFlight = true;
 					currentLineIndex = tuple.Value.Item2;
+					currentLineText = tuple.Value.Item1;
 				}
 			}
 			value6?.Done.TrySetResult((text == "response.done" && value6.Pcm.Length > 0) ? value6.Pcm.ToArray() : null);
@@ -837,6 +860,8 @@ public sealed class RealtimeMouth : IAsyncDisposable
 			lock (gate)
 			{
 				responseInFlight = false;
+				CompletePlaybackLine();
+				currentLineText = null;
 			}
 			string text2 = ((rootElement.TryGetProperty("error", out var value) && value.TryGetProperty("message", out var value2)) ? value2.GetString() : rootElement.GetRawText());
 			Log.Warn("Mouth", "realtime error: " + text2);
@@ -853,6 +878,12 @@ public sealed class RealtimeMouth : IAsyncDisposable
 		}
 	}
 
+	private void CompletePlaybackLine()
+	{
+		currentPlaybackLine?.Complete((double)currentResponseAudioBytes / 2.0 / audio.SampleRate);
+		currentPlaybackLine = null;
+	}
+
 	private async Task CloseSocketAsync(string reason)
 	{
 		List<Rendering> list = new List<Rendering>();
@@ -865,6 +896,8 @@ public sealed class RealtimeMouth : IAsyncDisposable
 			socket = null;
 			socketLifetime = null;
 			responseInFlight = false;
+			CompletePlaybackLine();
+			currentLineText = null;
 			queuedLines.Clear();
 			AbandonRenderingsLocked(list);
 		}

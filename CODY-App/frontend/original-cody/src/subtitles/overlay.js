@@ -8,12 +8,13 @@ class SubtitleOverlay {
   constructor({BrowserWindow, screen, onError}) {
     Object.assign(this, {BrowserWindow, screen, onError});
     this.queue = [];
+    this.spokenLine = null;
     this.enabled = false;
     this.suspended = false;
     this.reposition = () => {
       if (!this.window?.isVisible()) return;
       const display = this.screen.getDisplayMatching(this.window.getBounds());
-      this.window.setBounds(this.bounds(display));
+      this.window.setBounds(this.bounds(display, this.spokenLine));
     };
     for (const event of DISPLAY_EVENTS) screen.on(event, this.reposition);
   }
@@ -29,9 +30,10 @@ class SubtitleOverlay {
     if (suspended) this.clear();
   }
 
-  bounds({workArea}) {
+  bounds({workArea}, text) {
     const width = Math.min(720, workArea.width);
-    const height = Math.min(200, workArea.height);
+    const estimatedLines = Math.ceil((text?.length || 0) * 13 / Math.max(1, width - 60));
+    const height = Math.min(Math.max(200, 56 + estimatedLines * 29), workArea.height);
     return {
       x: workArea.x + Math.floor((workArea.width - width) / 2),
       y: workArea.y + Math.max(0, workArea.height - height - 16),
@@ -71,7 +73,8 @@ class SubtitleOverlay {
     win.loadFile(path.join(__dirname, 'index.html')).then(() => {
       if (win !== this.window) return;
       this.ready = true;
-      if (this.queue.length) this.next();
+      if (this.spokenLine) this.present(this.spokenLine);
+      else if (this.queue.length) this.next();
     }).catch(error => {
       if (win !== this.window) return;
       win.destroy();
@@ -79,10 +82,19 @@ class SubtitleOverlay {
     });
   }
 
-  show({text, seconds} = {}) {
+  show({text, seconds, playing} = {}) {
     if (!this.enabled || this.suspended || typeof text !== 'string') return;
     const normalized = text.replace(/\s+/g, ' ').trim();
     if (!normalized) return;
+    if (playing) {
+      clearTimeout(this.timer);
+      this.timer = null;
+      this.queue.length = 0;
+      this.spokenLine = normalized;
+      this.prepare();
+      if (this.ready) this.present(normalized);
+      return;
+    }
     // Keep long spoken lines readable without clipping or requiring interaction.
     const pages = normalized.match(/.{1,96}(?: |$)|.{1,96}/gu);
     const duration = Number.isFinite(seconds) ? seconds : 0;
@@ -93,7 +105,13 @@ class SubtitleOverlay {
       });
     }
     this.prepare();
-    if (this.ready && !this.timer) this.next();
+    if (this.ready && !this.timer && !this.spokenLine) this.next();
+  }
+
+  finishSpeech() {
+    if (!this.spokenLine) return;
+    this.spokenLine = null;
+    if (this.ready) this.next();
   }
 
   next() {
@@ -103,19 +121,24 @@ class SubtitleOverlay {
       this.clear();
       return;
     }
-    const win = this.window;
-    if (!win.isVisible()) {
-      const display = this.screen.getDisplayNearestPoint(this.screen.getCursorScreenPoint());
-      win.setBounds(this.bounds(display));
-    }
-    win.webContents.send('subtitle-text', page.text);
-    if (!win.isVisible()) win.showInactive();
+    this.present(page.text);
     this.timer = setTimeout(() => this.next(), page.milliseconds);
+  }
+
+  present(text) {
+    const win = this.window;
+    const visible = win.isVisible();
+    const display = visible ? this.screen.getDisplayMatching(win.getBounds())
+      : this.screen.getDisplayNearestPoint(this.screen.getCursorScreenPoint());
+    win.setBounds(this.bounds(display, this.spokenLine));
+    win.webContents.send('subtitle-text', text);
+    if (!visible) win.showInactive();
   }
 
   clear() {
     clearTimeout(this.timer);
     this.timer = null;
+    this.spokenLine = null;
     this.queue.length = 0;
     if (this.ready) {
       this.window.hide();

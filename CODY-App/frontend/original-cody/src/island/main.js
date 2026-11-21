@@ -191,9 +191,11 @@ function updatePreferences(patch) {
 function emit(channel, ...args) {
   if (islandWindow && !islandWindow.isDestroyed()) islandWindow.webContents.send(channel, ...args);
 }
+let displayProvider;
+const islandDisplay=()=>displayProvider?.()||screen.getPrimaryDisplay();
 function windowBounds() {
   // Consistent primary-display attachment; cursor movement must not teleport the island.
-  const bounds = screen.getPrimaryDisplay().bounds;
+  const bounds = islandDisplay().bounds;
   // Transparent host stays the same size in BOTH modes; only the SVG/CSS morphs.
   // Repositioning a native transparent window while it animates caused flashing.
   const scale = settings.guiScale/100;
@@ -403,7 +405,7 @@ function pollCursor(clickedPoint=null) {
     });
   }
   if (settings.visibility === 'hover' && !isActive() && !expanded && !forcedVisible) {
-    const display = screen.getPrimaryDisplay().bounds;
+    const display = islandDisplay().bounds;
     const edgeHotspot = point.y >= display.y && point.y <= display.y+22 && Math.abs(point.x-(display.x+display.width/2)) < size.width/2+18;
     const hoverHotspot = edgeHotspot || (hoverVisible && silhouetteHit);
     if (hoverHotspot) { lastHover = Date.now(); if (!hoverVisible) {hoverVisible=true; updateVisibility();} }
@@ -670,4 +672,4 @@ function handleHotkey(action){
   if(action==='down')suspended=false;
   onModifierEvent(action==='down'?'DOWN':'UP');
 }
-module.exports={onClearDrawings,withFileDialog,showSettings,setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact({automatic=false}={}){suspended=false;mount();setExpanded(false,{automatic});updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value,reveal=false){timerVisible=Boolean(value);if(timerVisible&&reveal)suspended=false;updateVisibility();},hide(){suspended=true;updateVisibility();},show,window:()=>islandWindow};
+module.exports={onClearDrawings,withFileDialog,showSettings,setDisplayProvider(provider){displayProvider=provider;positionWindow();},positionDisplay:positionWindow,setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact({automatic=false}={}){suspended=false;mount();setExpanded(false,{automatic});updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value,reveal=false){timerVisible=Boolean(value);if(timerVisible&&reveal)suspended=false;updateVisibility();},hide(){suspended=true;updateVisibility();},show,window:()=>islandWindow};

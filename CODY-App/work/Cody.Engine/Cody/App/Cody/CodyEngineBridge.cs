@@ -47,6 +47,7 @@ public static class CodyEngineBridge
     private static bool customSpeech;
     private static bool cachedSpeaking;
     private static volatile bool speechSubtitlesEnabled;
+    private static CodySpeechSubtitles subtitlePlayback;
     private static int cachedPlaybacks;
     private static bool zoomFixture;
     private static bool voiceEnding;
@@ -103,6 +104,7 @@ public static class CodyEngineBridge
         var session = (CompanionSession)host.Services.Companion;
         session.UseSubtitlesWithoutAudio = UseSubtitlesWithoutAudio;
         session.FormatChatReplyForSpeech = CodyCommunication.ChatReplyForSpeech;
+        subtitlePlayback = new CodySpeechSubtitles(host.Services.Audio, PublishPlaybackSubtitle);
         session.SpeechSubtitle += PublishSpeechSubtitle;
         session.SpeechInterrupted += ClearSpeechSubtitles;
         session.TurnProgress += label => Emit("turn-progress", new { label, turn });
@@ -115,6 +117,7 @@ public static class CodyEngineBridge
         int consentTicks=0;
         bool? captureUi=null;
         meter.Tick += (_, _) => {
+            if (speechSubtitlesEnabled) subtitlePlayback.Tick();
             CodyDrawingControls.Tick(host);
             if(CodyIndependentInput.Active)CodyMouseGuard.Pulse();
             escapeWork=CodyIndependentInput.Active||host.ClickyDrive?.ClaimsEscape==true||session.State!=VoiceState.Idle||host.Real.Agents.Tasks.Any(task=>task.Status is AgentTaskStatus.Starting or AgentTaskStatus.Running or AgentTaskStatus.WaitingForUser);
@@ -302,16 +305,24 @@ public static class CodyEngineBridge
                         var feed=host.Real.Canvas.Feed((streaming?"say('Generating the model.');paper(160,120,460,380,{title:'3D generation',board:'plain'});":"")+"scene3d(180,140,420,340,s=>{s.box({w:1.7,h:1.2,d:1.1});s.camera({spin:0});});"+extraHighlight+(streaming?"say('Adding more detail.');":""),!streaming);
                         for(int i=0;i<Math.Max(1,feed.Lines.Count);i++)host.Real.Canvas.ReleaseLine(i);if(!streaming)host.Real.Canvas.Finish();zoomFixture=true;return new{created=true,lines=feed.Lines.Count};
                     case "model-zoom-demo-clear":if(zoomFixture){host.Real.Canvas.Clear(false);host.Real.Canvas.IsStreamingNarration=false;zoomFixture=false;}return new{cleared=true};
+                    case "monitor-access-state": return CodyMonitorAccess.Snapshot();
+                    case "monitor-access-configure":
+                        if (session.State != VoiceState.Idle || host.ClickyDrive?.IsDriving == true)
+                            throw new InvalidOperationException("Finish or stop the current request before changing monitor access.");
+                        CodyMonitorAccess.Configure(request);
+                        session.Cancel();
+                        host.Real.ClearDrawings();
+                        return CodyMonitorAccess.Snapshot();
                     case "permissions-configure":
                         bool? readAppsValue=request.TryGetProperty("readApps",out var readApps)?readApps.GetBoolean():null,extraUsageValue=request.TryGetProperty("extraUsage",out var extraUsage)?extraUsage.GetBoolean():null;
                         string folderValue=null;if(request.TryGetProperty("workingFolder",out var folder)){folderValue=folder.GetString();if(string.IsNullOrWhiteSpace(folderValue)||!Path.IsPathFullyQualified(folderValue)||!Directory.Exists(folderValue))throw new ArgumentException("Choose an existing working folder.");folderValue=Path.GetFullPath(folderValue);}
-                        var policy=CodyPermissions.Configure(request.TryGetProperty("enabled",out var enabled)?enabled.GetBoolean():null,request.TryGetProperty("level",out var level)?level.GetString():null,request.TryGetProperty("computerUse",out var computerUse)?computerUse.GetBoolean():null,request.TryGetProperty("backgroundTasks",out var backgroundTasks)?backgroundTasks.GetBoolean():null);
+                        CodyPermissions.Configure(request.TryGetProperty("enabled",out var enabled)?enabled.GetBoolean():null,request.TryGetProperty("level",out var level)?level.GetString():null,request.TryGetProperty("computerUse",out var computerUse)?computerUse.GetBoolean():null,request.TryGetProperty("backgroundTasks",out var backgroundTasks)?backgroundTasks.GetBoolean():null);
                         host.Real.Core.Settings.Update(s=>{
                             if(readAppsValue.HasValue)s.OneBrainReadsApps=readAppsValue.Value;
                             if(extraUsageValue.HasValue)s.AgentAutoApproveExtraUsage=extraUsageValue.Value;
                             if(folderValue!=null)s.AgentFolderPath=folderValue;
                         });
-                        if(!policy.enabled||policy.level=="custom"&&!policy.computerUse)host.ClickyDrive?.HandleEscape();Consent.ApplyPolicy();Emit("permissions-changed",PermissionState());return PermissionState();
+                        if(!CodyPermissions.CanUseComputer)host.ClickyDrive?.HandleEscape();Consent.ApplyPolicy();Emit("permissions-changed",PermissionState());return PermissionState();
                     case "permissions-probe":
                         var probe=new CodyConsent{Policy=CodyPermissions.Decision};bool? approved=null;string key=Text("kind")=="agent"?"job:permission-probe":"takeover-card";
                         probe.Request(key,"Permission routing check","No computer action is performed",answer=>approved=answer);
@@ -344,7 +355,17 @@ public static class CodyEngineBridge
                         CodyMemoryPolicy.Configure(host,request.GetProperty("localOnly").GetBoolean());
                         return new { localOnly = CodyMemoryPolicy.LocalOnly };
                     case "speech-subtitles-configure":
-                        speechSubtitlesEnabled = request.GetProperty("enabled").GetBoolean();
+                        bool enableSubtitles = request.GetProperty("enabled").GetBoolean();
+                        if (enableSubtitles != speechSubtitlesEnabled)
+                        {
+                            speechSubtitlesEnabled = enableSubtitles;
+                            if (enableSubtitles) session.Mouth.PlaybackLineQueued += subtitlePlayback.Enqueue;
+                            else
+                            {
+                                session.Mouth.PlaybackLineQueued -= subtitlePlayback.Enqueue;
+                                subtitlePlayback.Clear();
+                            }
+                        }
                         return new { enabled = speechSubtitlesEnabled };
                     case "attachments-text":
                         bool previewAttachment = request.TryGetProperty("preview", out var previewValue) && previewValue.ValueKind == JsonValueKind.True;
@@ -568,10 +589,13 @@ public static class CodyEngineBridge
                 byte[] pcm = await File.ReadAllBytesAsync(path, token);
                 token.ThrowIfCancellationRequested();
                 host.Services.Audio.PrepareForUpcomingAudio();
+                var audio = host.Services.Audio;
+                var subtitle = speechSubtitlesEnabled ? new SpeechPlaybackLine(text,
+                    audio.Buffered.TotalSeconds + audio.PlayedSeconds, pcm.Length / (2.0 * audio.SampleRate)) : null;
                 host.Services.Audio.Enqueue(pcm);
+                if (subtitle != null) subtitlePlayback.Enqueue(subtitle);
                 cachedSpeaking = true; cachedPlaybacks++;
                 Emit("phase", new { state = "Responding", turn });
-                PublishSpeechSubtitle(text, pcm.Length / (2.0 * host.Services.Audio.SampleRate));
                 Log.Info("cody-speed", $"cached confirmation queued in {clock.ElapsedMilliseconds} ms ({pcm.Length} bytes)");
                 while(host.Services.Audio.Buffered > TimeSpan.Zero) await Task.Delay(15, token);
                 spoken = true;
@@ -596,12 +620,19 @@ public static class CodyEngineBridge
     }
 
     private static bool UseSubtitlesWithoutAudio() => speechSubtitlesEnabled && !NativeAudioControl.HasDefaultOutput();
+    private static void PublishPlaybackSubtitle(string text)
+    {
+        if (!speechSubtitlesEnabled) return;
+        if (text == null) Emit("speech-subtitle-end", new { });
+        else Emit("speech-subtitle", new { text, playing = true });
+    }
     private static void PublishSpeechSubtitle(string text, double seconds)
     {
         if(speechSubtitlesEnabled && !string.IsNullOrWhiteSpace(text)) Emit("speech-subtitle", new { text, seconds });
     }
     private static void ClearSpeechSubtitles()
     {
+        subtitlePlayback?.Clear();
         if(speechSubtitlesEnabled) Emit("speech-subtitle-clear", new { });
     }
 

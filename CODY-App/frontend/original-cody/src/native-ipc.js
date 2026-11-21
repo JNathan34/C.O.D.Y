@@ -54,7 +54,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     const items=utilities?localMentions:[];
     if(localOnly===true||localMemoryOnly()||selection(store.data.settings).provider!=='heyclicky')return {items:normalizeMentions([],items)};
     try{return {items:normalizeMentions(await engine.request('mentions-list'),items)};}
-    catch{return {items,error:'Could not load connected capabilities.'};}
+    catch{return {items:normalizeMentions([],items),error:'Could not load available mentions.'};}
   });
   handle('agents-state',()=>engine.request('agents-state'));
   handle('heyclicky-usage',()=>engine.request('heyclicky-usage'));
@@ -101,7 +101,11 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
       if('level' in change&&!['ask','approve-safe','full','custom'].includes(change.level))throw Error('Invalid control level');
       const patch=Object.fromEntries(Object.entries(change).filter(([key])=>['enabled','level','readApps','extraUsage','computerUse','backgroundTasks'].includes(key)));
       const native=rememberPermissions(await engine.request('permissions-configure',patch));
-      const permissions=controller.configure(Object.fromEntries(Object.entries(change).filter(([key])=>!['readApps','extraUsage','computerUse','backgroundTasks'].includes(key))));if(!permissions.enabled){cancelLocalApprovals();utilities?.cancel();}sendUI('settings-changed',store.data.settings);return{permissions,native};
+      const localPatch=Object.fromEntries(Object.entries(change).filter(([key])=>!['readApps','extraUsage','computerUse','backgroundTasks'].includes(key)));
+      if(!Object.keys(localPatch).length)return{permissions:controller.permissions(),native};
+      const permissions=controller.configure(localPatch);
+      if(!permissions.enabled){cancelLocalApprovals();utilities?.cancel();}
+      sendUI('settings-changed',store.data.settings);return{permissions,native};
     });
     handle('computer-emergency-stop',async()=>{await engine.request('permissions-configure',{enabled:false});await engine.request('drive-stop');await cancel();controller.configure({enabled:false});sendUI('settings-changed',store.data.settings);return{stopped:true};});
     if(chooseWorkingFolder)handle('browse-folder',async()=>{const folder=await chooseWorkingFolder();if(!folder)return null;const native=await engine.request('permissions-configure',{workingFolder:folder});store.settings({workingFolder:folder});rememberPermissions(native);return folder;});

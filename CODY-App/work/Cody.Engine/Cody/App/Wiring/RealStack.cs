@@ -260,6 +260,8 @@ public sealed class RealStack : IAsyncDisposable
 		WasapiAudioOutput audio = new WasapiAudioOutput();
 		Task.Run((Action)audio.PreloadEarcons);
 		ScreenCaptureService capture = new ScreenCaptureService();
+		if (CodyEngineBridge.EngineMode) CodyMonitorAccess.Load(CodyPaths.StateRoot);
+		IScreenCaptureService screens = new CodyMonitorCapture(capture);
 		double value = Lap();
 		DeferredCursorOverlay cursor = new DeferredCursorOverlay();
 		DeferredHighlightOverlay highlight = new DeferredHighlightOverlay();
@@ -315,7 +317,6 @@ public sealed class RealStack : IAsyncDisposable
 		}
 		IAudioOutput audio2 = HeyClicky.App.Cody.CodyEngineBridge.EngineMode ? HeyClicky.App.Cody.CodyCachedAudio.Wrap(audioOutput2) : audioOutput2;
 		CoreServices coreServices = core;
-		ScreenCaptureService screens = capture;
 		DeferredCursorOverlay cursor2 = cursor;
 		string silence = TestSpeakerSilence();
 		CompanionSessionOptions companionSessionOptions = new CompanionSessionOptions
@@ -324,6 +325,7 @@ public sealed class RealStack : IAsyncDisposable
 			DesktopActions = new PlatformDesktopActions(),
 			EnterText = CodyEngineBridge.EngineMode ? (text,words,ct) => PlatformDesktopActions.EnterTextAsync(text,words,ct,requireAutomatic:true) : null,
 			AllowClipboardCopy = CodyEngineBridge.EngineMode ? CodyTextEntryIntent.Copy : null,
+			AllowForegroundAppReads = () => !CodyMonitorAccess.Restricted || CodyMonitorAccess.AllowsWindow(CodyDrawingOwner.ForegroundWindow),
 			UserDriveTool = CodyEngineBridge.EngineMode ? (name,args,words) =>
 				HeyClicky.App.Drive.ClickyTakeOverController.Current?.HandleUserToolAsync(name,args,words)
 				?? Task.FromResult("{\"status\":\"unavailable\"}") : null,
@@ -421,13 +423,13 @@ public sealed class RealStack : IAsyncDisposable
 		{
 			if (QuietContext.FullscreenForegroundMonitor() == 0)
 			{
-				return await HighlightTextHarvester.SummarizeAsync(strokes, capture.GetDisplays(), ct);
+					return await HighlightTextHarvester.SummarizeAsync(strokes, screens.GetDisplays(), ct);
 			}
 			using CancellationTokenSource quick = CancellationTokenSource.CreateLinkedTokenSource(ct);
 			quick.CancelAfter(300);
 			try
 			{
-				return await HighlightTextHarvester.SummarizeAsync(strokes, capture.GetDisplays(), quick.Token).WaitAsync(quick.Token);
+					return await HighlightTextHarvester.SummarizeAsync(strokes, screens.GetDisplays(), quick.Token).WaitAsync(quick.Token);
 			}
 			catch (OperationCanceledException) when (!ct.IsCancellationRequested)
 			{
@@ -684,6 +686,7 @@ public sealed class RealStack : IAsyncDisposable
 		{
 			try
 			{
+				if (CodyMonitorAccess.Restricted) return null;
 				ForegroundApp result = ForegroundAppInfo.CaptureUserAppAsync().WaitAsync(TimeSpan.FromSeconds(2L)).GetAwaiter()
 					.GetResult();
 				return ((object)result != null && ForegroundAppInfo.IsBrowser(result.ProcessName)) ? result.BrowserUrl : null;

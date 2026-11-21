@@ -33,6 +33,7 @@ function parseBackup(text,validateIsland){
   if(isObject(backup.island)){
     delete backup.island.islandTaskUpdates;
     delete backup.island.controlInputMode;
+    delete backup.island.subtitleDurationSeconds;
   }
   const section=(name,keys)=>{
     const value=Object.hasOwn(backup,name)?backup[name]:{};

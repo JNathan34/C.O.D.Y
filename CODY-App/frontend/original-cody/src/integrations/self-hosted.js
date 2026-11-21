@@ -139,11 +139,20 @@ class SelfHosted{
   if(!Array.isArray(entries))throw Error('Plex returned invalid recent media.');
   return entries.slice(0,12).map(summarisePlexEntry);
  }
+ async overseerrRequestPage(config,take){
+  if(!config)throw Error('Connect Overseerr under Settings → Plugins first.');
+  const data=await this.get('overseerr','/request?take='+take+'&skip=0&sort=added',config);
+  if(!Array.isArray(data?.results)||data.results.some(item=>!item||typeof item!=='object'))throw Error('Overseerr returned invalid requests.');
+  if(this.data.overseerr!==config)throw Error('The Overseerr connection changed. Try again.');
+  return data.results.slice(0,take);
+ }
+ async overseerrTest(){
+  await this.overseerrRequestPage(this.data.overseerr,1);
+  return {ok:true};
+ }
  async overseerrRequests(){
   const config=this.data.overseerr;
-  const data=await this.get('overseerr','/request?take=12&skip=0&sort=added');
-  if(!Array.isArray(data?.results))throw Error('Overseerr returned invalid requests.');
-  const items=data.results.slice(0,12),details=new Map();
+  const items=await this.overseerrRequestPage(config,12),details=new Map();
   // Request media contains TMDB IDs, rather than a title, in Overseerr's API.
   for(let offset=0;offset<items.length;offset+=3)await Promise.all(items.slice(offset,offset+3).map(async item=>{
    const type=item.type,id=item.media?.tmdbId,resource='/'+type+'/'+id;
@@ -151,6 +160,7 @@ class SelfHosted{
    if(!details.has(resource))details.set(resource,this.get('overseerr',resource,config).catch(()=>null));
    await details.get(resource);
   }));
+  if(this.data.overseerr!==config)throw Error('The Overseerr connection changed. Try again.');
   return Promise.all(items.map(async item=>{
    const detail=await details.get('/'+item.type+'/'+item.media?.tmdbId);
    return {

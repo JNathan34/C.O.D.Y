@@ -20,13 +20,7 @@
   function icon(item) {
     const badge = element('span', 'mention-icon');
     badge.setAttribute('aria-hidden', 'true');
-    window.CODYIcons.set(badge, item.icon || 'plug');
-    if (item.logo?.startsWith('https://')) {
-      const image = element('img');
-      image.alt = '';
-      image.src = item.logo;
-      image.addEventListener('load', () => badge.replaceChildren(image), {once: true});
-    }
+    window.CODYIcons.setMention(badge,item);
     return badge;
   }
 
@@ -82,8 +76,8 @@
       row.addEventListener('click', () => choose(item));
       return row;
     }));
-    status.textContent = loading ? 'Loading connected capabilities…' : error ||
-      (matches.length ? '' : 'No matching capabilities.');
+    status.textContent = loading ? 'Loading mentions…' : error ||
+      (matches.length ? '' : 'No matching mentions.');
     status.hidden = !status.textContent;
     markActive();
   }
@@ -100,7 +94,7 @@
       inventory = catalog.items;
       error = catalog.error || '';
     } catch {
-      error = 'Could not load available capabilities.';
+      error = 'Could not load available mentions.';
     } finally {
       loading = false;
       render();

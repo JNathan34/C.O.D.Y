@@ -31,4 +31,6 @@
 .plugin-connection .setting-help{margin:0;font-size:10px;overflow-wrap:anywhere}
 .plugin-connection form>button{justify-self:start;font-size:10px;padding:7px 10px}
 .plugin-card-heading .plugin-logo-fallback img{width:32px;height:32px;object-fit:contain}
-.overseerr-search-result{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-bottom:1px solid #353842}.overseerr-search-result p{margin:0;font-size:11px;overflow-wrap:anywhere}.overseerr-search-result button{flex-shrink:0}.overseerr-request-preview{display:grid;gap:10px;padding:12px}.overseerr-request-preview h4{margin:0;font-size:13px}.overseerr-request-preview fieldset{display:grid;gap:8px;max-height:230px;overflow:auto;border:1px solid #454754;border-radius:8px;padding:10px}.overseerr-request-preview legend{font-size:11px}.overseerr-season{display:flex;gap:8px;align-items:center}.plugin-connection .overseerr-season input{width:auto;margin:0}.overseerr-request-preview .plugin-card-actions{margin-top:0}
+#overseerr-status{margin:0;overflow-wrap:anywhere}
+.plugin-card .plugin-switch{min-height:0;padding:0;gap:10px}
+.plugin-switch-status{margin:0;overflow-wrap:anywhere}

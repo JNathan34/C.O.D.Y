@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.37 — 21 November 2026
+
+- Sync subtitles to speech playback so each line stays visible longer at slower voice speeds.
+- Choose the Island’s main monitor and limit screen capture and direct Computer Use to selected displays in **Settings → Permissions → Monitor access**.
+- Turn Computer Use on or off from its own card in Plugins. Turning it off keeps approved quick commands available.
+- Show Chrome and Edge logos in Plugins and add matching branding for supported entries in the `@` picker. Keep the picker focused on plugins, skills and Computer Use.
+- List recent Overseerr requests directly in chat and test the connection from its plugin card. Recognize more ways to ask who is watching Plex.
+
 ## 0.15.36 — 21 November 2026
 
 - Answer who is watching Plex directly in chat. Retry a dropped server connection and reopen Plugins after Plex sign-in so you can choose a server.

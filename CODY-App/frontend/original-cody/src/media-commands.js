@@ -7,8 +7,17 @@ function isPlexSessionRequest(input){
   if(/^are there any (?:active |current )?plex (?:viewers|sessions)$/.test(text))return true;
   const watching=text.replace(/ (?:(?:anything |something )?on |(?:anything |something )?in )?(?:my |our |the )?plex(?: server)?$/,'');
   if(watching===text)return false;
-  return /^(?:(?:show|check|see|find out) )?(?:who(?:'s| is)|how many (?:people|viewers)(?: are)?|(?:is|are) (?:anyone|anybody|someone|people)|(?:if |whether )(?:anyone|anybody|someone) is|(?:my |our )?viewers) (?:currently )?(?:watching|playing)$/.test(watching)||
+  return /^(?:(?:show|check|see|find out) )?(?:who(?:'?s|se| is)?|how many (?:people|viewers)(?: are)?|(?:is|are) (?:anyone|anybody|someone|people)|(?:if |whether )(?:anyone|anybody|someone) is|(?:my |our )?viewers) (?:currently )?(?:watching|playing)$/.test(watching)||
     /^(?:show|check) (?:my |our |the )?(?:viewers|watching|playing)$/.test(watching);
+}
+function isOverseerrRequestList(input,connected){
+  const text=commandText(input).toLowerCase().replace(/\bmost recent\b/g,'latest');
+  if(/^what(?:'s| has) been requested (?:on|in) overseerr(?: recently)?$/.test(text))return true;
+  const phrase=text.replace(/^(?:(?:show|check|list|view|pull up)(?: me)?|what (?:are|were)) /,'').replace(/^(?:my|our|the) /,'');
+  const requests=phrase.replace(/^((?:recent|latest|newest) )?overseerr /,'$1')
+    .replace(/ (?:on|in|from|for) (?:my |our |the )?overseerr(?: plugin| server)?$/,'');
+  if(requests!==phrase)return /^(?:(?:recent|latest|newest) )?(?:media )?requests$/.test(requests);
+  return Boolean(connected)&&/^(?:(?:recent|latest|newest) (?:media )?requests|media requests)$/.test(requests);
 }
 function parsePlexAvailability(input){
   const text=commandText(input);
@@ -43,4 +52,4 @@ function parseMediaCommand(input){
   if(seek){const amount=numbers[seek[3]]||Number(seek[3]),scale=/^(?:min)/.test(seek[4])?60:/^(?:h)/.test(seek[4])?3600:1;const seconds=amount*scale*(seek[1]==='rewind'||/back/.test((seek[2]||'')+(seek[5]||''))?-1:1);if(Number.isFinite(seconds)&&seconds!==0&&Math.abs(seconds)<=86400)return {action:'media.control',args:{command:'seek',target:seek[6]?'plezy':'current',seconds}};}
   return null;
 }
-module.exports={parseMediaCommand,parsePlexAvailability,isPlexSessionRequest};
+module.exports={parseMediaCommand,parsePlexAvailability,isPlexSessionRequest,isOverseerrRequestList};

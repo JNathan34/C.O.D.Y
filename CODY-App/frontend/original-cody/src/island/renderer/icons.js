@@ -56,7 +56,54 @@
     svg.innerHTML=paths[name];
     node.replaceChildren(svg);node.dataset.icon=name;
   }
-  window.CODYIcons={set};
+  const chromeLogo='assets/plugin-logos/chrome-logo.png';
+  const edgeLogo='assets/plugin-logos/edge-logo.png';
+  const computerUseLogo='assets/plugin-logos/computer-use.png';
+  const browserLogos=new Map([
+    ['chrome',chromeLogo],['browserchrome',chromeLogo],['googlechrome',chromeLogo],
+    ['edge',edgeLogo],['browseredge',edgeLogo],['microsoftedge',edgeLogo]
+  ]);
+  function browserLogo(name){
+    return browserLogos.get(String(name||'').toLowerCase().replace(/[\s_-]/g,''));
+  }
+  const mentionLogos=new Map([
+    ['word','task-apps/word.png'],['microsoftword','task-apps/word.png'],
+    ['excel','task-apps/excel.png'],['microsoftexcel','task-apps/excel.png'],
+    ['powerpoint','task-apps/powerpoint.png'],['microsoftpowerpoint','task-apps/powerpoint.png'],
+    ['discord','task-apps/discord.png'],['discordbot','task-apps/discord.png'],
+    ['outlook','task-apps/mail.png'],['microsoftoutlook','task-apps/mail.png'],
+    ['spotify','task-apps/spotify.png'],['whatsapp','task-apps/whatsapp.png'],
+    ['plex','media/plex.svg'],['overseerr','media/overseerr.svg'],
+    // These logos ship with the native engine under Assets/Logos.
+    ['gmail','plugin-logos/gmail-logo.png'],['github','plugin-logos/github-logo.svg'],
+    ['obsidian','plugin-logos/obsidian-logo.svg']
+  ]);
+  function setMention(node,item){
+    const id=String(item.id||'').toLowerCase();
+    const plugin=id.startsWith('plugin:')||item.kind==='plugin';
+    if(plugin){
+      const initial=document.createElement('span');
+      initial.className='mention-icon-initial';
+      initial.textContent=Array.from(String(item.name||'').trim())[0]?.toUpperCase()||'?';
+      node.replaceChildren(initial);
+    }else set(node,Object.hasOwn(paths,item.icon)?item.icon:'file-text');
+    const slug=id.replace(/^(?:plugin|skill):/,'').replace(/[-_]/g,'');
+    const bundled=mentionLogos.get(slug);
+    const localLogo=id==='tool:computer-use'?computerUseLogo:
+      bundled?'assets/'+bundled:plugin&&(browserLogo(slug)||browserLogo(item.name));
+    const sources=localLogo?[localLogo]:[];
+    if(typeof item.logo==='string'&&/^https:\/\/\S{1,500}$/i.test(item.logo))sources.push(item.logo);
+    function load(index){
+      if(!sources[index])return;
+      const image=document.createElement('img');
+      image.alt='';image.referrerPolicy='no-referrer';
+      image.addEventListener('load',()=>node.replaceChildren(image),{once:true});
+      image.addEventListener('error',()=>load(index+1),{once:true});
+      image.src=sources[index];
+    }
+    load(0);
+  }
+  window.CODYIcons={set,setMention,browserLogo,computerUseLogo};
   const controls={'new-chat':'square-pen','panel-settings':'settings','panel-mic':'mic','panel-send':'arrow-up','core-speaker':'volume-x','core-stop':'square'};
   for(const [id,icon]of Object.entries(controls))set(document.getElementById(id),icon);
   const navigation={general:'settings',memory:'brain',voice:'audio-lines',microphone:'mic',appearance:'palette',accessibility:'accessibility',shortcuts:'keyboard',cursor:'mouse-pointer-2',behaviour:'activity',integrations:'plug',agents:'users',permissions:'shield-check',developer:'code-xml'};
