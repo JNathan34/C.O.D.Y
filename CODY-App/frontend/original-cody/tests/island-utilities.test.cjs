@@ -13,6 +13,21 @@ test('clock, date, weather and maths publish the original Island card formats',a
   assert.deepEqual(cards.map(c=>c.kind),['time','date','weather','utility']);assert.equal(cards[2].text,'12°C');assert.match(cards[3].text,/48/);
 });
 test('ordinary AI questions stay with HeyClicky',()=>{const {utilities}=setup();for(const prompt of ['Explain why weather changes','Draw a 3D bicycle','Write a song about time','Set volume to 25 and email my manager'])assert.equal(utilities.match(prompt),null);});
+test('natural questions about current Plex viewers call the Plex plugin before movie lookup',async()=>{
+  let calls=0;
+  const {utilities}=setup({selfHosted:{plexSessions:async()=>{
+    calls++;return {count:1,sessions:[{viewer:'Plex Viewer',title:'Fixture Movie',state:'playing'}]};
+  }},overseerrRequests:{lookup:()=>assert.fail('Plex activity is a server session lookup')}});
+  for(const prompt of ['is anyone watching plex','Is anybody watching on Plex right now?',
+    'Can you check if anyone is watching my Plex server?', 'Show me who’s watching Plex', 'How many people are watching Plex?', 'Plex sessions']){
+    assert.equal(utilities.match(prompt).action,'self-hosted-plex-sessions',prompt);
+    const result=await utilities.run(prompt);
+    assert.match(result.reply,/1 Plex viewing session right now.*Plex Viewer.*Fixture Movie.*playing/s);
+  }
+  assert.equal(calls,6);
+  assert.equal(utilities.match('Is Dune on Plex?').action,'overseerr-availability');
+  assert.equal(utilities.match('Who owns Plex?'),null);
+});
 test('media commands target the actual player and clear an older quick card',async()=>{const {utilities,actions,cleared}=setup();await utilities.run('pause my music','chat');assert.deepEqual(actions,[{action:'media.control',args:{command:'pause',target:'current'}}]);assert.equal(cleared(),1);});
 test('volume cards use the actual resulting volume, including relative changes',async()=>{const {utilities,cards,actions}=setup();await utilities.run('turn the volume down by 10 percent','chat');assert.deepEqual(actions,[{action:'audio.set',args:{level:32}}]);assert.equal(cards.at(-1).text,'42%');});
 test('mirroring a spoken action never executes the action a second time',async()=>{const {utilities,actions,cards}=setup();await utilities.observe('skip track');await utilities.observe('set volume to 80 percent');assert.equal(actions.length,0);assert.equal(cards.at(-1).text,'42%');});

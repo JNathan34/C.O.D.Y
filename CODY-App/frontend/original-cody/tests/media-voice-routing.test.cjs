@@ -13,3 +13,28 @@ for(const [text,action]of [['pause','media.control'],['play','media.control'],['
   if(action==='media.control'&&/on Plex/i.test(text))assert.equal(actions[0].args.target,'plezy');
   if(action==='app.open')assert.equal(actions[0].args.app,'plezy');
 });
+
+test('typed and spoken Plex activity questions make one direct lookup per turn',async()=>{
+  const text='is anyone watching plex',engine=new EventEmitter(),calls=[],handlers=new Map(),messages=[];
+  engine.connected=true;
+  engine.request=async(command,args)=>{calls.push({command,args});return command==='end'?{utilityText:text}:{};};
+  engine.refresh=()=>assert.fail('Plex activity should stay local');
+  let lookups=0;
+  const utilities=new IslandUtilities({selfHosted:{plexSessions:async()=>{lookups++;return {count:0,sessions:[]};}},showCard(){}});
+  const store={data:{settings:{},activeChatId:'chat'},chat:()=>({messages}),
+    addMessage:(_id,role,text)=>{const message={id:String(messages.length),role,text};messages.push(message);return message;},save(){},publicState:()=>({})};
+  const webContents={mainFrame:{}};
+  installNativeIpc({ipcMain:{removeHandler(){},handle:(name,fn)=>handlers.set(name,fn)},engine,store,utilities,sendUI(){},getState:()=>({}),getWindow:()=>({webContents})});
+  const invoke=(name,...args)=>handlers.get(name)({sender:webContents,senderFrame:webContents.mainFrame},...args);
+  assert.equal((await invoke('send-message',{chatId:'chat',text})).utility,true);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(lookups,1);
+  assert.match(messages.at(-1).text,/Nobody is watching Plex/);
+  assert.deepEqual(calls,[]);
+  await invoke('native-begin');
+  engine.emit('classify-utility',{turn:calls[0].args.turn,text});
+  await invoke('native-end');
+  assert.equal(lookups,2);
+  assert.equal(calls.find(call=>call.command==='utility-route').args.handled,true);
+  assert.ok(!calls.some(call=>call.command==='submit'));
+});

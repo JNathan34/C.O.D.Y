@@ -106,9 +106,10 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     handle('computer-emergency-stop',async()=>{await engine.request('permissions-configure',{enabled:false});await engine.request('drive-stop');await cancel();controller.configure({enabled:false});sendUI('settings-changed',store.data.settings);return{stopped:true};});
     if(chooseWorkingFolder)handle('browse-folder',async()=>{const folder=await chooseWorkingFolder();if(!folder)return null;const native=await engine.request('permissions-configure',{workingFolder:folder});store.settings({workingFolder:folder});rememberPermissions(native);return folder;});
   }
-  const sendMessage=(role,text,provider='heyclicky')=>{
+  const sendMessage=(role,text,provider='heyclicky',mediaLookup)=>{
     const persist=!active.utility&&!(active.voice&&role==='user');
     const message=store.addMessage(active.chatId,role,text,provider,{persist,...(role==='user'&&active.mention?{mention:active.mention}:{})});
+    if(role==='assistant'&&mediaLookup)message.mediaLookup=mediaLookup;
     if(role==='user'&&active.files?.length){
       message.attachments=active.attachmentBatch?.items||attachmentNames(active.files);
       if(persist)store.save();
@@ -139,7 +140,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(active!==operation)return;
     operation.cancelled=Boolean(result.cancelled);
     operation.utilityError=result.error?result.reply:undefined;
-    active.answer=sendMessage('assistant',result.reply);
+    active.answer=sendMessage('assistant',result.reply,'heyclicky',result.mediaLookup);
     finish();
     if(gameRequest&&rps?.active&&rps.phase==='ready'){void gameVoice.start();return result;}
     if(speak&&!localMemoryOnly()&&!result.error&&!result.cancelled)void engine.request('speak',{turn:operation.turn,text:result.confirmation||result.reply}).catch(error=>sendUI('diagnostic',error.message));

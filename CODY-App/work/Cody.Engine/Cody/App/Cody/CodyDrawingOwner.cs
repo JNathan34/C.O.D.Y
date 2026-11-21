@@ -8,14 +8,14 @@ using HeyClicky.Platform.Win32;
 
 namespace HeyClicky.App.Cody;
 
-// The Electron Island is a different process from the native engine. Neither
-// process is the document being explained, even while its composer has focus.
+// The Island can have focus while the user asks about the last external window.
+// Other Electron windows, including the ChatGPT session, are separate views.
 internal static class CodyDrawingOwner
 {
     private sealed record Window(nint Handle, int Pid);
     private static readonly object gate = new();
     private static readonly List<Window> recent = new();
-    private static int clientPid;
+    private static Window client = new(0, 0);
 
     internal static void Start()
     {
@@ -23,22 +23,36 @@ internal static class CodyDrawingOwner
         Remember(GetForegroundWindow());
     }
 
-    internal static void Client(int pid)
+    internal static void Client(int pid, nint island = 0)
     {
-        Volatile.Write(ref clientPid, pid);
-        lock (gate) recent.RemoveAll(window => window.Pid == pid);
+        var handle = Pid(island) == pid ? GetAncestor(island, 2) : 0;
+        Volatile.Write(ref client, new Window(handle, pid));
+        lock (gate) recent.RemoveAll(window => IsNeutral(window.Handle, window.Pid));
         Remember(GetForegroundWindow());
     }
 
-    internal static bool Own(int pid) => pid == Environment.ProcessId || pid == Volatile.Read(ref clientPid);
-    private static nint Root(nint window) => GetAncestor(window, 3);
+    internal static bool Own(int pid) => pid == Environment.ProcessId || pid == Volatile.Read(ref client).Pid;
+    private static bool IsNeutral(nint window, int pid)
+    {
+        var island = Volatile.Read(ref client);
+        return pid == Environment.ProcessId || pid == island.Pid && (island.Handle == 0 || window == island.Handle);
+    }
+
+    private static nint Root(nint window)
+    {
+        var island = Volatile.Read(ref client);
+        // An owned Electron window has its own foreground view even if the
+        // Island is its owner in the Windows z-order.
+        return GetAncestor(window, island.Handle != 0 && Pid(window) == island.Pid ? 2u : 3u);
+    }
     private static nint Front()
     {
-        // The dedicated foreground-event thread has a live message pump.
-        // Composition/accessibility worker threads can observe stale input
-        // state across capture and cross-process activation.
+        // The cached event can still point to a visible window after a switch.
+        // Use it only during the gap when Windows reports no foreground window.
+        nint active = GetForegroundWindow();
+        if (active != 0) return Root(active);
         nint tracked = ForegroundTracker.LastExternalWindow;
-        return Root(tracked != 0 && IsWindow(tracked) ? tracked : GetForegroundWindow());
+        return tracked != 0 && IsWindowVisible(tracked) && !IsIconic(tracked) ? Root(tracked) : 0;
     }
     internal static nint ForegroundWindow => Front();
     private static int Pid(nint window) { GetWindowThreadProcessId(window, out int pid); return pid; }
@@ -46,11 +60,12 @@ internal static class CodyDrawingOwner
     {
         window = Root(window);
         int pid = Pid(window);
-        if (window == 0 || pid == 0 || Own(pid)) return;
+        if (window == 0 || pid == 0 || IsNeutral(window, pid)) return;
         lock (gate)
         {
             // Client registration can race the foreground-event callback.
-            if (Own(pid)) return;
+            if (IsNeutral(window, pid)) return;
+            if (recent.Count > 0 && recent[0].Handle == window && recent[0].Pid == pid) return;
             recent.RemoveAll(item => item.Handle == window);
             recent.Insert(0, new Window(window, pid));
             if (recent.Count > 16) recent.RemoveAt(16);
@@ -62,7 +77,7 @@ internal static class CodyDrawingOwner
         Window window;
         lock (gate) window = recent.Count == 0 ? null : recent[0];
         // Validate both handle and process; Windows can recycle an HWND.
-        return window != null && !Own(window.Pid) && IsWindow(window.Handle) &&
+        return window != null && !IsNeutral(window.Handle, window.Pid) && IsWindow(window.Handle) &&
             Pid(window.Handle) == window.Pid ? window : null;
     }
 
@@ -71,7 +86,7 @@ internal static class CodyDrawingOwner
         nint front = Front();
         int pid = Pid(front);
         Window target;
-        if (front != 0 && pid != 0 && !Own(pid))
+        if (front != 0 && pid != 0 && !IsNeutral(front, pid))
         {
             Remember(front);
             target = new Window(front, pid);
@@ -94,14 +109,17 @@ internal static class CodyDrawingOwner
 
     internal static bool IsCurrent(ForegroundApp app)
     {
-        if (app == null || Own(app.ProcessId) || !IsWindowVisible(app.WindowHandle) ||
+        if (app == null || IsNeutral(app.WindowHandle, app.ProcessId) || !IsWindowVisible(app.WindowHandle) ||
             IsIconic(app.WindowHandle) || Pid(app.WindowHandle) != app.ProcessId) return false;
         nint front = Front();
         if (front == 0) return false;
-        if (front == app.WindowHandle) return true;
+        if (!IsNeutral(front, Pid(front)))
+        {
+            Remember(front);
+            return front == app.WindowHandle;
+        }
         // Opening the Island is neutral. A genuine app change updates Last and
         // hides old annotations, including while the Island is opened again.
-        if (!Own(Pid(front))) return false;
         var last = Last();
         return last?.Handle == app.WindowHandle && last.Pid == app.ProcessId;
     }
@@ -112,7 +130,7 @@ internal static class CodyDrawingOwner
         var title = new StringBuilder(256);
         GetWindowText(front, title, title.Capacity);
         var last = Last();
-        return new { foreground = front.ToString(), foregroundPid = Pid(front), clientPid = Volatile.Read(ref clientPid),
+        return new { foreground = front.ToString(), foregroundPid = Pid(front), clientPid = Volatile.Read(ref client).Pid,
             enginePid = Environment.ProcessId, title = title.ToString(), lastWindow = last?.Handle.ToString(), lastPid = last?.Pid };
     }
 

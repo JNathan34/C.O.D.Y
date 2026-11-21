@@ -24,7 +24,6 @@
 .plugin-card:has([data-media-panel="overseerr"]:not([hidden])){grid-column:1/-1}
 .plugin-connection form{display:grid;gap:7px;min-width:0}
 .plugin-connection form[hidden]{display:none}
-.plugins-grid{align-items:start}
 .plugin-plex-connection{padding-top:0;border-top:0;gap:8px}
 .plugin-plex-connection select{box-sizing:border-box;width:100%;min-width:0;border:1px solid #454754;border-radius:8px;background:#17191f;color:#eee;padding:8px;font:12px 'Segoe UI',sans-serif}
 .plugin-connection label{font-size:11px;color:#c6c6d2}

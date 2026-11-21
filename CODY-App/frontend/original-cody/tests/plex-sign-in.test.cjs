@@ -5,6 +5,7 @@ const {SelfHosted}=require('../src/integrations/self-hosted');
 const {PlexSignIn}=require('../src/integrations/plex-sign-in');
 
 const reply=data=>({ok:true,status:200,headers:{get:()=>null},text:async()=>JSON.stringify(data)});
+const library=reply({MediaContainer:{size:0}});
 const resource=(id='server-one',owned=true)=>({
   clientIdentifier:id,name:id==='server-one'?'My Plex':'Shared Plex',provides:'server',owned,
   accessToken:'private-server-token-'+id,connections:[{uri:'https://'+id+'.example.com:32400',local:false}]
@@ -16,12 +17,13 @@ function fixture(t,{resources=[resource()],fetcher,openBrowser}={}){
     decryptString:bytes=>Buffer.from(bytes.toString(),'base64').toString()};
   const file=path.join(directory,'connections.dat');
   const service=new SelfHosted({file,cipher});
-  const calls=[],opened=[],timers=[];
+  const calls=[],opened=[],timers=[],ready=[];
   let claimed=false,clock=1000;
   const defaultFetch=async(url,options)=>{
     if(url.includes('/pins?'))return reply({id:123,code:'private-sign-in-code',expiresIn:300});
     if(url.includes('/pins/'))return reply({authToken:claimed?'private-account-token':null});
     if(url.includes('/resources?'))return reply(resources);
+    if(url.endsWith('/library/sections'))return library;
     const match=resources.find(server=>url.startsWith(server.connections[0].uri));
     return reply({MediaContainer:{machineIdentifier:match?.clientIdentifier}});
   };
@@ -31,9 +33,10 @@ function fixture(t,{resources=[resource()],fetcher,openBrowser}={}){
     return timer;
   },clearTimer(timer){if(timer)timer.cleared=true;},
     openBrowser:async url=>{opened.push(url);if(openBrowser)await openBrowser(url);},
+    onServersReady:()=>ready.push(auth.snapshot()),
     fetcher:async(url,options)=>{calls.push({url,options});return (fetcher||defaultFetch)(url,options);}
   });
-  return {auth,service,file,cipher,calls,opened,timers,claim:()=>claimed=true,advance:milliseconds=>clock+=milliseconds};
+  return {auth,service,file,cipher,calls,opened,timers,ready,claim:()=>claimed=true,advance:milliseconds=>clock+=milliseconds};
 }
 
 test('Plex browser sign-in discovers the server and securely retains its server token',async t=>{
@@ -46,8 +49,14 @@ test('Plex browser sign-in discovers the server and securely retains its server 
   const clientId=query.get('clientID');
   await f.auth.check();
   assert.equal(f.auth.snapshot().phase,'waiting');
+  assert.equal(f.ready.length,0);
   f.claim();await f.auth.check();
   assert.equal(f.auth.snapshot().phase,'servers');
+  assert.equal(f.ready.length,1);
+  assert.equal(f.ready[0].servers[0].name,'My Plex');
+  assert.ok(!JSON.stringify(f.ready[0]).includes('private-'));
+  await f.auth.check();
+  assert.equal(f.ready.length,1);
   assert.equal(f.calls.some(call=>call.url.endsWith('/identity')),false);
   await f.auth.select('server-one');
   assert.equal(f.auth.snapshot().phase,'connected');
@@ -59,8 +68,9 @@ test('Plex browser sign-in discovers the server and securely retains its server 
   assert.ok(!JSON.stringify(f.service.status()).includes('private-'));
   assert.ok(!fs.readFileSync(f.file,'utf8').includes('private-'));
   const probe=f.calls.find(call=>call.url.endsWith('/identity'));
-  assert.equal(probe.options.headers['X-Plex-Token'],'private-server-token-server-one');
+  assert.equal(probe.options.headers['X-Plex-Token'],undefined);
   assert.equal(probe.options.redirect,'error');
+  assert.equal(f.calls.find(call=>call.url.endsWith('/library/sections')).options.headers['X-Plex-Token'],'private-server-token-server-one');
   assert.ok(f.calls.every(call=>!call.url.includes('private-account-token')&&!call.url.includes('private-server-token')));
   const restarted=new SelfHosted({file:f.file,cipher:f.cipher});
   assert.equal(restarted.plexClientIdentifier(),clientId);
@@ -85,6 +95,7 @@ test('the server picker survives a queued PIN expiry and a slow choice can still
     if(url.includes('/pins?'))return reply({id:123,code:'private-sign-in-code',expiresIn:2});
     if(url.includes('/pins/'))return reply({authToken:'private-account-token'});
     if(url.includes('/resources?'))return reply(servers);
+    if(url.endsWith('/library/sections'))return library;
     return new Promise(resolve=>resolveProbe=resolve);
   }});
   await f.auth.start();
@@ -111,6 +122,7 @@ test('approved discovery retries without polling the PIN again, and a failed ser
     if(url.includes('/pins?'))return reply({id:123,code:'private-sign-in-code',expiresIn:2});
     if(url.includes('/pins/'))return reply({authToken:'private-account-token'});
     if(url.includes('/resources?'))return ++discoveries===1?{ok:false,status:503}:reply([resource()]);
+    if(url.endsWith('/library/sections'))return library;
     return ++probes===1?{ok:false,status:503}:reply({MediaContainer:{machineIdentifier:'server-one'}});
   }});
   await f.auth.start();
@@ -120,7 +132,8 @@ test('approved discovery retries without polling the PIN again, and a failed ser
   await f.auth.check();
   assert.equal(f.auth.snapshot().phase,'servers');
   assert.equal((await f.auth.select('server-one')).phase,'servers');
-  assert.match(f.auth.snapshot().message,/could not be reached/);
+  assert.match(f.auth.snapshot().message,/could not reach/);
+  assert.equal(f.auth.snapshot().canEnterAddress,true);
   assert.equal(f.auth.snapshot().servers.length,1);
   assert.equal(f.calls.filter(call=>call.url.includes('/pins/')).length,1);
   assert.equal(f.timers.filter(timer=>!timer.cleared&&timer.ms===1500).length,0);
@@ -159,7 +172,53 @@ test('server identity mismatch cannot save a discovered access token',async t=>{
   await f.auth.select('server-one');
   assert.equal(f.auth.snapshot().phase,'servers');
   assert.equal(f.service.status().services.plex.connected,false);
-  assert.match(f.auth.snapshot().message,/could not be reached/);
+  assert.match(f.auth.snapshot().message,/different Plex server/);
+  assert.equal(f.calls.some(call=>call.url.endsWith('/library/sections')),false);
+});
+
+test('a blocked Plex LAN hostname falls back to its private address and accepts XML identity',async t=>{
+  const server={...resource(),name:'PlexPoint',connections:[
+    {uri:'https://192-168-1-42.demo.plex.direct:32400',local:true,address:'192.168.1.42',port:32400},
+    {uri:'http://203.0.113.42:32400',local:true,address:'203.0.113.42',port:32400}
+  ]};
+  const f=fixture(t,{fetcher:async url=>{
+    if(url.includes('/pins?'))return reply({id:123,code:'private-sign-in-code'});
+    if(url.includes('/pins/'))return reply({authToken:'private-account-token'});
+    if(url.includes('/resources?'))return reply([server]);
+    if(url.includes('.plex.direct:'))throw Error('DNS lookup failed');
+    if(url.endsWith('/library/sections'))return library;
+    assert.equal(url,'http://192.168.1.42:32400/identity');
+    return {...reply(null),text:async()=>`<?xml version="1.0"?><MediaContainer size="1" machineIdentifier='server-one' />`};
+  }});
+  await f.auth.start();await f.auth.check();
+  assert.equal((await f.auth.select(server.clientIdentifier)).phase,'connected');
+  assert.equal(f.service.status().services.plex.url,'http://192.168.1.42:32400');
+  assert.ok(!f.calls.some(call=>call.url.includes('203.0.113.42')));
+});
+
+test('a retry can verify a different address for the selected server without exposing a token first',async t=>{
+  let correct=false,hasAccess=false;
+  const f=fixture(t,{fetcher:async(url,options)=>{
+    if(url.includes('/pins?'))return reply({id:123,code:'private-sign-in-code'});
+    if(url.includes('/pins/'))return reply({authToken:'private-account-token'});
+    if(url.includes('/resources?'))return reply([resource()]);
+    if(!url.startsWith('https://manual.example.com/'))throw Error('Offline');
+    if(url.endsWith('/identity')){
+      assert.ok(!options.headers['X-Plex-Token']);
+      return reply({MediaContainer:{machineIdentifier:correct?'server-one':'another-server'}});
+    }
+    assert.equal(options.headers['X-Plex-Token'],'private-server-token-server-one');
+    return hasAccess?library:{ok:false,status:403};
+  }});
+  await f.auth.start();await f.auth.check();
+  assert.equal((await f.auth.select('server-one')).canEnterAddress,true);
+  assert.match((await f.auth.select('server-one','https://manual.example.com')).message,/different Plex server/);
+  correct=true;
+  assert.match((await f.auth.select('server-one','https://manual.example.com')).message,/could not open its libraries/);
+  assert.equal(f.service.status().services.plex.connected,false);
+  hasAccess=true;
+  assert.equal((await f.auth.select('server-one','https://manual.example.com')).phase,'connected');
+  assert.equal(f.ready.length,1);
 });
 
 test('browser failures do not expose the sign-in code and failed storage preserves previous credentials',async t=>{

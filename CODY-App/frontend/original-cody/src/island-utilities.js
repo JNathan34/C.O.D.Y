@@ -2,7 +2,7 @@
 const {routeRequest,localAnswer,localCard}=require('./router');
 const {parseDirectAction}=require('./control/parser');
 const {commandText,repairSpeechCommand}=require('./command-text');
-const {parseMediaCommand}=require('./media-commands');
+const {parseMediaCommand,parsePlexAvailability,isPlexSessionRequest}=require('./media-commands');
 const {parseAppCommand}=require('./app-commands');
 const {isProofreadCommand}=require('./proofread-command');
 const {parseSystemCommand}=require('./control/system-settings');
@@ -44,14 +44,15 @@ function matchesApp(window,name){
 }
 
 class IslandUtilities {
-  constructor({selfHosted,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
+  constructor({selfHosted,overseerrRequests,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,overseerrRequests,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false}={}){
+    if(this.selfHosted&&isPlexSessionRequest(input))return {kind:'local',action:'self-hosted-plex-sessions'};
+    const availability=this.overseerrRequests&&parsePlexAvailability(input);
+    if(availability)return {kind:'local',action:'overseerr-availability',args:availability};
     if(this.textContext&&/^(?:what can you do (?:with|in) this (?:text ?box|field|text)|suggest (?:some )?(?:edits|actions) (?:for|in) this (?:text|field)|help me (?:edit|write) (?:this|the) (?:text|field))$/i.test(commandText(input,{preserveShow:true})))
       return {kind:'local',action:'text-context-help'};
     if(this.selfHosted){
       const text=commandText(input,{preserveShow:true}).toLowerCase();
-      if(/^(?:show|check|who is|how many people are) (?:my )?(?:watching|viewers on|playing on) plex$|^(?:plex viewers|plex sessions|who is watching plex)$/.test(text))
-        return {kind:'local',action:'self-hosted-plex-sessions'};
       if(/^(?:show|check) (?:my )?(?:recent|recently added) plex (?:movies|shows|media)$|^(?:what was|what's) recently added to plex$/.test(text))
         return {kind:'local',action:'self-hosted-plex-recent'};
       if(/^(?:show|check|list) (?:my )?overseerr requests$|^overseerr requests$/.test(text))
@@ -113,6 +114,7 @@ class IslandUtilities {
     try{
       let reply,confirmation;
       switch(route.action){
+        case 'overseerr-availability':return {handled:true,...await this.overseerrRequests.lookup(route.args)};
         case 'window-choose':{
           reply='Which app should I bring to the front? Say “Switch to Word” or “List open windows”.';
           break;
@@ -128,8 +130,10 @@ class IslandUtilities {
         }
         case 'self-hosted-plex-sessions':{
           const data=await this.selfHosted.plexSessions();
-          reply=data.count?data.count+' Plex viewing session(s): '+data.sessions.slice(0,5).map(s=>s.viewer+' watching '+s.title+' ('+s.state+')').join('; ')+'.':'Nobody is watching Plex right now.';
-          show({kind:'utility',text:data.count+' Plex viewers',detail:'Your connected server',icon:'play'});break;
+          const sessions=data.count===1?'1 Plex viewing session':`${data.count} Plex viewing sessions`;
+          const details=data.sessions.slice(0,5).map(({viewer,title,state})=>`${viewer} · ${title} (${state})`);
+          reply=data.count?[sessions+' right now.',...details,...(data.count>details.length?[`And ${data.count-details.length} more.`]:[])].join('\n'):'Nobody is watching Plex right now.';
+          show({kind:'utility',text:data.count?sessions:'Nobody watching Plex',detail:'Your connected server',icon:'play'});break;
         }
         case 'self-hosted-plex-recent':{
           const items=await this.selfHosted.plexRecent();

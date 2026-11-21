@@ -6,6 +6,7 @@
   const app={data:await api.state(),busy:false,mode:'heyclicky'};
   let preferences=await visual.getSettings(),voice,approval=null,wakeState={mode:'off'};
   const wakeListening=()=>['armed','hearing'].includes(wakeState.mode);
+  const openingOrListening=phase=>phase==='starting'||phase==='listening';
   const activity=[];
   let timer=app.data.timer||null;
   let game=app.data.rps||{active:false};
@@ -25,7 +26,7 @@
     const recording=['starting','recording','paused','stopping'].includes(capture.status);
     visibleTaskStatus=!recording&&!game.active&&taskStatus&&(taskStatus.kind==='attention'||(!wakeListening()&&!utilityCard&&timer?.status!=='finished'))?taskStatus:null;
     const activeCard=visibleTaskStatus||utilityCard;
-    island.renderTaskAppearance(visibleTaskStatus);
+    island.renderTaskAppearance(island.voiceCapturing&&island.getState()==='listening'?null:visibleTaskStatus);
     const announcement=$('island-task-announcement'),description=visibleTaskStatus?[visibleTaskStatus.text,visibleTaskStatus.detail].filter(Boolean).join('. '):'';
     if(announcement.textContent!==description)announcement.textContent=description;
     infoUpdate.dataset.discord=String(Boolean(discord&&!visibleTaskStatus&&!recording&&!game.active));
@@ -209,7 +210,9 @@
     for(const message of current()?.messages||[]){
       const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…',message.mention);node.dataset.messageId=message.id;
       window.CODYAttachments?.decorateMessage(node,message,current().id);
+      window.CODYMediaLookup?.decorate(node,message);
     }
+    const log=$('conversation');log.scrollTop=log.scrollHeight;
     renderHistory();
   }
   function updateMessage(chatId,messageId,text,delta=false){
@@ -221,13 +224,13 @@
     if(message)message.text=delta?(message.text||'')+text:text;
     if(chatId!==app.data.activeChatId)return;
     const node=[...$('chat-messages').children].find(node=>node.dataset.messageId===messageId);
-    if(node){island.renderMessage(node,displayText(message?.text||text)||'Thinking…',message?.role||'assistant',message?.mention);window.CODYAttachments?.decorateMessage(node,message||{},chatId);}
+    if(node){island.renderMessage(node,displayText(message?.text||text)||'Thinking…',message?.role||'assistant',message?.mention);window.CODYAttachments?.decorateMessage(node,message||{},chatId);window.CODYMediaLookup?.decorate(node,message);}
     if(follow)log.scrollTop=log.scrollHeight;
   }
   function busy(value){
     app.busy=Boolean(value);island.backendBusy=app.busy;
     if(!app.busy&&island.getState()==='thinking')island.setState(wakeListening()?'listening':'idle');
-    $('quick-input').disabled=app.busy;$('new-chat').disabled=app.busy;
+    $('new-chat').disabled=app.busy;
     $('core-history').disabled=app.busy;
     renderHistory();
     $('core-stop').hidden=!app.busy;$('panel-send').hidden=app.busy;island.updateInput();
@@ -288,7 +291,8 @@
   island.onPrompt=async(text,mention)=>{
     const result=await send({quickMessage:text,mention});
     if(result?.error){
-      window.CODYInlineComposer?.restore({text,mention});
+      const composer=window.CODYInlineComposer,draft=composer?.snapshot();
+      if(!draft?.text&&!draft?.mention)composer?.restore({text,mention});
       island.updateInput();
     }
     return result;
@@ -305,7 +309,12 @@
   api.on('message-added',({chatId,message})=>{
     const chat=app.data.chats.find(item=>item.id===chatId);
     if(chat&&!chat.messages.some(item=>item.id===message.id))chat.messages.push(message);
-    if(chatId===app.data.activeChatId){const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…',message.mention);node.dataset.messageId=message.id;window.CODYAttachments?.decorateMessage(node,message,chatId);}
+    if(chatId===app.data.activeChatId){
+      const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…',message.mention);node.dataset.messageId=message.id;
+      window.CODYAttachments?.decorateMessage(node,message,chatId);
+      window.CODYMediaLookup?.decorate(node,message);
+      if(message.mediaLookup){const log=$('conversation');log.scrollTop=log.scrollHeight;}
+    }
   });
   api.on('message-delta',({chatId,messageId,delta})=>updateMessage(chatId,messageId,delta,true));
   api.on('message-replace',({chatId,messageId,text})=>updateMessage(chatId,messageId,text));
@@ -402,9 +411,10 @@
   island.onStartListening=()=>voice.press();island.onStopListening=()=>voice.release();
   island.onToggleListening=()=>['starting','listening'].includes(voice.getPhase())?voice.release():voice.press();
   window.addEventListener('cody:voice-state',event=>{
-    const phase=event.detail.phase;island.voiceCapturing=['starting','listening','transcribing','submitting'].includes(phase);
-    island.setState(['transcribing','submitting','thinking'].includes(phase)?'thinking':phase==='listening'?'listening':phase==='speaking'?'speaking':wakeListening()?'listening':'idle');
-    if(phase==='starting')island.resetExpression();
+    const phase=event.detail.phase,listening=openingOrListening(phase);
+    island.voiceCapturing=listening||['transcribing','submitting'].includes(phase);
+    island.setState(listening?'listening':['transcribing','submitting','thinking'].includes(phase)?'thinking':phase==='speaking'?'speaking':wakeListening()?'listening':'idle');
+    renderTimer();
     $('mic-status').textContent=({starting:'Opening mic…',listening:'Listening…',transcribing:'Transcribing…',submitting:'Sending…',speaking:'Speaking…'})[phase]||'';
   });
   window.addEventListener('cody:audio-level',event=>island.setAudioLevel(Math.min(1,event.detail.level*9*(preferences.micSensitivity||1))));
@@ -422,8 +432,9 @@
   const renderWake=state=>{
     const wasListening=wakeListening();wakeState=state;
     const label=$('wake-word-status');if(label){label.textContent=state.message;label.dataset.mode=state.mode;}
-    if(wakeListening()){island.wakeUp();island.setState('listening');}
-    else if(wasListening){const phase=voice.getPhase();island.setState(phase==='speaking'?'speaking':['transcribing','submitting','thinking'].includes(phase)||app.busy?'thinking':phase==='listening'?'listening':'idle');}
+    const phase=voice.getPhase();
+    if(openingOrListening(phase)||wakeListening()){island.wakeUp();island.setState('listening');}
+    else if(wasListening)island.setState(phase==='speaking'?'speaking':['transcribing','submitting','thinking'].includes(phase)||app.busy?'thinking':'idle');
     renderTimer();
   };
   api.on('wake-word-state',renderWake);api.wake?.status().then(renderWake).catch(()=>{});

@@ -245,13 +245,13 @@ function registerIpc(){
   ipcMain.handle('computer-catalog',e=>{fromCody(e);return controller.catalog()});
   ipcMain.handle('computer-audit',e=>{fromCody(e);return actionAudit?.recent()||[];});
   ipcMain.handle('self-hosted-status',e=>{fromAnnotationUI(e);return selfHosted.status();});
-  registerOverseerrRequestIpc({ipcMain,authorise:fromAnnotationUI,requests:overseerrRequestFlow});
+  registerOverseerrRequestIpc({ipcMain,authorise:fromAnnotationUI,requests:overseerrRequestFlow,openPage:openPreferredWebLink});
   ipcMain.handle('self-hosted-connect',(e,id,credentials)=>{fromAnnotationUI(e);if(id==='plex')throw Error('Use Sign in with Plex to connect your account.');return selfHosted.connect(id,credentials);});
   ipcMain.handle('self-hosted-disconnect',(e,id)=>{fromAnnotationUI(e);if(id==='plex')plexSignIn.cancel();return selfHosted.disconnect(id);});
   ipcMain.handle('plex-sign-in-start',e=>{fromAnnotationUI(e);return plexSignIn.start();});
   ipcMain.handle('plex-sign-in-state',e=>{fromAnnotationUI(e);return plexSignIn.snapshot();});
   ipcMain.handle('plex-sign-in-cancel',e=>{fromAnnotationUI(e);return plexSignIn.cancel();});
-  ipcMain.handle('plex-sign-in-select',(e,id)=>{fromAnnotationUI(e);if(typeof id!=='string'||!id||id.length>300)throw Error('Choose a Plex server.');return plexSignIn.select(id);});
+  ipcMain.handle('plex-sign-in-select',(e,id,address)=>{fromAnnotationUI(e);if(typeof id!=='string'||!id||id.length>300)throw Error('Choose a Plex server.');return plexSignIn.select(id,address);});
   ipcMain.handle('self-hosted-read',(e,id,method,query)=>{
     fromAnnotationUI(e);
     if(id==='plex'&&method==='sessions')return selfHosted.plexSessions();
@@ -620,6 +620,7 @@ else app.whenReady().then(()=>{
   selfHosted=new SelfHosted({file:path.join(app.getPath('userData'),'self-hosted-connections.dat'),cipher:safeStorage,fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   overseerrRequestFlow=new OverseerrRequests({service:selfHosted});
   plexSignIn=new PlexSignIn({service:selfHosted,version:app.getVersion(),openBrowser:openPreferredWebLink,
+    onServersReady:()=>{if(!quitting&&win&&!win.isDestroyed())island.showSettings({tab:'integrations',plugin:'plex'});},
     fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   app.once('will-quit',()=>plexSignIn.close());
   assistantModes=new AssistantModes({file:path.join(app.getPath('userData'),'assistant-modes.json'),island,store,
@@ -698,7 +699,7 @@ else app.whenReady().then(()=>{
   let lastSavedCapture=null;screenCapture.on('change',state=>{sendUI('capture-state',state);refreshIslandCards();if(state.status==='starting')island.collapse();if(state.status==='saved'&&state.savedPath!==lastSavedCapture){lastSavedCapture=state.savedPath;showQuickCard({kind:'utility',text:'Recording saved',detail:'Click to open',icon:'camera',captureKind:'recording'});}if(state.status==='error')showQuickCard({kind:'utility',text:'Recording error',detail:state.error,icon:'circle-alert'});});
   monitors=new IslandMonitors({settingsFile:path.join(app.getPath('userData'),'island-monitors.json'),weather,readDesktopFrames:()=>nativeEngine.request('desktop-frames'),fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact({automatic:true});lastMonitorActive=state.active;});
-  const islandUtilities=new IslandUtilities({selfHosted,textContext:async()=>{
+  const islandUtilities=new IslandUtilities({selfHosted,overseerrRequests:overseerrRequestFlow,textContext:async()=>{
     const result=await nativeEngine.request('text-capture',{clientPid:process.pid});
     return {editable:typeof result?.target==='string'&&result.target.length>0,protected:result?.isPassword===true||result?.sensitive===true};
   },modes:assistantModes,tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,appSettings:{show:island.showSettings,update:island.updatePreferences},showCompact:()=>{island.showCompact({automatic:true});if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
@@ -861,7 +862,8 @@ else app.whenReady().then(()=>{
     void (async()=>{
       await nativeEngine.request('microphone-mute',{muted:island.preferences().microphoneMuted===true});
       const status=await nativeEngine.refresh();
-      await nativeEngine.request('text-client',{clientPid:process.pid});
+      const islandWindow=win&&!win.isDestroyed()?win.getNativeWindowHandle().readBigUInt64LE().toString():'';
+      await nativeEngine.request('text-client',{clientPid:process.pid,islandWindow});
       controlOverlay.update(await nativeEngine.request('drive-state'));
       nativeLinksReady=true;
       void deliverNativeLinks();

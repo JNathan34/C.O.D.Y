@@ -2,7 +2,7 @@
 // Preserve the C.O.D.Y. DOM and icons; microphone capture and speech live in CODY.
 (()=>{
   function attach({api,$,toast,getApp,onBeforeCapture=()=>{},bindMicrophone=true}){
-    let phase='idle';
+    let phase='idle',opening=null;
     const mic=$('voice-mic'),speaker=$('voice-speaker'),status=$('voice-connection-status');
     const setPhase=value=>{phase=value;mic?.classList.toggle('recording',value==='listening');mic?.classList.toggle('working',value==='thinking');mic?.setAttribute('aria-pressed',String(value==='listening'));window.dispatchEvent(new CustomEvent('cody:voice-state',{detail:{phase:value}}));};
     const report=error=>{if(status)status.textContent=error.message;toast(error.message);setPhase('idle');};
@@ -26,11 +26,43 @@
     }
     function render(){const settings=getApp().data.settings;window.CODYIcons?.set(speaker,settings.voiceAutoSpeak?'volume-2':'volume-x');speaker?.setAttribute('aria-pressed',String(Boolean(settings.voiceAutoSpeak)));if($('voice-auto-speak'))$('voice-auto-speak').checked=Boolean(settings.voiceAutoSpeak);if($('voice-auto-send'))$('voice-auto-send').checked=true;}
     async function refresh(){const current=await api.voice.status();const catalog=await api.voice.voices();const select=$('voice-choice');if(select){select.replaceChildren(...catalog.voices.map(v=>new Option(v.name,v.id)));select.value=current.voice||'cedar';}renderVoiceOptions(catalog.voices,current.voice||'cedar');for(const [id,label]of [['voice-engine','CODY'],['voice-recognition','CODY native']]){const element=$(id);if(element){element.replaceChildren(new Option(label,'heyclicky'));element.disabled=true;}}const language=$('voice-language');if(language){language.replaceChildren(new Option('English','en'),new Option('Automatic (multilingual)','multi'));language.disabled=false;language.value=current.recognitionLanguage||'en';}if(status)status.textContent=current.signedIn?'Ready — hold Ctrl+Alt, speak, then release.':'Sign in to CODY in Plugins.';if($('recognition-model-status'))$('recognition-model-status').textContent='CODY native speech recognition';render();return current;}
-    async function press(){if(phase==='speaking'){await api.voice.cancel().catch(()=>{});setPhase('idle');}if(phase!=='idle'||getApp().busy)return;try{onBeforeCapture();setPhase('starting');await api.voice.begin();}catch(error){report(error);}}
-    async function release(){if(!['starting','listening'].includes(phase))return;setPhase('thinking');try{await api.voice.end();}catch(error){report(error);}}
-    async function cancel(){await api.voice.cancel().catch(report);setPhase('idle');}
+    async function press(){
+      const interrupting=phase==='speaking';
+      if(opening||(!interrupting&&(phase!=='idle'||getApp().busy)))return;
+      const attempt=opening={cancelled:false,released:false,begin:null};
+      try{
+        onBeforeCapture();setPhase('starting');
+        if(interrupting)await api.voice.cancel();
+        if(attempt.cancelled)return;
+        attempt.begin=api.voice.begin();
+        const result=await attempt.begin;
+        if(!attempt.cancelled&&!attempt.released&&phase==='starting')setPhase(result?.listening?'listening':'idle');
+      }catch(error){if(!attempt.cancelled&&!attempt.released)report(error);}
+      finally{opening=null;}
+    }
+    async function release(){
+      if(!['starting','listening'].includes(phase))return;
+      const attempt=opening;
+      if(attempt&&!attempt.begin){attempt.cancelled=true;setPhase('idle');return;}
+      if(attempt)attempt.released=true;
+      setPhase('thinking');
+      try{
+        if(attempt&&!(await attempt.begin)?.listening){if(phase==='thinking')setPhase('idle');return;}
+        const result=await api.voice.end();
+        if(result?.listening===false&&phase==='thinking')setPhase('idle');
+      }catch(error){report(error);}
+    }
+    async function cancel(){
+      if(opening)opening.cancelled=true;
+      if(!opening||opening.begin)await api.voice.cancel().catch(report);
+      setPhase('idle');
+    }
     function stopSpeech(){void api.voice.stopSpeech().catch(()=>{});}
-    api.on('native-phase',data=>setPhase(({Idle:'idle',Listening:'listening',Processing:'thinking',Responding:'speaking'})[data.state]||'idle'));
+    api.on('native-phase',data=>{
+      // Stopping the previous reply can emit Idle before the new capture starts.
+      if(opening&&(!opening.begin||opening.cancelled||(opening.released&&data.state==='Listening')))return;
+      setPhase(({Idle:'idle',Listening:'listening',Processing:'thinking',Responding:'speaking'})[data.state]||'idle');
+    });
     api.on('native-meter',data=>window.dispatchEvent(new CustomEvent('cody:audio-level',{detail:{level:data.level||0}})));
     const saveSpeak=async value=>{await api.saveSettings({voiceAutoSpeak:value});getApp().data.settings.voiceAutoSpeak=value;render();};
     speaker?.addEventListener('click',()=>void saveSpeak(!getApp().data.settings.voiceAutoSpeak).catch(report));

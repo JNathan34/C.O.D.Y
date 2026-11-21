@@ -104,7 +104,8 @@ internal static class CodyDrawingControls
             }
             follow=new CodyDrawingFollow(display,Field(canvas,"screenshotJpeg") as byte[],
                 (Vector2)(Field(canvas,"canvasSize")??Vector2.Zero),Post,ResizeSurface,CloseMarks);
-            if(follow.Available)presses=new PointerInput().WatchPresses(point=>Post(()=>Press(point)));
+            if(CodyDrawingFollow.ContentTrackingEnabled&&follow.Available)
+                presses=new PointerInput().WatchPresses(point=>Post(()=>Press(point)));
             Arm();
         }
         private void Post(Action action)=>Invoke(canvas,"PostToDrawingThread",action);
@@ -131,7 +132,7 @@ internal static class CodyDrawingControls
         internal void Fire(string reason)=>Post(()=>{
             if(disposed||!canvas.IsShowing||canvas.IsDrawingFadedAway)return;
             stale.Dispose();
-            if(!CodyDrawingFollow.Enabled && reason == "scroll")
+            if(!CodyDrawingFollow.ContentTrackingEnabled && reason == "scroll")
             {
                 Arm();
                 return;

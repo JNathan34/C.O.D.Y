@@ -13,6 +13,8 @@
  const plexStatus=document.getElementById('plex-sign-in-status');
  const plexServers=document.getElementById('plex-server');
  const plexServerForm=document.getElementById('plex-server-form');
+ const plexAddressOptions=document.getElementById('plex-server-address-options');
+ const plexAddress=document.getElementById('plex-server-address');
  function text(value){return String(value==null?'':value).slice(0,200);}
  function credentialState(form,service){
   const saved=state?.services?.[service];
@@ -110,6 +112,9 @@
    if(servers.some(server=>server.value===selected))plexServers.value=selected;
   }
   plexServerForm.hidden=phase!=='servers'||!plexServers.options.length;
+  plexAddressOptions.hidden=!plexState?.canEnterAddress;
+  if(plexAddressOptions.hidden){plexAddressOptions.open=false;plexAddress.value='';}
+  plexAddress.disabled=plexAddressOptions.hidden||!plexAddressOptions.open||busy;
   plexServerForm.querySelector('button').disabled=busy||phase!=='servers';
   plexPanel.hidden=!pending&&!plexStatus.textContent;
   clearTimeout(plexTimer);
@@ -166,15 +171,18 @@
   try{plexFeedback='';await invokePlex('cancel');}
   catch(error){plexFeedback=error.message;renderPlex();}
  });
+ plexAddressOptions.addEventListener('toggle',renderPlex);
+ plexServers.addEventListener('change',()=>{plexAddress.value='';plexAddressOptions.open=false;});
  plexServerForm?.addEventListener('submit',event=>{
   event.preventDefault();
   void work(async()=>{
    const id=plexServers.value;
+   const address=plexAddressOptions.open?plexAddress.value.trim():undefined;
    const server=plexState.servers.find(server=>server.id===id);
    if(!server)return;
    plexState={...plexState,phase:'connecting',message:'Connecting to '+server.name+'…'};
    renderPlex();
-   try{await invokePlex('select',id);}
+   try{await invokePlex('select',id,address);}
    catch(error){await load();throw error;}
   },'plex');
  });
@@ -234,6 +242,13 @@
   },'overseerr',false);
  });
  document.querySelector('[data-tab="integrations"]')?.addEventListener('click',()=>void load());
+ document.addEventListener('cody:plex-server-ready',async()=>{
+  await load();
+  if(plexState?.phase==='servers'&&plexServers.isConnected&&!area.hidden&&document.body.classList.contains('settings-open')){
+   plexServerForm.scrollIntoView({block:'nearest'});
+   plexServers.focus({preventScroll:true});
+  }
+ });
  window.addEventListener('focus',()=>{if(plexState&&plexApi)void syncPlex();});
  window.addEventListener('beforeunload',()=>clearTimeout(plexTimer));
 })();

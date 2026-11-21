@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.36 — 21 November 2026
+
+- Answer who is watching Plex directly in chat. Retry a dropped server connection and reopen Plugins after Plex sign-in so you can choose a server.
+- Check Plex availability through Overseerr with posters, request controls, and buttons to open the title in Plex or Overseerr.
+- Start the listening animation on Ctrl+Alt while the microphone opens. Type a follow-up while C.O.D.Y. speaks.
+- Update the Island’s task expressions and use the idle eye positions across task states.
+- Keep screen drawings tied to the window and view they were drawn over when switching apps.
+- Align plugin cards in each row and fix clipping at the edge of the chat composer.
+
 ## 0.15.35 — 20 November 2026
 
 - Switch, list and manage open windows with local commands that use no agent quota.

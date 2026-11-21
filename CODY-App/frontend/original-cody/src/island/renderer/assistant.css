@@ -71,6 +71,23 @@ body.panel-open:not(.settings-open) .conversation{padding:2px 0 12px}
 .chat-messages{gap:12px}
 .message{font-size:calc(12px * var(--font-scale));line-height:1.6;user-select:text}
 .message.assistant{padding:0;color:#e3e4e9}
+.media-lookup{display:grid;gap:8px;margin:8px 0 2px;width:min(100%,370px)}
+.media-result{display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;padding:8px;background:#1c1e25;border:1px solid #363a45;border-radius:12px}
+.media-result-poster{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:2/3;align-self:start;overflow:hidden;border-radius:6px;background:#272b36;color:#9aa7c4}
+.media-result-poster img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#272b36}
+.media-result-poster .lucide-control{width:22px;height:22px}
+.media-result-copy{align-self:center;min-width:0;overflow-wrap:anywhere}
+.media-result-copy h3{margin:0;font-size:calc(14px * var(--font-scale));line-height:1.2;color:#f1f3f8}
+.media-lookup .media-result-meta{margin:3px 0 6px;color:#afb7ca;font-size:calc(11px * var(--font-scale))}
+.media-lookup .media-result-status{margin:0 0 5px;font-size:calc(11px * var(--font-scale));color:#cbd1df}
+.media-result-status[data-availability="available"]{color:#9ce5b4}
+.media-result-status:is([data-availability="requested"],[data-availability="processing"]){color:#f2d399}
+.media-lookup .light-action{margin-top:3px;padding:5px 9px;font-size:calc(11px * var(--font-scale))}
+.media-result-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px}
+.media-result-actions :is(.light-action,.secondary-action){margin:0;padding:5px 9px;font-size:calc(11px * var(--font-scale))}
+.media-lookup .media-result-feedback{margin:0;color:#d0cbe5;font-size:calc(12px * var(--font-scale))}
+.media-seasons{display:grid;gap:4px;max-height:120px;overflow:auto;margin:5px 0;padding:5px;border:1px solid #454a57;border-radius:5px}
+.media-seasons label{display:flex;align-items:center;gap:5px}
 .message.user{padding:7px 11px;max-width:82%;background:#26272c;border:1px solid #34363d;border-radius:13px 13px 4px 13px}
 body.panel-open:not(.settings-open) .composer{min-height:76px;padding:9px 10px 8px;border-radius:14px;background:#1c1d22;border-color:#3a3d45}
 .composer:hover{border-color:#50535e}
@@ -98,45 +115,143 @@ body.timer-finished .island-timer{color:#ffca85;animation:timer-alert 1200ms eas
 .island-info[data-update="true"]{cursor:pointer;min-height:28px}
 .island-info[data-task-status]:not([data-task-status=""]){cursor:pointer;min-height:28px}
 body[data-notification-state]{
-  --notification-face:#a7efff;--notification-icon:#dbf4fa;
-  --notification-ring-filter:brightness(1.12) saturate(1.1);
+  --notification-icon:#b9e9f9;
+  --notification-ring-filter:var(--mascot-filter,none);
+  --left-eye-centre:35.5%;--right-eye-centre:64.7%;--eye-line:51.2%;
 }
 body:is([data-notification-state="reply"],[data-notification-state="ready"]){
-  --notification-face:#a9ff9b;--notification-icon:#93f69f;
-  --notification-ring-filter:hue-rotate(273deg) saturate(1.7) brightness(1.24);
+  --notification-icon:#9be8b3;
+  --notification-ring-filter:hue-rotate(-65deg) saturate(.85) brightness(1.05);
 }
 body:is([data-notification-state="starting"],[data-notification-state="stopped"]){
-  --notification-face:#e3f5ff;--notification-icon:#d3ecfc;
-  --notification-ring-filter:saturate(.55) brightness(1.25);
+  --notification-icon:#c3d7e8;
+  --notification-ring-filter:saturate(.48) brightness(1.08);
+}
+body[data-notification-state="controlling"]{
+  --notification-icon:#94e6db;
+  --notification-ring-filter:hue-rotate(-24deg) saturate(.9);
 }
 body[data-notification-state="failed"]{
-  --notification-face:#ffb2ae;--notification-icon:#ffa3a3;
-  --notification-ring-filter:hue-rotate(145deg) saturate(1.25) brightness(1.24);
+  --notification-icon:#f8a8ab;
+  --notification-ring-filter:hue-rotate(145deg) saturate(.85) brightness(1.12);
 }
-body[data-notification-state="attention"]{
-  --notification-face:#ffde83;--notification-icon:#ffda74;
-  --notification-ring-filter:hue-rotate(200deg) saturate(1.45) brightness(1.32);
+body:is([data-notification-state="approval"],[data-notification-state="input"]){
+  --notification-icon:#f6d590;
+  --notification-ring-filter:hue-rotate(198deg) saturate(.9) brightness(1.18);
 }
 body[data-notification-state]:not(.panel-open) #island-path{fill:#080a0d;stroke:#344250;stroke-width:1}
 body[data-notification-state] .mascot{filter:none}
-body[data-notification-state].utility-layout:not(.panel-open) .mascot{left:calc(100% - 47px);width:calc(var(--mascot-size) + 3px);height:calc(var(--mascot-size) + 3px)}
-body[data-notification-state] .mascot :is(.ring-layers,.symbol-layer,.morph-dot,.media-music-notes){visibility:hidden}
-.notification-mascot{position:absolute;inset:0;display:none;color:var(--notification-face)}
-body[data-notification-state] .notification-mascot{display:block}
-.notification-mascot img,.notification-mascot svg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
-.notification-mascot img{filter:var(--notification-ring-filter);pointer-events:none}
-.notification-mascot svg{overflow:visible;filter:drop-shadow(0 0 1px currentColor)}
-.notification-mascot g{display:none;fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
-.notification-mascot :is(.notification-attention,.notification-stopped){fill:currentColor;stroke:none}
-.notification-mascot .notification-ready{stroke-width:5}
-.notification-mascot .notification-controlling{stroke-width:2.2}
-body:is([data-notification-state="working"],[data-notification-state="starting"]) .notification-eyes,
-body[data-notification-state="reply"] .notification-reply,
-body[data-notification-state="controlling"] .notification-controlling,
-body[data-notification-state="ready"] .notification-ready,
-body[data-notification-state="stopped"] .notification-stopped,
-body[data-notification-state="failed"] .notification-failed,
-body[data-notification-state="attention"] .notification-attention{display:inline}
+body[data-notification-state].utility-layout:not(.panel-open) .mascot{left:calc(100% - 47px)}
+body[data-notification-state] .ring-layers{filter:var(--notification-ring-filter)}
+body[data-notification-state] #ring-idle{opacity:1}
+body[data-notification-state] .mascot :is(.ring:not(#ring-idle),.activity-symbol,.morph-dot,.media-music-notes,.alternate-face,.emoji-overlays){visibility:hidden}
+body[data-notification-state] #symbol-idle{opacity:1;transform:none;transition:none}
+body[data-notification-state] #face-gaze{transform:none!important}
+body[data-notification-state] #face-eyes{animation:none}
+body[data-notification-state] #symbol-idle .original-eye{
+  opacity:var(--notification-idle-eye-opacity,1);
+  transform:var(--notification-pose,none);
+  transform-origin:var(--eye-centre) var(--eye-line);
+  transition:none;
+}
+body[data-notification-state] .left-eye{--eye-centre:var(--left-eye-centre);--wink-scale:.12}
+body[data-notification-state] .right-eye{--eye-centre:var(--right-eye-centre);--wink-scale:1}
+body:is([data-notification-state="stopped"],[data-notification-state="failed"],[data-notification-state="approval"],[data-notification-state="input"],[data-notification-state="drafting"]){
+  --notification-idle-eye-opacity:0;--notification-eyes-display:block;
+}
+.notification-eyes{display:var(--notification-eyes-display,none);position:absolute;inset:0;container-type:inline-size;color:#98f7f9}
+.notification-eye{
+  position:absolute;top:var(--eye-line);left:var(--left-eye-centre);translate:-50% -50%;
+  display:grid;place-items:center;width:23cqw;height:26cqw;font:800 26cqw/1 'Segoe UI',sans-serif;
+}
+.notification-eye:last-child{left:var(--right-eye-centre);--eye-delay:70ms}
+body[data-notification-state="stopped"] .notification-eye{--eye-motion:task-square-settle;--eye-duration:580ms}
+body[data-notification-state="stopped"] .notification-eye::before{
+  content:"";width:13.4cqw;aspect-ratio:1;border-radius:1.2cqw;background:currentColor;
+}
+body[data-notification-state="failed"] .notification-eye{--eye-motion:task-exclamation-pop;--eye-duration:470ms}
+body[data-notification-state="failed"] .notification-eye::before{content:"!"}
+body:is([data-notification-state="approval"],[data-notification-state="input"]) .notification-eye{--eye-motion:task-question-nod;--eye-duration:670ms}
+body:is([data-notification-state="approval"],[data-notification-state="input"]) .notification-eye::before{content:"?"}
+body[data-notification-state="drafting"] .notification-eye{
+  --eye-motion:task-pencil-write;--eye-duration:1.9s;--eye-repeat:infinite;
+}
+body[data-notification-state="drafting"] .notification-eye::before{
+  content:"";width:8.5cqw;height:22cqw;transform:rotate(42deg);
+  background:linear-gradient(#d6ffff 0 20%,#456f83 20% 28%,currentColor 28% 72%,#6cb6c8 72% 87%,#d6ffff 87%);
+  clip-path:polygon(0 0,100% 0,100% 72%,50% 100%,0 72%);
+}
+body[data-notification-state="working"]{
+  --notification-pose:scaleY(.92);--eye-motion:task-focus;--eye-duration:3.4s;--eye-repeat:infinite;
+}
+body[data-notification-state="controlling"]{
+  --notification-pose:translateX(-2%) scaleY(.86);--eye-motion:task-scan;--eye-duration:2.8s;--eye-repeat:infinite;
+}
+body[data-notification-state="starting"]{--eye-motion:task-wake;--eye-duration:750ms}
+body[data-notification-state="reply"]{--eye-motion:task-wink;--eye-duration:690ms}
+body[data-notification-state="ready"]{
+  --notification-pose:translateY(-1.3%) scaleY(1.08);--eye-motion:task-lift;--eye-duration:850ms;
+}
+@media(prefers-reduced-motion:no-preference){
+  body[data-notification-state]:not([data-motion="off"]) #symbol-idle .original-eye{
+    animation:var(--eye-motion) calc(var(--eye-duration) * var(--motion-factor)) ease-in-out var(--eye-repeat,1) both;
+  }
+  body[data-notification-state]:not([data-motion="off"]) .notification-eye{
+    animation:var(--eye-motion) calc(var(--eye-duration) * var(--motion-factor)) ease-in-out var(--eye-repeat,1) both;
+    animation-delay:calc(var(--eye-delay,0ms) * var(--motion-factor));
+  }
+}
+@keyframes task-focus{
+  0%,100%{transform:var(--notification-pose)}
+  19%,36%{transform:translate(-3%,.8%) scaleY(.84)}
+  46%{transform:translate(-3%,.8%) scaleY(.12)}
+  54%,71%{transform:translate(2.6%,-.7%) scaleY(.9)}
+}
+@keyframes task-scan{
+  0%,14%,100%{transform:var(--notification-pose)}
+  29%,43%{transform:translate(3.5%,-.6%) scaleY(.92)}
+  59%,72%{transform:translate(1%,2%) scaleY(.77)}
+  80%{transform:translate(-2%,1%) scaleY(.12)}
+}
+@keyframes task-wake{
+  0%,100%{transform:none}
+  23%{transform:translateY(1.4%) scaleY(.17)}
+  58%{transform:translateY(-3.4%) scaleY(1.16)}
+}
+@keyframes task-wink{
+  0%,100%{transform:none}
+  28%,43%{transform:translateY(-2.8%) scaleY(var(--wink-scale))}
+  71%{transform:translateY(-2%) scaleY(1.06)}
+}
+@keyframes task-lift{
+  0%{transform:none}
+  22%{transform:translateY(1%) scaleY(.58)}
+  46%,59%{transform:translateY(-4%) scaleY(1.15)}
+  100%{transform:var(--notification-pose)}
+}
+@keyframes task-square-settle{
+  0%{transform:none}
+  27%{transform:translateY(13%) scale(1.12,.68)}
+  58%{transform:translateY(-12%) scale(.94,1.08)}
+  100%{transform:none}
+}
+@keyframes task-exclamation-pop{
+  0%{transform:translateY(10%) scaleY(.8)}
+  35%{transform:translateY(-13%) scaleY(1.1)}
+  100%{transform:none}
+}
+@keyframes task-question-nod{
+  0%{transform:none}
+  36%{transform:translateY(-13%) rotate(-12deg)}
+  67%{transform:rotate(5deg)}
+  100%{transform:none}
+}
+@keyframes task-pencil-write{
+  0%,70%,100%{transform:none}
+  19%{transform:translate(-11%,6%) rotate(-7deg)}
+  36%{transform:translate(12%,-5%) rotate(7deg)}
+  51%{transform:translate(-6%,8%) rotate(-4deg)}
+}
 body[data-notification-state] .island-info[data-task-status]:not([data-task-status=""]) #island-info-text{color:#f1f5f9}
 body[data-notification-state] .island-info[data-task-status]:not([data-task-status=""]) #island-info-icon{color:var(--notification-icon);animation:none}
 body[data-notification-state] .island-info[data-task-status]:not([data-task-status=""]) #island-info-detail{color:#c3d1dc}
@@ -155,6 +270,7 @@ body[data-notification-state].hide-notification-text .island-info[data-task-stat
 body[data-notification-state]:is([data-microphone="muted"],[data-microphone="restored"]) .microphone-indicator{
   inset:auto auto 0 0;width:12px;height:12px;border-radius:50%;background:#101114;
 }
+body[data-notification-state]:is([data-microphone="muted"],[data-microphone="restored"]) :is(#symbol-idle,#ring-idle){opacity:1!important}
 body.utility-layout:not(.panel-open) .island-info[data-update="true"]{left:26px;right:67px}
 .island-info[data-update="true"] #island-info-text{font-size:10.5px;font-variant-numeric:tabular-nums}
 .island-info[data-update="true"] #island-info-detail{font-size:8px}

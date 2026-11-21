@@ -68,7 +68,7 @@
   let displayedState = 'idle';
   let panelOpen = false;
   let revealTransition = 0, concealRequest;
-  let expressionTimer = null, transitionTimers = [];
+  let expressionTimer = null, transitionTimers = [], transitionFrame = null;
   let nextBlink = performance.now()+4700;
   let nextGag = performance.now()+11000;
   let nextGlance = performance.now()+5400;
@@ -166,16 +166,17 @@
     input.style.height='24px';input.style.height=Math.min(input.scrollHeight,82)+'px';
   }
   function clearTransition() {
+    if(transitionFrame!==null)cancelAnimationFrame(transitionFrame);
+    transitionFrame=null;
     transitionTimers.forEach(clearTimeout);
     transitionTimers=[];
     for(const layer of Object.values(layers))layer.classList.remove('is-active','is-collapsing');
     morphDot.classList.remove('morph-active');
   }
-  // Every state passes through one central dot: current glyph contracts, ring colour
-  // crossfades, then the next glyph grows from the dot. Interruption-safe for quick PTT.
+  // Listening appears at once. Other states morph through the central dot.
   function morphTo(next) {
     clearTransition();
-    if (!normalMotion()) {
+    if (next==='listening'||!normalMotion()) {
       body.dataset.state=next;
       layers[next].classList.add('is-active');
       displayedState=next;
@@ -185,7 +186,8 @@
     old.classList.add('is-active');
     void old.offsetWidth;
     morphDot.classList.add('morph-active');
-    requestAnimationFrame(()=>{
+    transitionFrame=requestAnimationFrame(()=>{
+      transitionFrame=null;
       old.classList.remove('is-active');
       old.classList.add('is-collapsing');
     });
@@ -336,6 +338,10 @@
     if(next===state)return;
     if(next!=='listening' && (micRequested||micStream))stopMicrophone(false);
     if(next!=='speaking' && (speechContext||speechFrame))stopSpeechMonitoring();
+    if(next==='listening'&&body.dataset.microphone==='restored'){
+      clearTimeout(microphoneRestoreTimer);microphoneRestoreTimer=null;
+      body.dataset.microphone='on';
+    }
     state=next;
     if(next!=='idle'){
       if(expressionTimer){clearTimeout(expressionTimer);expressionTimer=null;}
@@ -866,6 +872,7 @@
       setActiveView('settings');
       if(destination?.query)openSettingsSearch(destination.query);
       else if(destination?.tab)setSettingsTab(destination.tab);
+      if(destination?.tab==='integrations'&&destination.plugin==='plex')document.dispatchEvent(new Event('cody:plex-server-ready'));
     });
     Promise.all([api.getSettings(),api.getState()]).then(([prefs,current])=>{
       applySettings(prefs);
@@ -882,17 +889,27 @@
       applyCursor({x:(event.clientX-mx)/210,y:(event.clientY-my)/130,near:distance<100,hovered:distance<18,speed:0});
     });
   }
+  let notificationIdentity=null;
   function renderTaskAppearance(card) {
-    if(!card){delete body.dataset.notificationState;return;}
+    if(!card){delete body.dataset.notificationState;notificationIdentity=null;return;}
     let face='working';
-    if(card.kind==='attention')face='attention';
+    if(card.kind==='attention')face=card.target==='approval'||card.requiresApproval?'approval':'input';
     else if(card.kind==='reply')face='reply';
     else if(card.icon==='mouse-pointer-2')face='controlling';
     else if(card.icon==='check')face='ready';
     else if(card.icon==='circle-alert')face='failed';
     else if(card.icon==='square')face='stopped';
-    else if(card.detail==='Starting…')face='starting';
+    else if(card.kind==='progress'&&card.target==='tasks'&&/^draft(?:ing)? notes\b/i.test(card.text))face='drafting';
+    else if(card.taskStatus==='Starting')face='starting';
+    const identity=JSON.stringify([face,card.target,card.taskId??card.id]);
+    if(identity===notificationIdentity)return;
+    if(body.dataset.notificationState===face){
+      // Play the entrance again for a new task or reply with the same pose.
+      delete body.dataset.notificationState;
+      void layers.idle.offsetWidth;
+    }
     body.dataset.notificationState=face;
+    notificationIdentity=identity;
   }
   function renderTaskStatus(card) {
     document.getElementById('island-info-text').textContent=card.text;
@@ -908,6 +925,7 @@
     body.classList.toggle('utility-layout',Boolean(card));
     body.classList.toggle('island-content-active',Boolean(card));
     body.classList.toggle('task-layout',card?.kind==='progress'&&card.target==='tasks');
+    if(card)void layers.idle.offsetWidth;
     renderTaskAppearance(card);
     if(card)renderTaskStatus(card);
   }

@@ -1,7 +1,7 @@
 'use strict';
 
 // Run against a separate Firefox profile and a page served by this fixture.
-const {app,screen,desktopCapturer}=require('electron');
+const {app,BrowserWindow,screen,desktopCapturer}=require('electron');
 const {spawn,execFileSync}=require('node:child_process');
 const {once}=require('node:events');
 const {createServer}=require('node:http');
@@ -10,10 +10,13 @@ const os=require('node:os');
 const path=require('node:path');
 const assert=require('node:assert/strict');
 const {NativeEngine}=require('../frontend/original-cody/src/native-engine');
+const {manageWindow}=require('../frontend/original-cody/src/control/app-layout');
 
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'cody-firefox-drawing-'));
 app.setPath('userData',profile);
 app.on('window-all-closed',()=>{});
+fs.mkdirSync(path.join(profile,'native-account'));
+fs.writeFileSync(path.join(profile,'native-account','settings.json'),JSON.stringify({drawing_sounds_enabled:false}));
 const browserProfile=path.join(profile,'firefox');
 fs.mkdirSync(browserProfile);
 fs.writeFileSync(path.join(browserProfile,'user.js'),[
@@ -23,7 +26,7 @@ fs.writeFileSync(path.join(browserProfile,'user.js'),[
 ].join('\n'));
 
 const title='CODY Firefox drawing fixture '+process.pid;
-let report,action={id:0},browser,engine;
+let report,action={id:0},browser,engine,otherApp;
 const server=createServer((request,response)=>{
  if(request.url.startsWith('/report?')){
   report=JSON.parse(new URL(request.url,'http://127.0.0.1').searchParams.get('state'));
@@ -83,8 +86,9 @@ app.whenReady().then(async()=>{
   await engine.request('drawing-controls-test-highlight',{windowTitlePrefix:title,marks:[{
    x:box.x/area.width,y:box.y/area.height,width:box.width/area.width,height:box.height/area.height,
   }]});
-  await until('Firefox displays the ring and Clear control',state,value=>
+  const drawing=await until('Firefox displays the ring and Clear control',state,value=>
    value.follow?.ownerForeground&&value.follow.marks.some(mark=>mark.visible)&&value.clearVisible);
+  const originalMark=drawing.follow.marks[0];
   await wait(1600);
   const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:area});
   const image=sources.find(source=>source.display_id===String(primary.id)).thumbnail,pixels=image.toBitmap();
@@ -96,35 +100,41 @@ app.whenReady().then(async()=>{
    }
   assert.ok(ink>200,`Firefox ink must remain on the desktop after animation, found ${ink} pixels`);
   console.log(`PASS: finished ink is visible over Firefox (${ink} pixels)`);
-  const bound=(await state()).follow.marks[0].anchored;
-  if(process.argv.includes('--require-anchor'))assert.ok(bound,'Firefox did not expose a trackable page element');
   action={id:1,scroll:120};
   await until('Firefox scrolled the test page',()=>report,value=>value?.scroll===120);
-  if(bound){
-   await until('the same ring follows Firefox content on scroll',state,value=>
-    value.follow?.marks.some(mark=>mark.visible&&mark.anchored&&Math.abs(mark.y+120*scale)<6));
-   action={id:2,navigate:'/second'};
-   await until('same-title Firefox navigation hides the previous drawing',state,value=>
-    report.page==='/second'&&value.follow?.marks.every(mark=>!mark.visible)&&!value.clearVisible);
-  }else{
-   console.log('Firefox did not expose a trackable page element. Checking the stationary drawing fallback.');
-   await engine.request('drawing-controls-test-screen-change',{reason:'scroll'});
-   await until('scroll hides the old Firefox screenshot position',state,value=>
-    value.follow?.marks.every(mark=>!mark.visible)&&!value.clearVisible);
-   await engine.request('clear');
-   await until('Clear removes the Firefox drawing',state,value=>!value.showing);
-   await engine.request('drawing-controls-test-highlight',{windowTitlePrefix:title,marks:[{
-    x:box.x/area.width,y:(box.y-120*scale)/area.height,width:box.width/area.width,height:box.height/area.height,
-   }]});
-   await until('a fresh drawing appears after Firefox scrolls',state,value=>value.follow?.marks.some(mark=>mark.visible));
-   action={id:2,navigate:'/different-title'};
-   await until('Firefox page change hides the stationary drawing',state,value=>
-    report.page==='/different-title'&&value.follow?.marks.every(mark=>!mark.visible)&&!value.clearVisible);
-  }
+  await engine.request('drawing-controls-test-screen-change',{reason:'scroll'});
+  await wait(400);
+  const scrolled=(await state()).follow;
+  assert.equal(scrolled.documentAttempts,0);
+  assert.equal(scrolled.sampleCount,0);
+  assert.deepEqual(scrolled.marks[0],originalMark);
+  assert.equal((await engine.request('drawing-controls-test-continuation')).allowed,true);
+  console.log('PASS: scrolling leaves the ring at its original screen position without accessibility sampling');
+
+  const hidden=value=>value.follow?.marks.length===1&&value.follow.marks.every(mark=>!mark.visible)&&
+   value.renderedUnits===0&&!value.clearVisible;
+  action={id:2,navigate:'/different-title'};
+  await until('a different page in the same Firefox window hides the ring',state,value=>
+   report.page==='/different-title'&&value.follow?.ownerForeground&&hidden(value));
+  assert.equal((await engine.request('drawing-controls-test-continuation')).allowed,false);
+  action={id:3,navigate:'/first'};
+  await until('the original Firefox page restores the ring',state,value=>
+   report.page==='/first'&&value.follow?.marks.some(mark=>mark.visible));
+
+  otherApp=new BrowserWindow({show:false,width:780,height:640,backgroundColor:'#eee'});
+  await otherApp.loadURL('data:text/html,<title>Other app fixture</title><h1>Another app</h1>');
+  otherApp.show();otherApp.focus();
+  await until('switching from Firefox to another app hides the ring',state,value=>
+   otherApp.isFocused()&&!value.follow?.ownerForeground&&hidden(value));
+  await manageWindow({app:'firefox',title,operation:'focus'});
+  await until('returning to the original Firefox window restores the ring',state,value=>
+   value.follow?.ownerForeground&&value.follow.marks.some(mark=>mark.visible)&&value.clearVisible);
+  await engine.request('clear');
+  await until('Clear removes the ring',state,value=>!value.showing);
  }catch(error){console.error(error);process.exitCode=1;}
  finally{
   if(engine?.connected)await engine.request('clear').catch(()=>{});
-  engine?.close();browser?.kill();
+  engine?.close();browser?.kill();otherApp?.destroy();
   // Store installations can start a separate browser process from the launcher.
   // Match this run's exact profile path before closing any of its processes.
   try {

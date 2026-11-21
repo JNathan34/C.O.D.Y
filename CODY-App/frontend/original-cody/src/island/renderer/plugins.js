@@ -18,9 +18,10 @@
   ...(catalog?.plugins||[]),...(catalog?.custom||[])
  ].sort((a,b)=>Number(b.connected)-Number(a.connected)||a.name.localeCompare(b.name));}
  function render(){
-  if(!catalog)return;
-  $('plugins-signin').hidden=catalog.signedIn;
+  $('plugins-signin').hidden=catalog?.signedIn!==false;
   const query=$('plugins-search').value.trim().toLocaleLowerCase(),items=all().filter(p=>(filter!=='connected'||p.connected)&&(!query||(p.name+' '+p.description).toLocaleLowerCase().includes(query)));
+  const focused=document.activeElement;
+  const restorePlexFocus=plexActions.contains(focused)||mediaPanels.some(panel=>panel.dataset.mediaPanel==='plex'&&panel.contains(focused));
   $('plugins-count').textContent=items.length+' '+(items.length===1?'plugin':'plugins');
   $('self-hosted-settings').append(...mediaPanels,plexActions);
   list.replaceChildren();
@@ -62,6 +63,7 @@
    if(plugin.accounts?.length){const details=document.createElement('details');details.className='plugin-accounts';details.append(element('summary','',plugin.accounts.length+' connected '+(plugin.accounts.length===1?'account':'accounts')));for(const account of plugin.accounts){const row=element('div','plugin-account-row');row.append(element('span','',account.name),button('Disconnect',()=>remove(account.id),working));details.append(row);}card.append(details);}
    list.append(card);
   }
+  if(restorePlexFocus&&focused.isConnected&&focused!==document.activeElement)focused.focus({preventScroll:true});
  }
  async function refresh(){
   if(loading)return;loading=true;$('plugins-refresh').disabled=true;status.textContent=catalog?'Refreshing plugins…':'Loading plugins…';
@@ -77,7 +79,10 @@
  }
  document.querySelector('[data-tab="integrations"]').addEventListener('click',()=>void refresh());
  $('plugins-refresh').addEventListener('click',()=>void refresh());$('plugins-search').addEventListener('input',render);
- document.querySelectorAll('[data-plugin-filter]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.pluginFilter;document.querySelectorAll('[data-plugin-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));render();}));
+ const filters=[...document.querySelectorAll('[data-plugin-filter]')];
+ function setFilter(value){filter=value;filters.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.pluginFilter===value)));render();}
+ filters.forEach(button=>button.addEventListener('click',()=>setFilter(button.dataset.pluginFilter)));
+ document.addEventListener('cody:plex-server-ready',()=>{$('plugins-search').value='';setFilter('all');});
  $('plugins-signin').addEventListener('click',()=>void window.assistant.webSignIn().then(()=>{status.textContent='Finish signing in to Claude Code in your browser, then refresh plugins.';}).catch(error=>status.textContent=error.message));
  $('plugins-add-form').addEventListener('submit',async event=>{
   event.preventDefault();const submit=$('plugins-add-submit');submit.disabled=true;

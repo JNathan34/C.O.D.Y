@@ -1,6 +1,31 @@
 'use strict';
 const {commandText}=require('./command-text');
 const numbers={a:1,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,fifteen:15,twenty:20,thirty:30,sixty:60};
+function isPlexSessionRequest(input){
+  const text=commandText(input).toLowerCase().replace(/ (?:right now|now|at the moment)$/,'');
+  if(/^(?:(?:show|check|list) (?:my |our |the )?)?(?:(?:active |current )?plex (?:playback )?(?:viewers|sessions)|(?:active |current )?(?:viewers|sessions) (?:on )?(?:my |our |the )?plex)$/.test(text))return true;
+  if(/^are there any (?:active |current )?plex (?:viewers|sessions)$/.test(text))return true;
+  const watching=text.replace(/ (?:(?:anything |something )?on |(?:anything |something )?in )?(?:my |our |the )?plex(?: server)?$/,'');
+  if(watching===text)return false;
+  return /^(?:(?:show|check|see|find out) )?(?:who(?:'s| is)|how many (?:people|viewers)(?: are)?|(?:is|are) (?:anyone|anybody|someone|people)|(?:if |whether )(?:anyone|anybody|someone) is|(?:my |our )?viewers) (?:currently )?(?:watching|playing)$/.test(watching)||
+    /^(?:show|check) (?:my |our |the )?(?:viewers|watching|playing)$/.test(watching);
+}
+function parsePlexAvailability(input){
+  const text=commandText(input);
+  const match=/^(?:(?:check|see|find out) (?:if|whether) (.+?) is|(?:is|check|do we have) (.+?)) (?:already |currently )?(?:available )?(?:on|in) (?:my |our |the )?(?:plex(?: (?:server|library))?|overseerr)$/i.exec(text);
+  if(!match)return null;
+  let title=(match[1]||match[2]).trim(),year='';
+  const latest=/^(?:the )?(?:latest|newest|most recent) /i.test(title);
+  if(latest)title=title.replace(/^(?:the )?(?:latest|newest|most recent) /i,'');
+  const qualifier=/^["“]/.test(title)?null:/ (movie|film|tv show|tv series|series|show)$/i.exec(title);
+  const type=/^tv /i.test(qualifier?.[1]||'')?'tv':latest?(qualifier&&/show|series/i.test(qualifier[1])?'tv':'movie'):null;
+  const shorter=qualifier?title.slice(0,qualifier.index).trim():'';
+  if(latest&&shorter)title=shorter;
+  title=title.replace(/^["“]|["”]$/g,'').replace(/\s+\(?(\d{4})\)?$/,(_,value)=>{year=value;return '';}).trim();
+  if(title.length<2||title.length>100||/^(?:anything|something|everyone|anyone|people)$/i.test(title))return null;
+  const searchName=value=>value.replace(/\bspider[ -]?man\b/gi,'Spider-Man');
+  return {query:searchName(title),latest,type,year,...(!latest&&shorter.length>=2?{fallbackQuery:searchName(shorter)}:{})};
+}
 function parseMediaCommand(input){
   // Resolve player names only at the command boundary, preserving movie titles.
   const text=commandText(input).replace(/\b(on|in|using) (?:plex|plezzy|plexy)$/i,'$1 Plezy'),lower=text.toLowerCase();
@@ -18,4 +43,4 @@ function parseMediaCommand(input){
   if(seek){const amount=numbers[seek[3]]||Number(seek[3]),scale=/^(?:min)/.test(seek[4])?60:/^(?:h)/.test(seek[4])?3600:1;const seconds=amount*scale*(seek[1]==='rewind'||/back/.test((seek[2]||'')+(seek[5]||''))?-1:1);if(Number.isFinite(seconds)&&seconds!==0&&Math.abs(seconds)<=86400)return {action:'media.control',args:{command:'seek',target:seek[6]?'plezy':'current',seconds}};}
   return null;
 }
-module.exports={parseMediaCommand};
+module.exports={parseMediaCommand,parsePlexAvailability,isPlexSessionRequest};

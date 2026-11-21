@@ -15,9 +15,8 @@ namespace HeyClicky.App.Cody;
 
 internal sealed class CodyDrawingFollow : IDisposable
 {
-    // Disabled at the user's request: keep ink at its original screen position.
-    // This also stops accessibility capture and background target polling.
-    internal static bool Enabled => false;
+    // Window ownership is independent of accessibility and geometry tracking.
+    internal static bool ContentTrackingEnabled => false;
     private const int TargetReadGraceMs = 1500;
     private sealed record CaptureOrigin(ForegroundApp App, Bounds Viewport, Task<CodyDrawingTarget.Document> Document);
     private sealed record Placement(Visual Visual, Vector3 Offset, Vector3 Scale);
@@ -72,12 +71,11 @@ internal sealed class CodyDrawingFollow : IDisposable
         token = cancelled.Token;
         imageWidth = imageSize.X;
         imageHeight = imageSize.Y;
-        if (!Enabled) return;
         if (screenshot != null && origins.TryGetValue(screenshot, out var captured))
         {
             owner = captured.App;
             origin = captured.Viewport;
-            contentTracking = TracksDocument(owner);
+            contentTracking = ContentTrackingEnabled && TracksDocument(owner);
             if (captured.Document != null) _ = UseDocument(captured.Document);
         }
         else
@@ -85,17 +83,16 @@ internal sealed class CodyDrawingFollow : IDisposable
             owner = CodyDrawingOwner.Capture();
             if (owner == null || owner.ProcessId == Environment.ProcessId || !TryClientBounds(owner.WindowHandle, out origin))
                 return;
-            contentTracking = TracksDocument(owner);
+            contentTracking = ContentTrackingEnabled && TracksDocument(owner);
         }
     }
 
     internal static Action<ScreenCaptureFrame, byte[]> RememberCapture()
     {
-        if (!Enabled) return null;
         var app = CodyDrawingOwner.Capture();
         if (app == null || app.ProcessId == Environment.ProcessId || !TryClientBounds(app.WindowHandle, out var bounds))
             return null;
-        var document = TracksDocument(app)
+        var document = ContentTrackingEnabled && TracksDocument(app)
             ? CodyDrawingTarget.Capture(app.WindowHandle, bounds.Rect, IsBrowser(app), () => OwnerIsForeground(app), PreferLegacy(app), IsFirefox(app))
             : null;
         return (frame, original) =>
@@ -127,7 +124,7 @@ internal sealed class CodyDrawingFollow : IDisposable
         });
     }
 
-    internal bool Available => Enabled && owner != null && imageWidth > 0 && imageHeight > 0 && IntersectsDisplay(origin);
+    internal bool Available => owner != null && imageWidth > 0 && imageHeight > 0 && IntersectsDisplay(origin);
     internal bool OwnerForeground => Available && IsOwnerForeground();
     internal bool Hidden => marks.Count > 0 && marks.Values.All(mark => !mark.Visible || mark.Removed);
     internal bool HasHiddenDrawing => marks.Values.Any(mark => !mark.Visible && !mark.Removed &&
@@ -137,9 +134,14 @@ internal sealed class CodyDrawingFollow : IDisposable
 
     internal bool CanContinue(ScreenCaptureFrame frame)
     {
-        if (!Available) return true;
-        bool sameWindow = frame.Jpeg != null && origins.TryGetValue(frame.Jpeg, out var source)
-            ? source.App.WindowHandle == owner.WindowHandle : IsOwnerForeground();
+        if (!Available || (!ContentTrackingEnabled && marks.Count == 0)) return true;
+        CaptureOrigin source = null;
+        if (frame.Jpeg != null) origins.TryGetValue(frame.Jpeg, out source);
+        bool sameWindow = source == null ? IsOwnerForeground() :
+            source.App.WindowHandle == owner.WindowHandle && source.App.ProcessId == owner.ProcessId;
+        if (!ContentTrackingEnabled)
+            return sameWindow && (source == null || source.App.WindowTitle == owner.WindowTitle && source.Viewport.Equals(origin)) &&
+                IsOwnerForeground() && TryClientBounds(owner.WindowHandle, out var viewport) && MatchesCaptureView(viewport);
         // A continued program would interpret new screenshot coordinates in
         // this canvas's old capture basis. After scroll/window context changes,
         // start a fresh canvas; RealStack retains these existing annotations.
@@ -173,7 +175,8 @@ internal sealed class CodyDrawingFollow : IDisposable
             {
                 mark = new Mark { Id = item.Id, Box = item.Box, Role = item.Role };
                 if (IsOwnerForeground() && TryClientBounds(owner.WindowHandle, out var viewport))
-                    mark.Visible = contentTracking ? CanUseCapturePosition(mark, viewport) : IsPageCurrent();
+                    mark.Visible = !ContentTrackingEnabled ? MatchesCaptureView(viewport) :
+                        contentTracking ? CanUseCapturePosition(mark, viewport) : IsPageCurrent();
                 marks[item.Id] = mark;
             }
             var old = mark.Units;
@@ -186,6 +189,7 @@ internal sealed class CodyDrawingFollow : IDisposable
     internal void ScreenChanged(string reason)
     {
         if (!Available) return;
+        if (!ContentTrackingEnabled) { Tick(); return; }
         // Moving focus between the Island and the same target is not a page
         // change. In particular it must not prevent the first anchor binding.
         if (reason == "app switch" && IsOwnerForeground()) { nextRead = 0; return; }
@@ -230,6 +234,16 @@ internal sealed class CodyDrawingFollow : IDisposable
         if (!IsOwnerForeground() || !TryClientBounds(owner.WindowHandle, out var viewport))
         {
             Hide();
+            return;
+        }
+        if (!ContentTrackingEnabled)
+        {
+            bool visible = MatchesCaptureView(viewport);
+            foreach (var mark in marks.Values)
+            {
+                mark.Visible = visible;
+                Paint(mark);
+            }
             return;
         }
         ResizeSurface(viewport);
@@ -468,8 +482,10 @@ internal sealed class CodyDrawingFollow : IDisposable
     private bool IsOnDisplay(RectD box, Bounds viewport) =>
         CodyDrawingGeometry.Visible(box, viewport.Rect, surface);
 
+    private bool MatchesCaptureView(Bounds viewport) => viewport.Equals(origin) && owner.WindowTitle == WindowTitle();
+
     private bool CanUseCapturePosition(Mark mark, Bounds viewport) => !contextChanged && !capturePositionInvalidated &&
-        viewport.Equals(origin) && owner.WindowTitle == WindowTitle() && IsOnDisplay(OriginalBox(mark), viewport);
+        MatchesCaptureView(viewport) && IsOnDisplay(OriginalBox(mark), viewport);
 
     private void ResizeSurface(Bounds viewport)
     {

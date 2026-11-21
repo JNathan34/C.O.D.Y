@@ -41,10 +41,61 @@ test('Plex connection test verifies authenticated library access and exposes no 
  assert.deepEqual(await f.service.plexTest(),{ok:true,name:'Home server'});
 });
 
+test('Plex session lookup distinguishes an empty server from disconnected and invalid responses',async t=>{
+ let data={MediaContainer:{size:0}};
+ const f=fixture(t,async()=>({ok:true,text:async()=>JSON.stringify(data)}));
+ await assert.rejects(f.service.plexSessions(),/Connect your Plex server/);
+ f.service.configure('plex',{url:'https://plex.example.org',key:'fixture-only'});
+ assert.deepEqual(await f.service.plexSessions(),{count:0,sessions:[]});
+ for(data of [{}, {MediaContainer:{size:2}}, {MediaContainer:{size:1,Metadata:[]}}])
+  await assert.rejects(f.service.plexSessions(),/valid list of viewing sessions/);
+});
+
+test('the first Plex session lookup after restart retries a brief network failure using the saved connection',async t=>{
+ const calls=[];
+ const fetcher=async(url,options)=>{
+  calls.push({url,options});
+  if(calls.length===1)throw TypeError('Connection reset');
+  return {ok:true,text:async()=>JSON.stringify({MediaContainer:{size:0}})};
+ };
+ const {service,file,cipher}=fixture(t,fetcher);
+ service.configure('plex',{url:'https://plex.example.org',key:'saved-token',account:true,name:'Home server'});
+ const restarted=new SelfHosted({file,cipher,fetcher});
+ assert.deepEqual(await restarted.plexSessions(),{count:0,sessions:[]});
+ assert.deepEqual(calls.map(call=>call.url),Array(2).fill('https://plex.example.org/status/sessions'));
+ assert.ok(calls.every(call=>call.options.headers['X-Plex-Token']==='saved-token'));
+ assert.notEqual(calls[0].options.signal,calls[1].options.signal);
+});
+
+test('a dropped Plex response is retried once and a still-unreachable server reports the connection error',async t=>{
+ let calls=0;
+ const {service}=fixture(t,async()=>{
+  calls++;
+  return {ok:true,text:async()=>{throw Error('Connection closed during response');}};
+ });
+ service.configure('plex',{url:'https://plex.example.org',key:'saved-token'});
+ await assert.rejects(service.plexSessions(),/Plex server could not be reached/);
+ assert.equal(calls,2);
+ assert.equal(service.status().services.plex.connected,true);
+});
+
+test('disconnecting Plex while a read is waiting to retry skips the old server',async t=>{
+ let calls=0;
+ const {service}=fixture(t,async()=>{calls++;throw Error('Connection reset');});
+ service.configure('plex',{url:'https://plex.example.org',key:'saved-token'});
+ const pending=service.plexSessions();
+ await new Promise(resolve=>setImmediate(resolve));
+ service.disconnect('plex');
+ await assert.rejects(pending,/Plex connection changed/);
+ assert.equal(calls,1);
+});
+
 test('Plex connection test rejects invalid credentials and unexpected server responses',async t=>{
  for(const response of [{ok:false,status:401},{ok:true,text:async()=>JSON.stringify({MediaContainer:{machineIdentifier:'public-identity'}})}]){
-  const f=fixture(t,async()=>response);f.service.configure('plex',{url:'https://plex.example.org',key:'old-token'});
+  let calls=0;
+  const f=fixture(t,async()=>{calls++;return response;});f.service.configure('plex',{url:'https://plex.example.org',key:'old-token'});
   await assert.rejects(f.service.plexTest(),/rejected|did not confirm/);
+  assert.equal(calls,1);
   assert.equal(f.service.status().services.plex.connected,true);
  }
 });

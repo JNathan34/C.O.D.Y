@@ -4,17 +4,23 @@ const {app,BrowserWindow,screen,desktopCapturer}=require('electron');
 const {spawn}=require('node:child_process');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
 const {NativeEngine}=require('../frontend/original-cody/src/native-engine');
-app.setPath('userData',fs.mkdtempSync(path.join(os.tmpdir(),'cody-drawing-owner-')));
+const {manageWindow}=require('../frontend/original-cody/src/control/app-layout');
+const profile=fs.mkdtempSync(path.join(os.tmpdir(),'cody-drawing-owner-'));
+app.setPath('userData',profile);
+fs.mkdirSync(path.join(profile,'native-account'));
+fs.writeFileSync(path.join(profile,'native-account','settings.json'),JSON.stringify({drawing_sounds_enabled:false}));
 app.on('window-all-closed',()=>{});
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const handle=win=>win.getNativeWindowHandle().readBigUInt64LE().toString();
-let win,other,child,engine;const checks=[];
+let win,other,child,engine,chatgpt;const checks=[];
 const html='<body style="margin:0;background:#eef2f7"><h1>Drawing ownership fixture</h1><button id="target" style="position:absolute;left:120px;top:200px;width:180px;height:90px">Original target</button><div style="height:2000px"></div></body>';
 async function focus(window){window.setAlwaysOnTop(true);window.show();window.moveTop();window.focus();window.webContents.focus();await window.webContents.executeJavaScript('document.getElementById("target")?.focus()');await wait(180);assert.ok(window.isFocused(),'owned fixture must receive focus');}
 app.whenReady().then(async()=>{
  if(process.argv.includes('--target')){
   win=new BrowserWindow({x:80,y:220,width:680,height:580,show:false,webPreferences:{backgroundThrottling:false}});
   await win.loadURL('data:text/html,'+encodeURIComponent(html));await focus(win);
+  const title=`Drawing ownership target ${process.pid}`;
+  win.setTitle(title);
   process.on('message',async message=>{try{
    if(message.command==='focus')await focus(win);
    if(message.command==='minimize')win.minimize();
@@ -30,7 +36,7 @@ app.whenReady().then(async()=>{
    }
    process.send({id:message.id,handle:handle(win),focused:win.isFocused(),visible:win.isVisible()});
   }catch(error){process.send({id:message.id,error:error.message});}});
-  process.send({ready:true,handle:handle(win)});return;
+  process.send({ready:true,handle:handle(win),title});return;
  }
  const pending=new Map();let sequence=0;
  const command=value=>new Promise((resolve,reject)=>{const id=++sequence,timer=setTimeout(()=>reject(Error('Child fixture timeout')),8000);pending.set(id,{resolve,reject,timer});child.send({id,command:value});});
@@ -45,10 +51,11 @@ app.whenReady().then(async()=>{
   });
   const target=await ready;
   engine=new NativeEngine();await engine.refresh();
-  await engine.request('text-client',{clientPid:process.pid});
-  await command('focus');await wait(300);
   win=new BrowserWindow({x:60,y:40,width:360,height:140,show:false,title:'Owned Island stand-in',webPreferences:{backgroundThrottling:false}});
   await win.loadURL('data:text/html,<h2>Island stand-in</h2><input autofocus>');await focus(win);
+  await engine.request('text-client',{clientPid:process.pid,islandWindow:handle(win)});
+  await command('focus');await wait(300);
+  await focus(win);
   const display=screen.getPrimaryDisplay();
   // The page button's position includes the OS frame; obtain its actual screen box.
   // Use an existing child RPC below instead of guessing frame/DPI offsets.
@@ -67,16 +74,24 @@ app.whenReady().then(async()=>{
    assert.ok(blue>=200,label+': actual desktop image contains '+blue+' blue ink pixels');checks.push(label);console.log('PASS: '+label+' ('+blue+' ink pixels)');
   }
   await engine.request('drawing-controls-test-highlight',{window:target.handle,marks:[{x:box.x/display.size.width,y:box.y/display.size.height,width:box.width/display.size.width,height:box.height/display.size.height}]});
-  const initial=await state();assert.equal(initial.follow.owner,target.handle,'a request from the Island must capture the external app, not the Island');
-  await until('drawing appears while the Island retains focus',s=>s.follow?.marks.some(m=>m.visible&&m.anchored));
+  const initial=await state();assert.equal(initial.follow?.owner,target.handle,'a request from the Island must capture the external app, not the Island');
+  await until('drawing appears while the Island retains focus',s=>s.follow?.marks.some(m=>m.visible&&!m.anchored));
   assert.ok(win.isFocused(),'showing a drawing must not steal keyboard focus');
   await inkOnScreen('ink is visible on the actual desktop while the Island has focus');
-  await command('focus');await until('drawing stays visible when returning to the target app',s=>s.follow?.owner===target.handle&&s.follow.marks.some(m=>m.visible&&m.anchored));
+  await command('focus');await until('drawing stays visible when returning to the target app',s=>s.follow?.owner===target.handle&&s.follow.marks.some(m=>m.visible));
   await wait(600);await inkOnScreen('ink stays above the foreground target without an Island click');
+  chatgpt=new BrowserWindow({parent:win,x:820,y:220,width:340,height:300,show:false});
+  await chatgpt.loadURL('data:text/html,<title>ChatGPT session fixture</title><h2>ChatGPT session fixture</h2>');
+  await focus(chatgpt);
+  await until('the separate ChatGPT window hides the drawing even when owned by the Island',s=>
+    s.follow?.foreground===handle(chatgpt)&&s.follow.marks.every(m=>!m.visible)&&s.renderedUnits===0);
+  await manageWindow({windowName:target.title,operation:'focus'});
+  await until('returning from ChatGPT restores the original drawing',s=>s.follow?.marks.some(m=>m.visible));
+  chatgpt.destroy();chatgpt=null;
   await command('other');
-  await until('drawing hides over an unrelated app',s=>s.follow?.marks.length>0&&s.follow.marks.every(m=>!m.visible));
+  await until('drawing hides over another window from the same process',s=>s.follow?.marks.length>0&&s.follow.marks.every(m=>!m.visible)&&s.renderedUnits===0&&!s.clearVisible);
   await focus(win);await until('opening the Island does not retarget the drawing from the unrelated app',s=>s.follow?.marks.length>0&&s.follow.marks.every(m=>!m.visible));
-  await command('focus');await until('original drawing returns without clicking the Island',s=>s.follow?.marks.some(m=>m.visible&&m.anchored));
+  await command('focus');await until('original drawing returns without clicking the Island',s=>s.follow?.marks.some(m=>m.visible));
   await command('minimize');await until('minimized target hides its drawing',s=>s.follow?.marks.length>0&&s.follow.marks.every(m=>!m.visible));
   await command('restore');await until('restoring the target restores its drawing',s=>s.follow?.marks.some(m=>m.visible));
   await engine.request('clear');await until('clear removes the drawing',s=>!s.showing);
@@ -85,6 +100,6 @@ app.whenReady().then(async()=>{
   fs.mkdirSync(path.resolve(__dirname,'../reports'),{recursive:true});fs.writeFileSync(path.resolve(__dirname,'../reports/drawing-owner.json'),JSON.stringify({passed:!process.exitCode,checks},null,2));
   if(engine){await engine.request('clear').catch(()=>{});engine.close();}
   if(child?.connected)child.send({command:'quit'});
-  win?.destroy();other?.destroy();await wait(600);app.exit(process.exitCode||0);
+  chatgpt?.destroy();win?.destroy();other?.destroy();await wait(600);app.exit(process.exitCode||0);
  }
 });

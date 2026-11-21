@@ -319,7 +319,12 @@ public static class CodyEngineBridge
                     case "cursor-style-status":return new{presentation="cody",originalOverlayCreated=host.Real.Cursor.Inner!=null};
                     case "quiet-control-state":return new{instructions=CodyCommunication.Instructions,driveFact=CodyCommunication.DriveFact("Complete the quiz quickly.",null),waitsForNarration=CodyCommunication.WaitForActionNarration(EngineMode)};
                     case "identity-state":return new{displayName="C.O.D.Y.",spokenName="Cody",promptPath=CodyIdentity.PromptPath,instructions=CodyIdentity.Prompt,routingInstructions=CodyActionRouting.Instructions,communicationInstructions=CodyCommunication.Instructions,speechExample=CodyIdentity.ForSpeech("C.O.D.Y. is ready."),backgroundInstructions=File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"BundledResources","clicky-model-instructions.md"))};
-                    case "text-client": CodyProofread.Client(request.GetProperty("clientPid").GetInt32());CodyDrawingOwner.Client(request.GetProperty("clientPid").GetInt32());return new{registered=true};
+                    case "text-client":
+                        int clientPid = request.GetProperty("clientPid").GetInt32();
+                        nint.TryParse(Text("islandWindow"), out var islandWindow);
+                        CodyProofread.Client(clientPid);
+                        CodyDrawingOwner.Client(clientPid, islandWindow);
+                        return new{registered=true};
                     case "text-capture":return new{target=await CodyProofread.Capture(request.GetProperty("clientPid").GetInt32())};
                     case "proofread":return await CodyProofread.Run(host,Text("target"));
                     case "word-plan":

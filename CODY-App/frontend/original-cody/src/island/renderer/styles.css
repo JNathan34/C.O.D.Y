@@ -48,6 +48,7 @@ body[data-state="error"] #ring-error,body[data-state="offline"] #ring-offline,bo
 }
 .symbol-layer.is-active{opacity:1;transform:scale(1)}
 .symbol-layer.is-collapsing{opacity:0;transform:scale(.025)}
+body[data-state="listening"] :is(.ring,.symbol-layer,.morph-dot){transition:none}
 .morph-dot{
   width:2.7px;height:2.7px;inset:auto;left:50%;top:50%;border-radius:50%;
   background:var(--accent);opacity:0;transform:translate(-50%,-50%) scale(.3);
@@ -250,7 +251,8 @@ button{font:inherit;cursor:pointer}
 .icon-button:hover{background:#202020;color:#fff}.icon-button:active{background:#303030}
 .icon-button:focus-visible,.suggestion:focus-visible,.send-button:focus-visible,.nav-item:focus-visible,.secondary-action:focus-visible{outline:2px solid var(--ui-accent,#9D9DFF);outline-offset:2px}
 .icon-button svg,.send-button svg{display:block;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
-.view-stack{position:relative;flex:1;min-height:0;overflow:hidden}
+/* The panels slide inside this frame. Focus and scrollIntoView must leave the frame in place. */
+.view-stack{position:relative;flex:1;min-height:0;overflow:clip}
 .panel-view{position:absolute;inset:0;opacity:0;transform:translateX(7px);pointer-events:none;visibility:hidden;transition:opacity 165ms ease,transform 195ms cubic-bezier(.22,1,.36,1),visibility 195ms}
 .settings-tab[hidden]{display:none!important}
 .panel-view.is-current{opacity:1;transform:translateX(0);pointer-events:auto;visibility:visible;transition:opacity 185ms ease,transform 215ms cubic-bezier(.22,1,.36,1),visibility 0s}
@@ -285,7 +287,7 @@ button{font:inherit;cursor:pointer}
 .chat-table table{border-collapse:collapse;min-width:100%;font-size:inherit}
 .chat-table th,.chat-table td{border:1px solid #373941;padding:7px 10px;text-align:left;vertical-align:top}
 .chat-table th{background:#23252c;font-weight:650}
-.composer-area{flex-shrink:0}.composer{background:#1e1e1e;border:1px solid #343434;border-radius:18px;padding:10px 11px 8px;min-height:76px;transition:border-color .18s}
+.composer-area{flex-shrink:0;padding:0 2px 2px}.composer{background:#1e1e1e;border:1px solid #343434;border-radius:18px;padding:10px 11px 8px;min-height:76px;transition:border-color .18s}
 .composer:focus-within{border-color:#5c5c5c}
 #quick-input{display:block;width:100%;height:auto;min-height:24px;max-height:82px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;overflow-wrap:anywhere;border:0;background:transparent;color:#f1f1f1;padding:0;outline:none;font:12px/1.5 'Segoe UI Variable','Segoe UI',system-ui,sans-serif;user-select:text;box-shadow:none;cursor:text}
 #quick-input:empty::before{content:attr(data-placeholder);color:#858585;pointer-events:none}.composer-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:7px;min-height:25px}

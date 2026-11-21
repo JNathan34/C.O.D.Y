@@ -24,7 +24,7 @@ class IslandTaskUpdates {
     if(this.foreground?.id===id)this.foreground=null;
     if(error||cancelled||answered){
       const [text,icon]=cancelled?['Request stopped','square']:error?['Request failed','circle-alert']:['Reply ready','check'];
-      this.remember({kind:error||cancelled?'outcome':'reply',text,detail:line(detail||error)||'Open chat',icon,target:'chat'});
+      this.remember({id,kind:error||cancelled?'outcome':'reply',text,detail:line(detail||error)||'Open chat',icon,target:'chat'});
     }
     this.publish();
   }
@@ -54,14 +54,14 @@ class IslandTaskUpdates {
   }
   card(){
     const approvals=[...this.approvals.values()].flat();
-    if(approvals.length)return {kind:'attention',text:'Approval needed',detail:line(approvals[0].reason)||'Review request',icon:'shield-check',target:'approval'};
+    if(approvals.length)return {id:approvals[0].id,kind:'attention',text:'Approval needed',detail:line(approvals[0].reason)||'Review request',icon:'shield-check',target:'approval'};
     const active=this.tasksOnline?[...this.tasks.values()].filter(task=>ACTIVE.has(task.status)):[];
     const waiting=active.find(task=>task.status==='WaitingForUser');
-    if(waiting)return {kind:'attention',text:waiting.requiresApproval?'Approval needed':'Needs your input',detail:line(waiting.progress)||line(waiting.title),icon:'circle-help',target:'tasks',taskId:waiting.id};
+    if(waiting)return {kind:'attention',text:waiting.requiresApproval?'Approval needed':'Needs your input',detail:line(waiting.progress)||line(waiting.title),icon:'circle-help',target:'tasks',taskId:waiting.id,requiresApproval:Boolean(waiting.requiresApproval)};
     if(this.control||this.foreground)return this.control||this.foreground;
     if(this.recent?.kind==='outcome')return this.recent;
     const task=active[0];
-    if(task)return {kind:'progress',text:active.length>1?`${active.length} tasks working`:line(task.title),detail:line(task.progress)||(task.status==='Starting'?'Starting…':'Working in background'),icon:'clock',target:'tasks',taskId:task.id};
+    if(task)return {kind:'progress',text:active.length>1?`${active.length} tasks working`:line(task.title),detail:line(task.progress)||(task.status==='Starting'?'Starting…':'Working in background'),icon:'clock',target:'tasks',taskId:task.id,taskStatus:task.status};
     return this.recent||null;
   }
   publish(){

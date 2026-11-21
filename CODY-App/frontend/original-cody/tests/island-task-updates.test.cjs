@@ -29,7 +29,25 @@ test('updates show immediately and avoid replaying past results',t=>{
   assert.equal(updates.current.text,'Reading file…');
   updates.finish('turn',{answered:true});
   assert.equal(updates.current.text,'Reply ready');
+  assert.equal(updates.current.id,'turn');
   updates.progress('next','Working…');
   updates.finish('next',{cancelled:true});
   assert.equal(updates.current.text,'Request stopped');
+});
+
+test('task notifications carry their phase and approval intent independently of progress copy',t=>{
+  const updates=new IslandTaskUpdates(()=>{});
+  t.after(()=>updates.close());
+  const task={id:'notes',title:'Draft notes',progress:'Opening the template'};
+  const show=(status,requiresApproval=false)=>updates.updateTasks({connected:true,tasks:[{...task,status,requiresApproval}]});
+  show('Starting');
+  assert.equal(updates.current.taskStatus,'Starting');
+  assert.equal(updates.current.detail,'Opening the template');
+  show('Running');
+  assert.equal(updates.current.taskStatus,'Running');
+  show('WaitingForUser',true);
+  assert.equal(updates.current.requiresApproval,true);
+  show('WaitingForUser');
+  assert.equal(updates.current.requiresApproval,false);
+  assert.equal(updates.current.taskId,task.id);
 });
