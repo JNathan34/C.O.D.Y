@@ -1,6 +1,7 @@
 :root{
   font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;color-scheme:dark;
   --island-width:216px;--island-height:32px;--mascot-size:27px;
+  --media-preview-gutter:44px;--media-preview-face-gap:6px;
   --notch-width-time:305ms;--notch-height-time:325ms;--notch-width-delay:65ms;--notch-height-delay:45ms;
   --notch-ease:cubic-bezier(.22,1,.36,1);
   --fold-ease:cubic-bezier(.32,0,.28,1);
@@ -11,6 +12,12 @@
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}
 body[data-size="small"]{--island-width:192px;--island-height:30px;--mascot-size:25px}
 body[data-size="large"]{--island-width:244px;--island-height:36px;--mascot-size:30px}
+body.media-preview-layout:not(.panel-open){
+  --island-width:min(448px,100vw);--island-height:min(200px,100vh);
+  --notch-width-time:430ms;--notch-height-time:460ms;--notch-width-delay:0ms;--notch-height-delay:42ms;
+  --notch-size-ease:var(--notch-ease);
+}
+body.plex-preview-layout:not(.panel-open){--island-width:min(520px,100vw)}
 body[data-state="listening"]{--accent:#24e9f5}
 body[data-state="thinking"]{--accent:#f333c8}
 body[data-state="speaking"]{--accent:#ffb45c}

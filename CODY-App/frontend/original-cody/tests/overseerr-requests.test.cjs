@@ -32,7 +32,14 @@ test('the reported Plex question uses Overseerr and finds the newest released ma
   {id:24,mediaType:'movie',title:'Unrelated New Film',releaseDate:'2025-01-01'}
  ]},2:{totalPages:2,results:[{id:42,mediaType:'movie',title:f.state.movie.title,releaseDate:f.state.movie.releaseDate}]}};
  assert.equal(utilities.match(prompt,{spoken:true}).action,'overseerr-availability');
- let result=await utilities.run(prompt);
+ const misheard='Is the new Spider Man movie complex?';
+ const route=utilities.match(misheard,{spoken:true});
+ assert.deepEqual(route,utilities.match('Is the new Spider Man movie on Plex?'));
+ assert.deepEqual(route.args,{query:'Spider-Man',latest:true,type:'movie',year:''});
+ assert.equal(utilities.match(misheard),null);
+ assert.equal(utilities.match('Is Dune complex?',{spoken:true}),null);
+ assert.equal(utilities.match('Is “The New World” on Plex?').args.query,'The New World');
+ let result=await utilities.run(misheard,'chat',{route});
  assert.equal(result.mediaLookup.result.title,f.state.movie.title);
  assert.equal(result.mediaLookup.result.posterPath,'/fixture-poster.jpg');
  assert.equal(result.mediaLookup.result.availability,'missing');

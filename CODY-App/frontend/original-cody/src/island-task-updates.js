@@ -11,9 +11,9 @@ class IslandTaskUpdates {
     this.approvals=new Map();
     this.current=null;
   }
-  progress(id,text,detail){
+  progress(id,text,detail,phase){
     if(!id)return;
-    this.foreground={id,kind:'progress',text:line(text)||'Working…',detail:line(detail),icon:'clock',target:'chat'};
+    this.foreground={id,kind:'progress',text:line(text)||'Working…',detail:line(detail),icon:'clock',target:'chat',...(phase==='speaking'?{phase}:{})};
     this.publish();
   }
   drive(value){

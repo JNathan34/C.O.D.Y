@@ -10,6 +10,12 @@ function storedVisuals(value){try{return visualSettings(value||{});}catch{return
 function storedAnnotations(value){try{return annotationSettings(value||{});}catch{return {...ANNOTATION_DEFAULTS};}}
 const defaults = Object.freeze({assistantProvider:'heyclicky',visuals:VISUAL_DEFAULTS,annotations:ANNOTATION_DEFAULTS,computerControl:{...DEFAULT_PERMISSIONS},cloudProvider:'codex',defaultReasoning:'medium',optimiseContext:true,confirmExpensiveTasks:true,localAI:false,model:'',webModel:'website',workingFolder:'',appearance:'dark',runInBackground:true,startMinimized:false,voiceAutoSpeak:false,voiceAutoSend:true});
 class StateStore {
+  setWhatsAppHandsFree(enabled){
+    if(typeof enabled!=='boolean')throw Error('Choose whether to enable hands-free WhatsApp.');
+    const previous=this.data.settings.whatsappHandsFree;
+    this.data.settings.whatsappHandsFree=enabled;
+    try{this.save();}catch(error){this.data.settings.whatsappHandsFree=previous;throw error;}
+  }
   setNativePermissions(value){
     if(!value||!['ask','approve-safe','full','custom'].includes(value.level)||['enabled','readApps','extraUsage'].some(key=>typeof value[key]!=='boolean'))throw Error('Invalid backend permissions');
     this.data.settings.nativePermissions={enabled:value.enabled,level:value.level,readApps:value.readApps,extraUsage:value.extraUsage,computerUse:value.computerUse!==false,backgroundTasks:value.backgroundTasks!==false,workingFolder:typeof value.workingFolder==='string'?value.workingFolder:null};this.save();return this.data.settings.nativePermissions;

@@ -3,6 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),{randomUUID}=require('node
 const {setTimeout:delay}=require('node:timers/promises');
 const SERVICES=new Set(['plex','overseerr']);
 const PLEX_RETRY_DELAY_MS=750;
+const PLEX_POSTER_LIMIT=64*1024;
 const UNREACHABLE='SELF_HOSTED_UNREACHABLE';
 const posterPath=value=>typeof value==='string'&&/^\/[\w-]{1,120}\.(?:jpg|jpeg|png|webp)$/i.test(value)?value:null;
 function endpoint(raw){
@@ -18,6 +19,37 @@ function endpoint(raw){
 function summarisePlexEntry(item){
  return {title:String(item.title||item.grandparentTitle||'Untitled').slice(0,140),
    type:String(item.type||'media').slice(0,25),year:Number.isInteger(item.year)?item.year:null};
+}
+function plexArtworkPaths(item){
+ const episode=item.type==='episode';
+ const posters=episode?[item.grandparentThumb,item.parentThumb,item.thumb]:[item.thumb];
+ const backdrops=episode?[item.grandparentArt,item.parentArt,item.art]:[item.art];
+ return {
+  poster:posters.find(value=>typeof value==='string'&&/^\/library\/metadata\/\d{1,18}\/thumb(?:\/\d{1,18})?$/.test(value)),
+  backdrop:backdrops.find(value=>typeof value==='string'&&/^\/library\/metadata\/\d{1,18}\/art(?:\/\d{1,18})?$/.test(value))
+ };
+}
+function plexMilliseconds(value){
+ const number=typeof value==='string'&&/^\d{1,16}$/.test(value)?Number(value):value;
+ return Number.isSafeInteger(number)&&number>=0?number:null;
+}
+function plexSession(item){
+ const user=item.User,player=item.Player;
+ const media=Array.isArray(item.Media)?item.Media:[];
+ const selected=media.find(entry=>[true,1,'1'].includes(entry?.selected))||media[0];
+ const durationMs=plexMilliseconds(item.duration)||plexMilliseconds(selected?.duration)||null;
+ const position=plexMilliseconds(item.viewOffset);
+ const avatarUrl=typeof user?.thumb==='string'&&/^https:\/\/(?:www\.)?plex\.tv\/users\/[a-z\d_-]{1,80}\/avatar(?:\?c=\d{1,18})?$/i.test(user.thumb)
+  ?user.thumb:null;
+ return {
+  ...summarisePlexEntry(item),viewer:String(user?.title||user?.username||'Unknown viewer').slice(0,70),avatarUrl,
+  player:String(player?.title||'Unknown').slice(0,90),
+  platform:String(player?.platform||'').slice(0,60),product:String(player?.product||'').slice(0,80),device:String(player?.device||'').slice(0,80),
+  model:String(player?.model||'').slice(0,80),vendor:String(player?.vendor||'').slice(0,60),
+  state:String(player?.state||'unknown').trim().toLowerCase().slice(0,30),
+  positionMs:position!==null&&durationMs?Math.min(position,durationMs):position,durationMs,
+  ...(item.type==='episode'&&item.grandparentTitle?{showTitle:String(item.grandparentTitle).slice(0,140)}:{})
+ };
 }
 function confirmsPlexLibrary(data){
  const size=data?.MediaContainer?.size;
@@ -108,7 +140,13 @@ class SelfHosted{
     const message=response?.status===403?'Overseerr does not allow this account to request media.':response?.status===401?'Overseerr rejected the API key. Reconnect in Plugins settings.':'Overseerr rejected the request (HTTP '+response?.status+'). Check existing requests and your server settings.';
     throw Object.assign(Error(message),{requestRejected:response?.status>=400&&response?.status<500});
    }
-   if([401,403].includes(response?.status))throw Error(service+' rejected these credentials. Reconnect your own account.');throw Error(service+' returned HTTP '+response?.status+'.');
+   if([401,403].includes(response?.status)){
+    if(service==='plex'&&resource==='/status/sessions')throw Error('Plex rejected access to viewing activity. Sign in with the account that owns the selected server.');
+    throw Error(service+' rejected these credentials. Reconnect your own account.');
+   }
+   if(service==='plex'&&resource==='/status/sessions'&&response?.status===404)
+    throw Error('Viewing activity was not found at the saved Plex address. Check the selected server in Settings → Plugins.');
+   throw Error(service+' returned HTTP '+response?.status+'.');
   }
   const length=Number(response.headers?.get?.('content-length'));
   if(length>1024*1024)throw Error(service+' response is too large.');
@@ -116,21 +154,65 @@ class SelfHosted{
   if(Buffer.byteLength(body)>1024*1024)throw Error(service+' response is too large.');
   try{return JSON.parse(body);}catch{throw Error(service+' did not return the expected JSON API response.');}
  }
- async plexSessions(){
-  if(!this.data.plex)throw Error('Connect your Plex server under Settings → Plugins to check who is watching.');
-  const data=await this.get('plex','/status/sessions');
+ async plexArtwork(config,resource,width,height){
+  const query=new URLSearchParams({width,height,url:resource});
+  const signal=AbortSignal.timeout(3500);
+  const options={headers:{'X-Plex-Token':config.key},redirect:'error',signal};
+  try{
+   let response=await this.fetcher(config.url+'/photo/:/transcode?'+query,options);
+   if(!response.ok){
+    await response.body?.cancel();
+    response=await this.fetcher(config.url+resource,options);
+   }
+   const type=response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+   if(!response.ok||!/^image\/(?:jpeg|png|webp)$/.test(type)||Number(response.headers.get('content-length'))>PLEX_POSTER_LIMIT){
+    await response.body?.cancel();
+    return;
+   }
+   const reader=response.body?.getReader();
+   if(!reader)return;
+   const chunks=[];
+   let size=0;
+   for(;;){
+    const {done,value}=await reader.read();
+    if(done)break;
+    size+=value.byteLength;
+    if(size>PLEX_POSTER_LIMIT){await reader.cancel();return;}
+    chunks.push(value);
+   }
+   if(size)return `data:${type};base64,${Buffer.concat(chunks,size).toString('base64')}`;
+  }catch{
+   // Keep the viewing session available even when the server artwork fails.
+  }
+ }
+ async plexSessions({artwork=false}={}){
+  const config=this.data.plex;
+  if(!config)throw Error('Connect your Plex server under Settings → Plugins to check who is watching.');
+  const data=await this.get('plex','/status/sessions',config);
   const container=data?.MediaContainer;
   const items=container?.Metadata??container?.Video??(container?.size===0?[]:null);
   if(!Array.isArray(items)||items.some(item=>!item||typeof item!=='object')||(!items.length&&container.size>0))
    throw Error('Plex did not return a valid list of viewing sessions. Try again in a moment.');
-  return {count:items.length,sessions:items.slice(0,20).map(item=>({
-   ...summarisePlexEntry(item),viewer:String(item.User?.title||item.User?.username||'Unknown').slice(0,70),
-   player:String(item.Player?.title||'Unknown').slice(0,90),
-   state:String(item.Player?.state||'unknown').slice(0,30)}))};
+  const selected=items.slice(0,20);
+  const sessions=selected.map(plexSession);
+  if(this.data.plex!==config)throw Error('The Plex connection changed. Try again.');
+  if(artwork){
+   const images=new Map();
+   await Promise.all(selected.slice(0,5).flatMap((item,index)=>{
+    const {poster,backdrop}=plexArtworkPaths(item);
+    return [['poster',poster,160,240],['backdrop',backdrop,480,270]].map(async([key,resource,width,height])=>{
+     if(!resource)return;
+     if(!images.has(resource))images.set(resource,this.plexArtwork(config,resource,width,height));
+     const image=await images.get(resource);
+     if(image)sessions[index][key]=image;
+    });
+   }));
+  }
+  if(this.data.plex!==config)throw Error('The Plex connection changed. Try again.');
+  return {count:items.length,sessions};
  }
  async plexTest(){
-  const data=await this.get('plex','/library/sections');
-  if(!confirmsPlexLibrary(data))throw Error('Plex did not confirm library access. Sign in again.');
+  await this.plexSessions();
   return {ok:true,name:this.data.plex?.name||'Plex server'};
  }
  async plexRecent(){

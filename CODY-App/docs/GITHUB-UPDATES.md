@@ -2,9 +2,11 @@
 
 C.O.D.Y. checks public GitHub Releases at https://github.com/JNathan34/C.O.D.Y.
 Installed Windows apps check 15 seconds after startup and every six hours. Users
-can turn this off under Settings → Updates or check manually. Download and
-installation each require a button click. A pending update never installs merely
-because the app exits. Active tasks, voice sessions and recordings block restart.
+can turn this off under Settings → Updates or check manually. Select the Island’s
+update notice to open Updates. **Update and restart** downloads and verifies the
+update, installs it silently, and reopens C.O.D.Y. Active tasks, voice sessions
+and recordings postpone the restart until you select the button again. Closing
+the app leaves any pending update available for later.
 The development copy never downloads or installs application updates.
 
 ## First installation
@@ -62,8 +64,9 @@ retry, installation, development isolation and IPC checks. Packaging runs the
 existing engine integrity audit and checks the updater module is included.
 
 For a full update test, install the baseline release on a test Windows profile,
-publish a higher version with its matching manifest, then check, download and
-restart from Settings → Updates. Confirm the version changes and history stays.
+publish a higher version with its matching manifest, then select **Update and
+restart** in Settings → Updates. Confirm the app reopens with the new version
+and the existing history.
 That end-to-end test requires two real published versions; a development launch
 does not exercise installation.
 

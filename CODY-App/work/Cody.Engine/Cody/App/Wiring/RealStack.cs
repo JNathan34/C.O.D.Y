@@ -437,7 +437,8 @@ public sealed class RealStack : IAsyncDisposable
 			}
 		},
 			MutedSpeakerReplyExempt = () => FlowHooks.MutedSpeakerReplyExempt?.Invoke() ?? false,
-			TakeFlowBrief = () => { if(HeyClicky.App.Cody.CodyEngineBridge.EngineMode) HeyClicky.App.Cody.CodyEngineBridge.RouteVoiceUtility(); return FlowHooks.TakeFlowBrief?.Invoke(); },
+			RouteVoiceLocally = CodyEngineBridge.EngineMode ? CodyEngineBridge.RouteVoiceUtilityAsync : null,
+			TakeFlowBrief = () => FlowHooks.TakeFlowBrief?.Invoke(),
 			TakePillPlanNote = () => FlowHooks.TakePillPlanNote?.Invoke(),
 			EdgeDockFocusNote = () => FlowHooks.EdgeDockFocusNote?.Invoke(),
 			BrowserStateNote = (bool canDrive) => FlowHooks.BrowserStateNote?.Invoke(canDrive),

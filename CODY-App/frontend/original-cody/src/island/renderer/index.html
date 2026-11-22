@@ -112,6 +112,12 @@
       <div id="island-media-controls" class="island-media-controls" hidden><button id="island-media-previous" type="button" aria-label="Previous media item"></button><button id="island-media-toggle" type="button" aria-label="Play or pause media"></button><button id="island-media-next" type="button" aria-label="Next media item"></button></div>
     </div>
     <div id="island-task-announcement" class="sr-only" role="status" aria-atomic="true"></div>
+    <section id="island-media-preview" class="island-media-preview" aria-label="Media result" inert>
+      <div class="island-media-preview-header">
+        <button id="island-media-open-chat" type="button" aria-label="Open media result in chat"></button>
+      </div>
+      <div id="island-media-preview-content" class="island-media-preview-content"></div>
+    </section>
     <div id="file-drop-hint" hidden>Drop files here<small>Then ask C.O.D.Y. about them</small></div>
     <section class="quick-panel" id="quick-panel" aria-label="C.O.D.Y. assistant" aria-hidden="true" inert>
       <header class="panel-header">
@@ -386,11 +392,34 @@
               <div class="plugins-filters" role="group" aria-label="Filter plugins"><button type="button" data-plugin-filter="all" aria-pressed="true">All plugins</button><button type="button" data-plugin-filter="connected" aria-pressed="false">Connected</button><span id="plugins-count"></span></div>
               <p id="plugins-status" class="setting-help" role="status">Open Plugins to load the CODY catalog.</p>
               <div id="plugins-list" class="plugins-grid" aria-label="CODY plugins"></div>
+              <div id="local-plugin-settings" hidden>
+                <details class="plugin-settings" data-plugin-panel="whatsapp-drafts">
+                  <summary>Hands-free sending</summary>
+                  <div class="plugin-settings-content">
+                    <div class="setting-row">
+                      <span><strong>WhatsApp Web account</strong><small>Link your personal account in Cody’s WhatsApp Web window, then close that window.</small></span>
+                      <div class="plugin-card-actions"><button id="whatsapp-link" class="light-action" type="button">Link WhatsApp Web</button><button id="whatsapp-check" class="light-action" type="button">Check connection</button></div>
+                    </div>
+                    <label class="setting-row"><span><strong>Send messages hands-free</strong><small>Cody sends immediately when your command matches one contact. Say “draft” to preview instead.</small></span><input id="whatsapp-enabled" type="checkbox" disabled></label>
+                    <p id="whatsapp-status" class="setting-help settings-inline-status" role="status"></p>
+                  </div>
+                </details>
+                <details class="plugin-settings" data-plugin-panel="rgb-lighting">
+                  <summary>Manage devices</summary>
+                  <div class="plugin-settings-content">
+                    <label class="setting-row"><span><strong>React to Cody’s activity</strong><small>Cyan for listening, pink for thinking and amber for speaking.</small></span><input id="rgb-enabled" type="checkbox" disabled></label>
+                    <div class="setting-row"><span><strong>OpenRGB devices</strong><small>Start OpenRGB’s local SDK Server on port 6742. Set your devices to Direct mode in OpenRGB.</small></span><button id="rgb-discover" class="light-action" type="button" disabled>Find devices</button></div>
+                    <div id="rgb-devices" aria-label="OpenRGB devices"></div>
+                    <p id="rgb-status" class="setting-help settings-inline-status" role="status"></p>
+                  </div>
+                </details>
+              </div>
               <div id="self-hosted-settings" hidden>
                 <div class="plugin-connection plugin-plex-connection" data-media-panel="plex" hidden>
                 <div class="plugin-card-actions" id="plex-connection-actions">
                   <button type="button" class="light-action" id="plex-sign-in">Sign in with Plex</button>
                   <button type="button" class="light-action" id="plex-sign-in-cancel" hidden>Cancel sign-in</button>
+                  <button type="button" class="light-action" id="plex-viewers" hidden>Check viewers</button>
                   <button type="button" class="light-action" id="plex-test" hidden>Test connection</button>
                   <button type="button" class="light-action" data-self-hosted-disconnect="plex" hidden>Disconnect</button>
                 </div>
@@ -458,11 +487,10 @@
               <div class="settings-group">
                 <div class="setting-row"><span><strong id="update-version">C.O.D.Y.</strong><small>Updates from GitHub Releases</small></span><button id="update-releases" class="light-action" type="button">Release notes</button></div>
                 <label class="setting-row"><span><strong>Check automatically</strong><small>Check on startup and every six hours.</small></span><input id="update-automatic" type="checkbox"></label>
-                <div class="setting-row"><span><strong id="update-status" role="status" aria-live="polite">Loading update status…</strong><small id="update-last-checked"></small></span></div>
-                <div class="setting-row"><button id="update-check" class="light-action" type="button">Check for updates</button><button id="update-download" class="light-action" type="button" hidden>Download update</button><button id="update-install" class="light-action" type="button" hidden>Restart to install</button></div>
+                <div class="setting-row"><span><strong id="update-status" role="status" aria-live="polite" tabindex="-1">Loading update status…</strong><small id="update-last-checked"></small></span><button id="update-check" class="light-action" type="button">Check for updates</button><button id="update-apply" class="light-action" type="button" hidden>Update and restart</button></div>
               </div>
               <progress id="update-progress" max="100" value="0" aria-label="Update download progress" hidden></progress>
-              <p class="setting-help">Choose when to download and restart. Your conversations and settings are kept.</p>
+              <p class="setting-help">C.O.D.Y. reopens automatically after installation. Your conversations and settings are kept.</p>
             </div>
             <div class="settings-tab" data-content="permissions" hidden>
               
@@ -509,7 +537,8 @@
     </div>
   </div>
 </main>
-<script src="media-lookup.js"></script>
+<script src="plex-players.js"></script><script src="media-lookup.js"></script>
+<script src="whatsapp-drafts.js"></script><script src="rgb-lighting.js"></script>
 <script src="icons.js"></script><script src="media-art.js"></script><script src="idle-presence.js"></script><script src="../../../ui/voice-client.js"></script><script src="../../../ui/push-to-talk.js"></script><script src="../../../ui/native-voice-ui.js"></script><script src="mascot-looks.js"></script><script src="inline-editor.js"></script><script src="chat-format.js"></script><script src="ui.js"></script><script src="mentions.js"></script><script src="attachments.js"></script><script src="update-island.js"></script><script src="assistant.js"></script><script src="task-format.js"></script><script src="action-history.js"></script><script src="assistant-modes.js"></script><script src="task-appearance.js"></script><script src="task-card-state.js"></script><script src="background-tasks.js"></script><script src="browser-setup.js"></script><script src="browser-preference.js"></script><script src="plugins.js"></script><script src="self-hosted.js"></script><script src="agents.js"></script><script src="updates.js"></script><script src="agent-usage.js"></script><script src="rock-paper-scissors.js"></script>
 <script src="memory-settings.js"></script>
 </body>

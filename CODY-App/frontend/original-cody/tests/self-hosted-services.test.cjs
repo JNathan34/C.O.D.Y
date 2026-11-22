@@ -19,12 +19,20 @@ test('Plex sessions use header token, never URLs or cloud accounts',async t=>{
  const calls=[];
  const f=fixture(t,async(url,options)=>{
   calls.push({url,options});
-  return {ok:true,headers:{get:()=>null},text:async()=>JSON.stringify({MediaContainer:{Metadata:[{title:'Test Movie',User:{title:'Viewer'},Player:{state:'playing',title:'TV'}}]}})};
+  return {ok:true,headers:{get:()=>null},text:async()=>JSON.stringify({MediaContainer:{Metadata:[{
+   title:'Test Movie',viewOffset:'2705000',duration:10177000,
+   User:{title:'Viewer',thumb:'https://plex.tv/users/fixture/avatar?c=12345'},
+   Player:{state:'playing',title:'Media PC',platform:'Windows',product:'Plex for Windows',model:'Gecko',vendor:'Plex'}
+  }]}})};
  });
  f.service.configure('plex',{url:'http://192.168.1.5:32400',key:'test-only-Plex-secret'});
  assert.equal(fs.readFileSync(f.file,'utf8').includes('test-only-Plex-secret'),false);
  const result=await f.service.plexSessions();
  assert.equal(result.count,1);assert.equal(result.sessions[0].viewer,'Viewer');
+ assert.equal(result.sessions[0].positionMs,2705000);assert.equal(result.sessions[0].durationMs,10177000);
+ assert.equal(result.sessions[0].avatarUrl,'https://plex.tv/users/fixture/avatar?c=12345');
+ assert.equal(result.sessions[0].platform,'Windows');assert.equal(result.sessions[0].product,'Plex for Windows');
+ assert.equal(result.sessions[0].model,'Gecko');assert.equal(result.sessions[0].vendor,'Plex');
  assert.equal(calls[0].options.headers['X-Plex-Token'],'test-only-Plex-secret');
  assert.equal(calls[0].url.includes('test-only-Plex-secret'),false);
  assert.equal(calls[0].options.redirect,'error');
@@ -32,9 +40,44 @@ test('Plex sessions use header token, never URLs or cloud accounts',async t=>{
  f.service.disconnect('plex');assert.equal(f.service.status().services.plex.connected,false);
 });
 
-test('Plex connection test verifies authenticated library access and exposes no library or token',async t=>{
+test('Plex session artwork uses movie and TV show posters from the configured server',async t=>{
+ const calls=[];
+ const media=[{title:'Movie',type:'movie',thumb:'/library/metadata/17/thumb/12',art:'/library/metadata/17/art',User:{title:'Alice'},Player:{state:'playing'}},
+  {title:'Episode',type:'episode',grandparentTitle:'Show',grandparentThumb:'/library/metadata/28/thumb',grandparentArt:'/library/metadata/28/art/1',
+   thumb:'/library/metadata/29/thumb',art:'/library/metadata/29/art',User:{username:'Bob'},Player:{state:'paused'},
+   viewOffset:1225000,Media:[{duration:600000},{selected:'1',duration:'1200000'}]},
+  {title:'Missing artwork',type:'movie',thumb:'https://external.example/library/metadata/5/thumb',art:'https://external.example/library/metadata/5/art',
+   User:{thumb:'https://plex.tv/users/fixture/avatar?X-Plex-Token=invalid'}},
+  {title:'Oversized artwork',type:'movie',thumb:'/library/metadata/30/thumb'}];
+ const {service}=fixture(t,async(url,options)=>{
+  const address=new URL(url);calls.push({address,options});
+  assert.equal(address.origin,'https://plex.example.org');
+  assert.equal(options.headers['X-Plex-Token'],'fixture-key');
+  assert.equal(options.redirect,'error');
+  if(address.pathname.endsWith('/status/sessions'))return Response.json({MediaContainer:{Metadata:media}});
+  if(address.searchParams.get('url')==='/library/metadata/30/thumb')return new Response(new Uint8Array(65537),{headers:{'content-type':'image/png'}});
+  return new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'image/webp'}});
+ });
+ service.configure('plex',{url:'https://plex.example.org/pms',key:'fixture-key'});
+ const {count,sessions}=await service.plexSessions({artwork:true});
+ assert.equal(count,4);
+ assert.equal(sessions[0].poster,'data:image/webp;base64,AQID');
+ assert.equal(sessions[1].poster,sessions[0].poster);
+ assert.equal(sessions[1].backdrop,'data:image/webp;base64,AQID');
+ assert.equal(sessions[1].showTitle,'Show');assert.equal(sessions[1].state,'paused');
+ assert.equal(sessions[1].positionMs,1200000);assert.equal(sessions[1].durationMs,1200000);
+ assert.equal(sessions[2].poster,undefined);assert.equal(sessions[3].poster,undefined);
+ assert.equal(sessions[2].backdrop,undefined);assert.equal(sessions[2].avatarUrl,null);assert.equal(sessions[2].positionMs,null);
+ assert.deepEqual(calls.slice(1).map(({address})=>[address.searchParams.get('url'),address.searchParams.get('width')]),[
+  ['/library/metadata/17/thumb/12','160'],['/library/metadata/17/art','480'],
+  ['/library/metadata/28/thumb','160'],['/library/metadata/28/art/1','480'],['/library/metadata/30/thumb','160']
+ ]);
+ assert.ok(calls.every(({address})=>!address.href.includes('fixture-key')));
+});
+
+test('Plex connection test reads the same authenticated viewing activity as chat and exposes no token',async t=>{
  const f=fixture(t,async(url,options)=>{
-  assert.equal(url,'https://plex.example.org/library/sections');assert.equal(options.headers['X-Plex-Token'],'saved-token');
+  assert.equal(url,'https://plex.example.org/status/sessions');assert.equal(options.headers['X-Plex-Token'],'saved-token');
   return {ok:true,text:async()=>JSON.stringify({MediaContainer:{size:0}})};
  });
  f.service.configure('plex',{url:'https://plex.example.org',key:'saved-token',account:true,name:'Home server'});
@@ -91,10 +134,11 @@ test('disconnecting Plex while a read is waiting to retry skips the old server',
 });
 
 test('Plex connection test rejects invalid credentials and unexpected server responses',async t=>{
- for(const response of [{ok:false,status:401},{ok:true,text:async()=>JSON.stringify({MediaContainer:{machineIdentifier:'public-identity'}})}]){
+ for(const [response,expected] of [[{ok:false,status:401},/account that owns/],[{ok:false,status:403},/account that owns/],
+  [{ok:false,status:404},/saved Plex address/],[{ok:true,text:async()=>JSON.stringify({MediaContainer:{machineIdentifier:'public-identity'}})},/valid list of viewing sessions/]]){
   let calls=0;
   const f=fixture(t,async()=>{calls++;return response;});f.service.configure('plex',{url:'https://plex.example.org',key:'old-token'});
-  await assert.rejects(f.service.plexTest(),/rejected|did not confirm/);
+  await assert.rejects(f.service.plexTest(),expected);
   assert.equal(calls,1);
   assert.equal(f.service.status().services.plex.connected,true);
  }

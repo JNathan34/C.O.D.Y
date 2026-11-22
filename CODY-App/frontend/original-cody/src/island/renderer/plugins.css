@@ -34,3 +34,9 @@
 #overseerr-status{margin:0;overflow-wrap:anywhere}
 .plugin-card .plugin-switch{min-height:0;padding:0;gap:10px}
 .plugin-switch-status{margin:0;overflow-wrap:anywhere}
+.plugin-card:has(.plugin-settings[open]){grid-column:1/-1}
+.plugin-settings>summary{width:fit-content;color:#e0e2ef;font-size:calc(11px * var(--font-scale));cursor:pointer}
+.plugin-settings-content{margin-top:10px;border:1px solid #393c45;border-radius:10px;background:#262830}
+.plugin-rgb-icon{background:linear-gradient(135deg,#1d879d,#592f79 54%,#a9476d);color:#fff}
+.settings-inline-status{margin:0;padding:8px 12px}
+.settings-inline-status:empty{display:none}

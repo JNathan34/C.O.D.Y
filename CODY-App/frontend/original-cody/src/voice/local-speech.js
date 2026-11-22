@@ -11,7 +11,7 @@ const {repairSpeechCommand}=require('../command-text');
 const {speechText}=require('./speech-text');
 const {routeRequest}=require('../router');
 const {parseDirectAction}=require('../control/parser');
-const WHISPER_VOCABULARY='Cody, Firefox, Chrome, Microsoft Edge, eBay, Amazon, Samsung, Galaxy, Ultra, YouTube, Spotify, WhatsApp, Windows.';
+const WHISPER_VOCABULARY='Cody, Firefox, Chrome, Microsoft Edge, eBay, Amazon, Samsung, Galaxy, Ultra, YouTube, Spotify, Plex, Overseerr, Plezy, WhatsApp, Windows.';
 const scriptPath = name => path.join(__dirname,'../../windows',name).replace('app.asar'+path.sep,'app.asar.unpacked'+path.sep);
 
 class LocalSpeech {

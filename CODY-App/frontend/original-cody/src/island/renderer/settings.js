@@ -68,7 +68,6 @@
     error:'A short error reaction inside the original signature ring.'
   };
   const TASK_STATUSES=[
-    {kind:'progress',text:'Working…',detail:'Open chat',icon:'clock',target:'chat'},
     {kind:'progress',text:'Controlling your PC',detail:'Opening an app',icon:'mouse-pointer-2',target:'chat'},
     {kind:'reply',text:'Reply ready',detail:'Open chat',icon:'check',target:'chat'},
     {kind:'outcome',text:'Request stopped',detail:'Open chat',icon:'square',target:'chat'},
@@ -77,8 +76,7 @@
     {label:'Task needs approval',kind:'attention',text:'Approval needed',detail:'Review task',icon:'circle-help',target:'tasks',requiresApproval:true},
     {kind:'attention',text:'Needs your input',detail:'Choose a name',icon:'circle-help',target:'tasks'},
     {label:'Task starting',kind:'progress',text:'Drafting notes',detail:'Starting…',icon:'clock',target:'tasks',taskStatus:'Starting'},
-    {label:'Task working',kind:'progress',text:'Drafting notes',detail:'Working in background',icon:'clock',target:'tasks'},
-    {kind:'progress',text:'2 tasks working',detail:'Drafting notes',icon:'clock',target:'tasks'},
+    {kind:'progress',text:'Drafting notes',detail:'Working in background',icon:'clock',target:'tasks'},
     {kind:'outcome',text:'Task finished',detail:'Drafting notes',icon:'check',target:'tasks'},
     {kind:'outcome',text:'Task stopped',detail:'Drafting notes',icon:'square',target:'tasks'},
     {kind:'outcome',text:'Task failed',detail:'Drafting notes',icon:'circle-alert',target:'tasks'},

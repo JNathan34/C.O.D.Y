@@ -28,3 +28,18 @@ test('catalogue correction leaves custom plugins, similarly named apps and inval
   assert.deepEqual(normalizeMentions([null,{}, {id:'bad id',name:'Microsoft Word',kind:'plugin'}]),[]);
   assert.equal(normalizePluginCatalog(null),null);
 });
+
+test('the built-in WhatsApp plugin replaces the old Business entry in settings and chat mentions',()=>{
+  const legacy=[{id:'whatsapp',name:'WhatsApp Business',kind:'cloud',connected:true},
+    {id:'whatsapp_business',name:'WhatsApp Business Cloud',kind:'cloud'},
+    {id:'business-provider',name:'WhatsApp Business',kind:'cloud'}];
+  const unrelated={id:'facebook',name:'Facebook',kind:'cloud'};
+  const custom=[{id:'custom:one',name:'WhatsApp Business',kind:'custom'}];
+  const catalog=normalizePluginCatalog({plugins:[...legacy,unrelated],custom});
+  assert.deepEqual(catalog.plugins,[unrelated]);assert.equal(catalog.custom,custom);
+  const entries=legacy.map(entry=>({...entry,id:'plugin:'+entry.id,kind:'plugin'}));
+  entries.push({id:'skill:whatsapp_business',name:'WhatsApp Business Skill',kind:'skill'},
+    {id:'plugin:custom:one',name:'WhatsApp Business',kind:'plugin'});
+  const items=normalizeMentions(entries,localMentions);
+  assert.deepEqual(items.filter(item=>item.name.startsWith('WhatsApp')).map(item=>item.id),['plugin:whatsapp-drafts','plugin:custom:one']);
+});

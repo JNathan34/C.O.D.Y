@@ -16,7 +16,7 @@
         checking:{text:'Checking…',detail:'C.O.D.Y. updates',icon:'settings'},
         available:{text:'New update',detail:version+' · Tap to view',icon:'arrow-up'},
         downloading:{text:'Update '+progress+'%',detail:'Downloading · '+version,icon:'arrow-up',progress},
-        ready:{text:'Update ready',detail:version+' · Restart to install',icon:'check'},
+        ready:{text:'Update ready',detail:version+' · Tap to install',icon:'check'},
         installing:{text:'Installing…',detail:'Restarting C.O.D.Y.',icon:'settings'},
         current:{text:'Up to date',detail:'v'+value.currentVersion,icon:'check'},
         error:{text:'Update failed',detail:'Tap for details',tooltip:value.error||'Check your connection and try again.',icon:'shield-alert'}

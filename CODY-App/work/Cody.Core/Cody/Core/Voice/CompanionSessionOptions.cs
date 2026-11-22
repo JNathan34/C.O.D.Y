@@ -68,6 +68,8 @@ public sealed class CompanionSessionOptions
 
 	public Func<bool>? MutedSpeakerReplyExempt { get; init; }
 
+	public Func<string, Task<bool>>? RouteVoiceLocally { get; init; }
+
 	public Func<JsonObject?>? TakeFlowBrief { get; init; }
 
 	public Func<string?>? TakePillPlanNote { get; init; }

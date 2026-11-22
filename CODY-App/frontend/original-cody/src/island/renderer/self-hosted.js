@@ -7,6 +7,7 @@
  const plexApi=api.plexSignIn;
  const plexButton=document.getElementById('plex-sign-in');
  const plexTest=document.getElementById('plex-test');
+ const plexViewers=document.getElementById('plex-viewers');
  const plexDisconnect=area.querySelector('[data-self-hosted-disconnect="plex"]');
  const plexPanel=area.querySelector('[data-media-panel="plex"]');
  const plexCancel=document.getElementById('plex-sign-in-cancel');
@@ -54,6 +55,7 @@
   plexButton.textContent='Sign in with Plex';
   plexTest.hidden=!connected;
   plexTest.disabled=busy||pending||!connected;
+  if(plexViewers){plexViewers.hidden=!connected;plexViewers.disabled=busy||pending||!connected;}
   plexDisconnect.hidden=!connected;
   plexCancel.hidden=!pending;
   plexCancel.disabled=false;
@@ -122,8 +124,14 @@
  plexTest?.addEventListener('click',()=>void work(async()=>{
   const result=await api.read('plex','test');
   if(result?.ok!==true)throw Error('Plex did not confirm the connection.');
-  plexFeedback='Connection verified'+(result.name?' — '+text(result.name):'')+'.';
+  plexFeedback='Viewing activity verified'+(result.name?' · '+text(result.name):'')+'.';
  },'plex',false));
+ plexViewers?.addEventListener('click',()=>{
+  const island=window.CODYIsland;
+  if(!island?.onQuickMessage||island.backendBusy){plexFeedback='Finish the current request, then check Plex viewers.';renderPlex();return;}
+  island.setActiveView('chat');
+  void island.onQuickMessage('Who’s watching Plex?');
+ });
  overseerrTest.addEventListener('click',()=>void work(async()=>{
   const result=await api.read('overseerr','test');
   if(result?.ok!==true)throw Error('Overseerr did not confirm the connection.');
@@ -153,7 +161,7 @@
   if(service==='plex'){plexFeedback='';renderPlex();}
   else showOverseerrStatus('Working…');
   try{await action();if(reload)await load();}
-  catch(error){if(service==='plex')plexFeedback=error.message;else showOverseerrStatus(error.message.replace(/^Error invoking remote method '[^']+': Error: /,''));}
+  catch(error){const message=error.message.replace(/^Error invoking remote method '[^']+': Error: /,'');if(service==='plex')plexFeedback=message;else showOverseerrStatus(message);}
   finally{busy=false;buttons.forEach(({button,disabled})=>{if(button.isConnected)button.disabled=disabled;});render();}
  }
  for(const form of area.querySelectorAll('[data-self-hosted]')){

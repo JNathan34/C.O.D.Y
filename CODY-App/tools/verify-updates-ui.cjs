@@ -9,8 +9,12 @@ app.whenReady().then(async()=>{
   win.webContents.on('console-message',(_event,_level,message)=>{if(/Uncaught|TypeError|ReferenceError/.test(message))errors.push(message);});
   const client=new EventEmitter();
   client.checkForUpdates=async()=>client.emit('update-available',{version:'0.15.2'});
-  client.downloadUpdate=async()=>{client.emit('download-progress',{percent:43});client.emit('update-downloaded',{version:'0.15.2'});};
-  let installs=0;client.quitAndInstall=()=>installs++;
+  let finishDownload;
+  client.downloadUpdate=()=>new Promise(resolve=>{
+    finishDownload=()=>{client.emit('update-downloaded',{version:'0.15.2'});resolve();};
+    client.emit('download-progress',{percent:43});
+  });
+  const installs=[];client.quitAndInstall=(...args)=>installs.push(args);
   const updates=new UpdateService({version:'0.15.1',packaged:true,platform:'win32',createUpdater:()=>client});
   updates.on('change',value=>win.webContents.send('updates-state',value));
   registerUpdateIpc({ipcMain,updates,getWindow:()=>win,shell:{openExternal:()=>{}}});
@@ -52,7 +56,7 @@ app.whenReady().then(async()=>{
     win.webContents.setZoomFactor(2);
     await new Promise(resolve=>setTimeout(resolve,450));
     const bounds=await evaluate("(()=>{const r=$('island').getBoundingClientRect();return {x:Math.round(r.x*2),y:Math.round(r.y*2),width:Math.round(r.width*2),height:Math.round(r.height*2)};})()");
-    await fs.writeFile(path.resolve(__dirname,'../../docs/screenshots/update-status.png'),(await win.webContents.capturePage(bounds)).toPNG());
+    if(!process.argv.includes('--no-screenshots'))await fs.writeFile(path.resolve(__dirname,'../../docs/screenshots/update-status.png'),(await win.webContents.capturePage(bounds)).toPNG());
     win.webContents.setZoomFactor(1);
     await evaluate("$('island-info').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))");
     await until("document.body.classList.contains('settings-open')&&!document.querySelector('[data-content=updates]').hidden");
@@ -62,18 +66,19 @@ app.whenReady().then(async()=>{
     assert.match(await evaluate("$('island-info').getAttribute('aria-label')"),/Connection failed/);
     updates.set({status:'idle'});
     checks.push('island percentage and progress fit all sizes; recording takes priority; keyboard opens Updates; RAM returns');
-    await evaluate('window.CODYIsland.togglePanel(true);window.CODYIsland.setActiveView("settings");document.querySelector("[data-tab=updates]").click()');
-    await new Promise(resolve=>setTimeout(resolve,500));
-    await evaluate('document.getElementById("update-check").click()');
-    await until('!document.getElementById("update-download").hidden');checks.push('check reveals available version and download action');
-    await fs.writeFile(path.resolve(__dirname,'../reports/updates-available.png'),(await win.webContents.capturePage()).toPNG());
-    await evaluate('document.getElementById("update-download").click()');
-    await until('!document.getElementById("update-install").hidden');checks.push('download reveals restart action');
-    const layout=await evaluate('(()=>{const page=document.querySelector("[data-content=updates]"),button=document.getElementById("update-install"),r=button.getBoundingClientRect();return {visible:!page.hidden,width:r.width,height:r.height,right:r.right,bottom:r.bottom,viewportWidth:innerWidth,viewportHeight:innerHeight,scroll:page.scrollWidth,client:page.clientWidth};})()');
-    assert.ok(layout.visible&&layout.width>0&&layout.height>15&&layout.right<=layout.viewportWidth&&layout.bottom<=layout.viewportHeight&&layout.scroll<=layout.client);checks.push('update page and restart action fit inside window');
-    await new Promise(resolve=>setTimeout(resolve,150));
-    await fs.writeFile(path.resolve(__dirname,'../reports/updates-ready.png'),(await win.webContents.capturePage()).toPNG());
-    await evaluate('document.getElementById("update-install").click()');await until('document.getElementById("update-status").textContent.includes("Opening")');assert.equal(installs,1);checks.push('restart invokes install once');
+    await evaluate('window.CODYIsland.togglePanel(false)');
+    await updates.check();await until("$('island-info').dataset.update==='true'");
+    await evaluate("$('island-info').click()");
+    await until("document.body.classList.contains('settings-open')&&!document.querySelector('[data-content=updates]').hidden&&document.activeElement.id==='update-apply'");
+    checks.push('first click on an available update selects Updates and focuses the update button');
+    if(!process.argv.includes('--no-screenshots'))await fs.writeFile(path.resolve(__dirname,'../reports/updates-available.png'),(await win.webContents.capturePage()).toPNG());
+    const layout=await evaluate('(()=>{const page=document.querySelector("[data-content=updates]"),button=document.getElementById("update-apply"),r=button.getBoundingClientRect();return {visible:!page.hidden,width:r.width,height:r.height,right:r.right,bottom:r.bottom,viewportWidth:innerWidth,viewportHeight:innerHeight,scroll:page.scrollWidth,client:page.clientWidth};})()');
+    assert.ok(layout.visible&&layout.width>0&&layout.height>15&&layout.right<=layout.viewportWidth&&layout.bottom<=layout.viewportHeight&&layout.scroll<=layout.client);checks.push('update page and primary action fit inside window');
+    await evaluate("$('update-apply').click()");
+    await until("!$('update-progress').hidden&&$('update-progress').value===43&&$('update-apply').hidden");
+    finishDownload();
+    await until("$('update-status').textContent.includes('reopen automatically')");
+    assert.deepEqual(installs,[[true,true]]);checks.push('one click shows download progress and runs silent install with restart');
     updates.set({status:'development',supported:false});await until('document.getElementById("update-check").disabled');checks.push('development UI explains unavailable installation');
     assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,checks,layout}));
   }catch(error){console.error(error,errors);app.exitCode=1;}

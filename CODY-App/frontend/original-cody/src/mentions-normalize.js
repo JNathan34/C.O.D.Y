@@ -1,5 +1,5 @@
 'use strict';
-const {cloudWordPresentation}=require('./plugin-catalog');
+const {cloudWordPresentation,isReplacedWhatsAppPlugin}=require('./plugin-catalog');
 const isMentionable=item=>item?.kind==='plugin'||item?.kind==='skill'||
  (item?.id==='tool:computer-use'&&['tool','computer'].includes(item.kind));
 // Treat backend capability lists as untrusted catalog data. A picker entry
@@ -8,6 +8,7 @@ function normalizeMentions(source,local=[]){
  const remote=Array.isArray(source)?source:Array.isArray(source?.items)?source.items:[];
  const seen=new Set(local.map(x=>x.id)),results=local.filter(isMentionable);
  for(const raw of remote.slice(0,250)){
+  if(isReplacedWhatsAppPlugin(raw))continue;
   const item=cloudWordPresentation(raw);
   if(!isMentionable(item)||typeof item.id!=='string'||!/^[a-z\d][\w.:/-]{0,159}$/i.test(item.id)||seen.has(item.id)||
      typeof item.name!=='string'||!item.name.trim())continue;

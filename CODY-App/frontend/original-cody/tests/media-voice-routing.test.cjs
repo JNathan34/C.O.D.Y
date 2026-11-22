@@ -14,8 +14,9 @@ for(const [text,action]of [['pause','media.control'],['play','media.control'],['
   if(action==='app.open')assert.equal(actions[0].args.app,'plezy');
 });
 
-test('typed and spoken “whose watching plex” make one direct lookup per turn',async()=>{
-  const text='whose watching plex',engine=new EventEmitter(),calls=[],handlers=new Map(),messages=[];
+test('the reported Plex transcripts and an explicit Plex mention stay on the local viewer lookup',async()=>{
+  let text="Who's watching Plek?";
+  const engine=new EventEmitter(),calls=[],handlers=new Map(),messages=[];
   engine.connected=true;
   engine.request=async(command,args)=>{calls.push({command,args});return command==='end'?{utilityText:text}:{};};
   engine.refresh=()=>assert.fail('Plex activity should stay local');
@@ -31,10 +32,85 @@ test('typed and spoken “whose watching plex” make one direct lookup per turn
   assert.equal(lookups,1);
   assert.match(messages.at(-1).text,/Nobody is watching Plex/);
   assert.deepEqual(calls,[]);
+  assert.equal(utilities.match('Is washing collect?',{spoken:true}),null);
+  for(text of ["Who's watching Plek?",'Is washing collect?','Plax plugin.']){
+    await invoke('native-begin');
+    const turn=calls.filter(call=>call.command==='begin').at(-1).args.turn;
+    engine.emit('transcript',{turn,text});
+    engine.emit('classify-utility',{turn,text});
+    await invoke('native-end');
+    assert.equal(calls.find(call=>call.command==='utility-route'&&call.args.turn===turn).args.handled,true);
+    assert.match(messages.at(-1).text,/Nobody is watching Plex/);
+  }
+  assert.equal(lookups,4);
+  assert.equal((await invoke('mentions-list',true)).items.find(item=>item.name==='Plex').id,'plugin:plex');
+  assert.equal((await invoke('send-message',{chatId:'chat',text:'Who’s watching?',capabilityId:'plugin:plex'})).utility,true);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(lookups,5);
+  assert.ok(!calls.some(call=>['submit','mentions-check'].includes(call.command)));
+});
+
+test('spoken Plex availability paraphrases and misheard service names call Overseerr',async()=>{
+  let text;
+  const engine=new EventEmitter(),calls=[],queries=[],handlers=new Map(),messages=[];
+  engine.connected=true;
+  engine.request=async(command,args)=>{
+    calls.push({command,args});
+    if(command==='end'){
+      const {turn}=calls.filter(call=>call.command==='begin').at(-1).args;
+      engine.emit('transcript',{turn,text});
+      engine.emit('classify-utility',{turn,text});
+      const handled=calls.find(call=>call.command==='utility-route'&&call.args.turn===turn)?.args.handled;
+      return handled?{utilityText:text}:{transcript:text};
+    }
+    return {};
+  };
+  const utilities=new IslandUtilities({
+    selfHosted:{plexSessions:async()=>assert.fail('A title lookup must go through Overseerr')},
+    overseerrRequests:{lookup:async query=>{queries.push(query);return {reply:'Overseerr shows this title is available on Plex.'};}},
+    showCard(){}
+  });
+  const store={data:{settings:{},activeChatId:'chat'},chat:()=>({messages}),
+    addMessage:(_id,role,text)=>{const message={id:String(messages.length),role,text};messages.push(message);return message;},
+    save(){},publicState:()=>({})};
+  const webContents={mainFrame:{}};
+  installNativeIpc({ipcMain:{removeHandler(){},handle:(name,fn)=>handlers.set(name,fn)},engine,store,utilities,sendUI(){},
+    getState:()=>({}),getWindow:()=>({webContents})});
+  const invoke=name=>handlers.get(name)({sender:webContents,senderFrame:webContents.mainFrame});
+
+  for(text of ['Is the Odyssey on Plea?','Is the movie The Odyssey on play?']){
+    // Both transcriptions must work on the first turn in a chat.
+    messages.length=0;
+    await invoke('native-begin');
+    await invoke('native-end');
+    assert.equal(calls.filter(call=>call.command==='utility-route').at(-1).args.handled,true,text);
+    assert.match(messages.at(-1).text,/Overseerr shows this title is available/,text);
+  }
+  assert.equal(utilities.match('Is Dune on Play?'),null);
+  assert.equal(utilities.match('Is Dune on Google Play?',{spoken:true,availabilityContext:true}),null);
+  assert.equal(utilities.match('Is the actor on a plea deal?',{spoken:true}),null);
+  assert.equal(utilities.match('Is the movie The Odyssey on Plex?').args.query,'The Odyssey');
+  assert.equal(utilities.match('Is The Movie Critic on Plex?').args.query,'The Movie Critic');
+
+  const prompts=['Is the new Spider Man movie complex?', 'Is the latest Spider Man movie omplex?',
+    'Can I watch the newest Spider-Man film through Plex yet?', 'Does Plex have the latest Spider-Man movie?'];
+  for(text of [...prompts,'What about The Odyssey?','Is the odysseum plex?','Is Arrival on play?']){
+    await invoke('native-begin');
+    await invoke('native-end');
+    assert.equal(calls.filter(call=>call.command==='utility-route').at(-1).args.handled,true,text);
+    assert.match(messages.at(-1).text,/Overseerr shows this title is available/,text);
+  }
+  assert.deepEqual(queries,[
+    {query:'the Odyssey',latest:false,type:null,year:''},
+    {query:'The Odyssey',latest:false,type:null,year:''},
+    ...prompts.map(()=>({query:'Spider-Man',latest:true,type:'movie',year:''})),
+    {query:'The Odyssey',latest:false,type:null,year:''},
+    {query:'the Odyssey',latest:false,type:null,year:''},
+    {query:'Arrival',latest:false,type:null,year:''}
+  ]);
+  assert.equal(calls.some(call=>call.command==='submit'),false);
+  text='What is on my screen?';
   await invoke('native-begin');
-  engine.emit('classify-utility',{turn:calls[0].args.turn,text});
   await invoke('native-end');
-  assert.equal(lookups,2);
-  assert.equal(calls.find(call=>call.command==='utility-route').args.handled,true);
-  assert.ok(!calls.some(call=>call.command==='submit'));
+  assert.equal(calls.filter(call=>call.command==='utility-route').at(-1).args.handled,false);
 });

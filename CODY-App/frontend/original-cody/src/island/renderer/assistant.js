@@ -21,19 +21,24 @@
   window.CODYIcons.set($('island-media-previous'),'skip-back');window.CODYIcons.set($('island-media-next'),'skip-forward');
   function renderTimer(){
     const infoUpdate=$('island-info');
-    const utilityCard=quickCard&&quickCard.expiresAt>Date.now()?quickCard:null;
+    const currentCard=quickCard?.expiresAt>Date.now()?quickCard:null;
+    const utilityCard=currentCard?.kind==='media-result'||(currentCard?.source==='plex'&&island.getState()==='listening')?null:currentCard;
     const discord=utilityCard?.source==='discord'?utilityCard:null;
     const recording=['starting','recording','paused','stopping'].includes(capture.status);
+    const showPreview=currentCard?.kind==='media-result'&&!app.busy&&!recording&&!game.active&&
+      !wakeListening()&&island.getState()!=='listening'&&taskStatus?.kind!=='attention'&&timer?.status!=='finished'&&
+      !preferences?.hideNotificationText&&!document.body.classList.contains('panel-open');
+    window.CODYMediaLookup?.present(showPreview?currentCard:null,openResultChat);
     visibleTaskStatus=!recording&&!game.active&&taskStatus&&(taskStatus.kind==='attention'||(!wakeListening()&&!utilityCard&&timer?.status!=='finished'))?taskStatus:null;
     const activeCard=visibleTaskStatus||utilityCard;
-    island.renderTaskAppearance(island.voiceCapturing&&island.getState()==='listening'?null:visibleTaskStatus);
+    island.renderTaskAppearance(visibleTaskStatus);
     const announcement=$('island-task-announcement'),description=visibleTaskStatus?[visibleTaskStatus.text,visibleTaskStatus.detail].filter(Boolean).join('. '):'';
     if(announcement.textContent!==description)announcement.textContent=description;
     infoUpdate.dataset.discord=String(Boolean(discord&&!visibleTaskStatus&&!recording&&!game.active));
     const discordMic=infoUpdate.dataset.discord==='true'&&typeof discord?.micMuted==='boolean';
     infoUpdate.dataset.discordMic=discordMic?(discord.micMuted?'muted':'unmuted'):'';
     infoUpdate.dataset.discordMicChanged=String(Boolean(discordMic&&discord.micChanged));
-    infoUpdate.dataset.update='false';infoUpdate.dataset.taskStatus=visibleTaskStatus?.kind||'';infoUpdate.removeAttribute('role');infoUpdate.removeAttribute('tabindex');infoUpdate.removeAttribute('aria-label');infoUpdate.removeAttribute('title');
+    infoUpdate.dataset.update='false';infoUpdate.dataset.plex='false';infoUpdate.dataset.taskStatus=visibleTaskStatus?.kind||'';infoUpdate.removeAttribute('role');infoUpdate.removeAttribute('tabindex');infoUpdate.removeAttribute('aria-label');infoUpdate.removeAttribute('title');
     $('island-update-progress').hidden=true;
     if(wakeListening()&&!visibleTaskStatus&&!discord&&!recording){
       for(const name of ['task-layout','recording-layout','media-layout','weather-layout','brightness-layout','timer-active','timer-finished'])document.body.classList.remove(name);
@@ -95,14 +100,20 @@
         const icon=$('island-info-icon'),name=discordMic?'discord-mic':activeCard.icon||'calculator';
         $('island-info-text').textContent=activeCard.text;
         $('island-info-detail').textContent=activeCard.detail||'';
+        icon.hidden=false;
+        if(icon.dataset.icon!==name)window.CODYIcons.set(icon,name);
+        if(activeCard.source==='plex'){
+          const plexDescription=activeCard.tooltip||activeCard.text;
+          info.dataset.plex='true';info.setAttribute('role','button');info.tabIndex=0;
+          info.setAttribute('aria-label',`${plexDescription} · Open Plex viewing results`);
+          if(!preferences.hideNotificationText)info.title=plexDescription;
+        }
         if(activeCard.kind==='brightness'&&Number.isInteger(activeCard.level)){
           const bar=$('island-update-progress');
           bar.value=Math.max(0,Math.min(100,activeCard.level));
           bar.hidden=false;
           bar.setAttribute('aria-label','Brightness level');
         }
-        icon.hidden=false;
-        if(icon.dataset.icon!==name)window.CODYIcons.set(icon,name);
       }else{
         $('island-info-text').textContent=media.title;
         $('island-info-detail').textContent=`${media.playing?'':'Paused · '}${media.artist||media.app||'Media'}`;
@@ -164,9 +175,22 @@
     island.togglePanel(true);island.setActiveView('chat');
     if(visibleTaskStatus.target==='approval'&&approval)$('core-approval-deny').focus();
   }
-  $('island-info').addEventListener('click',event=>{event.stopPropagation();if(visibleTaskStatus){openTaskStatus();return;}if(quickCard?.captureKind&&!['starting','recording','paused','stopping'].includes(capture.status))void api.capture.reveal(quickCard.captureKind);});
-  $('island-info').addEventListener('keydown',event=>{if(visibleTaskStatus&&['Enter',' '].includes(event.key)){event.preventDefault();openTaskStatus();}});
+  function openResultChat(){
+    island.togglePanel(true);island.setActiveView('chat');
+    const chatId=quickCard?.chatId;
+    if(!app.busy&&chatId&&chatId!==app.data.activeChatId&&app.data.chats.some(chat=>chat.id===chatId))
+      void api.selectChat(chatId).catch(error=>note(error.message));
+  }
+  island.onPlexActivity=openResultChat;
+  $('island-info').addEventListener('click',event=>{event.stopPropagation();if(visibleTaskStatus){openTaskStatus();return;}if(event.currentTarget.dataset.plex==='true'){openResultChat();return;}if(quickCard?.captureKind&&!['starting','recording','paused','stopping'].includes(capture.status))void api.capture.reveal(quickCard.captureKind);});
+  $('island-info').addEventListener('keydown',event=>{
+    if(!['Enter',' '].includes(event.key))return;
+    if(visibleTaskStatus){event.preventDefault();openTaskStatus();}
+    else if(event.currentTarget.dataset.plex==='true'){event.preventDefault();openResultChat();}
+  });
   $('island-timer').addEventListener('click',event=>{event.stopPropagation();if(timer?.status==='finished')void api.dismissTimer();else{island.setActiveView('chat');island.togglePanel(true);}});
+  document.addEventListener('cody:panel-change',renderTimer);
+  document.addEventListener('cody:statechange',renderTimer);
   renderTimer();setInterval(renderTimer,250);
   // The native picker can occupy transparent host space beyond the Island.
   let pickerTimer=null,pickerWasOpen=false;
@@ -211,6 +235,7 @@
       const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…',message.mention);node.dataset.messageId=message.id;
       window.CODYAttachments?.decorateMessage(node,message,current().id);
       window.CODYMediaLookup?.decorate(node,message);
+      void window.CODYWhatsAppDrafts?.decorate(node,message);
     }
     const log=$('conversation');log.scrollTop=log.scrollHeight;
     renderHistory();
@@ -313,12 +338,13 @@
       const node=island.appendMessage(message.role,displayText(message.text)||'Thinking…',message.mention);node.dataset.messageId=message.id;
       window.CODYAttachments?.decorateMessage(node,message,chatId);
       window.CODYMediaLookup?.decorate(node,message);
+      void window.CODYWhatsAppDrafts?.decorate(node,message);
       if(message.mediaLookup){const log=$('conversation');log.scrollTop=log.scrollHeight;}
     }
   });
   api.on('message-delta',({chatId,messageId,delta})=>updateMessage(chatId,messageId,delta,true));
   api.on('message-replace',({chatId,messageId,text})=>updateMessage(chatId,messageId,text));
-  api.on('busy',({busy:value})=>busy(value));
+  api.on('busy',({busy:value})=>{busy(value);renderTimer();});
   api.on('web-status',status=>{if(!$('chat-connection'))return;$('chat-connection').textContent=status.connected?'ChatGPT connected':status.detail||'Sign-in required';});
   api.on('firefox-status',status=>{if(!$('core-firefox-status'))return;$('core-firefox-status').textContent=status.connected?'Firefox extension connected':status.error||'Extension not connected';});
   api.on('activity',event=>{activity.push(event.text);if(activity.length>60)activity.shift();if($('core-activity'))$('core-activity').textContent=activity.join('\n');});

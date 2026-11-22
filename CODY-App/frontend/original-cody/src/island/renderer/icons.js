@@ -39,6 +39,19 @@
   paths['circle-alert']='<circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>';
   paths.accessibility='<circle cx="12" cy="4" r="2.3" fill="currentColor" stroke="none"/><path d="m5 7 7 2.5L19 7M12 9.5V15m0 0-4 7m4-7 4 7" stroke-width="3.4"/>';
   paths.users='<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/><circle cx="9" cy="7" r="4"/>';
+  paths['device-windows']='<path fill="currentColor" stroke="none" d="M2 4.8 11 3.5V11H2Zm10.5-1.5L22 2v9h-9.5ZM2 12.5h9v8L2 19.2Zm10.5 0H22V22l-9.5-1.3Z"/>';
+  paths['device-android']='<path fill="currentColor" stroke="none" d="M2 18a10 10 0 0 1 20 0Z"/><path d="m5 7 2 3m12-3-2 3"/><path stroke="#141b23" d="M8 14h.01M16 14h.01"/>';
+  paths['device-tv']='<rect x="2" y="4" width="20" height="15" rx="2"/><path d="m7 22 2-3m8 3-2-3"/>';
+  paths['device-stick']='<rect x="2" y="8" width="15" height="8" rx="2"/><path d="M17 10h5v4h-5M6 12h3"/>';
+  paths['device-streamer']='<rect x="2" y="7" width="20" height="10" rx="3"/><path d="M7 12h.01m4 0h6"/>';
+  paths['device-xbox']='<circle cx="12" cy="12" r="10"/><path d="M5 19c3-5 8.5-11 14-13M19 19C16 14 10.5 8 5 6"/>';
+  paths['device-playstation']='<path d="m12 2 3 5H9zM3 10h5v5H3zM10 18l4 4m0-4-4 4"/><circle cx="18.5" cy="12.5" r="2.5"/>';
+  paths['device-desktop']='<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4m-5 0h10"/>';
+  paths['device-browser']='<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20M6 6.5h.01M9 6.5h.01"/>';
+  paths['device-phone']='<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 19h2"/>';
+  paths['device-tablet']='<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 19h2"/>';
+  paths['device-cast']='<path d="M3 7V5a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-7M3 11a8 8 0 0 1 8 8m-8-4a4 4 0 0 1 4 4m-4 0h.01"/>';
+  paths['device-console']='<path d="M7 6h10a4 4 0 0 1 4 3l1 6a3 3 0 0 1-5 3l-2-2H9l-2 2a3 3 0 0 1-5-3l1-6a4 4 0 0 1 4-3Zm0 4v4m-2-2h4m6 1h.01m3-2h.01"/>';
   paths.globe='<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a18 18 0 0 1 0 20 18 18 0 0 1 0-20"/>';
   paths.image='<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>';
   paths['file-text']='<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h6"/>';
@@ -56,15 +69,22 @@
     svg.innerHTML=paths[name];
     node.replaceChildren(svg);node.dataset.icon=name;
   }
-  const chromeLogo='assets/plugin-logos/chrome-logo.png';
-  const edgeLogo='assets/plugin-logos/edge-logo.png';
   const computerUseLogo='assets/plugin-logos/computer-use.png';
   const browserLogos=new Map([
-    ['chrome',chromeLogo],['browserchrome',chromeLogo],['googlechrome',chromeLogo],
-    ['edge',edgeLogo],['browseredge',edgeLogo],['microsoftedge',edgeLogo]
+    ['chrome','chrome-logo.png'],
+    ['chromium','chromium-logo.png'],
+    ['edge','edge-logo.png'],
+    ['firefox','firefox-logo.svg'],
+    ['safari','safari-logo.png'],
+    ['brave','brave-logo.png'],
+    ['opera','opera-logo.png'],
+    ['vivaldi','vivaldi-logo.png']
   ]);
+  const browserAliases=new Map([['googlechrome','chrome'],['microsoftedge','edge'],['mozillafirefox','firefox'],['operagx','opera']]);
   function browserLogo(name){
-    return browserLogos.get(String(name||'').toLowerCase().replace(/[\s_-]/g,''));
+    const id=String(name||'').toLowerCase().replace(/[\s_-]/g,'').replace(/^browser/,'');
+    const file=browserLogos.get(browserAliases.get(id)||id);
+    return file?'assets/plugin-logos/'+file:undefined;
   }
   const mentionLogos=new Map([
     ['word','task-apps/word.png'],['microsoftword','task-apps/word.png'],
@@ -72,7 +92,7 @@
     ['powerpoint','task-apps/powerpoint.png'],['microsoftpowerpoint','task-apps/powerpoint.png'],
     ['discord','task-apps/discord.png'],['discordbot','task-apps/discord.png'],
     ['outlook','task-apps/mail.png'],['microsoftoutlook','task-apps/mail.png'],
-    ['spotify','task-apps/spotify.png'],['whatsapp','task-apps/whatsapp.png'],
+    ['spotify','task-apps/spotify.png'],['whatsapp','task-apps/whatsapp.png'],['whatsappdrafts','task-apps/whatsapp.png'],
     ['plex','media/plex.svg'],['overseerr','media/overseerr.svg'],
     // These logos ship with the native engine under Assets/Logos.
     ['gmail','plugin-logos/gmail-logo.png'],['github','plugin-logos/github-logo.svg'],

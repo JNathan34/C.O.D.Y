@@ -40,6 +40,9 @@ const {ComputerController}=require('./control/controller');
 const {ActionAudit}=require('./control/action-audit');
 const {AssistantModes}=require('./assistant-modes');
 const {SelfHosted}=require('./integrations/self-hosted');
+const {RgbLighting}=require('./integrations/rgb-lighting');
+const {WhatsAppDrafts}=require('./integrations/whatsapp-drafts');
+const {WhatsAppWeb}=require('./integrations/whatsapp-web');
 const {OverseerrRequests,registerOverseerrRequestIpc}=require('./integrations/overseerr-requests');
 const {PlexSignIn}=require('./integrations/plex-sign-in');
 const {parseDirectAction}=require('./control/parser');
@@ -73,6 +76,7 @@ let controlOverlay,wakeListener;
 const nativeEngine=new NativeEngine();
 const monitorAccess=new MonitorAccess({screen,engine:nativeEngine});
 let actionAudit,assistantModes,selfHosted,plexSignIn,overseerrRequestFlow;
+let rgbLighting,whatsappDrafts,whatsappWeb,rgbQuitPending=false,rgbQuitReady=false;
 async function openPreferredWebLink(rawUrl){
   const url=new URL(rawUrl);
   if(!['http:','https:'].includes(url.protocol))throw Error('Expected an HTTP or HTTPS link.');
@@ -89,7 +93,14 @@ const weather=new Weather({fetcher:(url,options)=>require('electron').net.fetch(
 const timerAlarm=new TimerAlarm();let spotify,quickCard=null,quickCardExpiry=null;
 function refreshIslandCards(reveal=false){const media=spotify?.snapshot();island.setGameActive(Boolean(rps?.snapshot().active));island.setRecordingActive(Boolean(screenCapture?.active));island.setTimerVisible(Boolean(taskUpdates.current)||Boolean(monitors?.snapshot().active)||Boolean(desktopTimer?.snapshot())||Boolean(media?.available&&media.title)||Boolean(quickCard&&quickCard.expiresAt>Date.now()),reveal);}
 function clearQuickCard(){clearTimeout(quickCardExpiry);quickCard=null;sendUI("island-card",null);refreshIslandCards();}
-function showQuickCard(card,duration=10000){quickCard={...card,expiresAt:Date.now()+duration};sendUI('island-card',quickCard);refreshIslandCards(card.source==='discord');clearTimeout(quickCardExpiry);quickCardExpiry=setTimeout(clearQuickCard,duration);quickCardExpiry.unref();}
+function expireQuickCard(){
+  if(quickCard?.kind==='media-result'&&island.isMediaPreviewHovered()){
+    showQuickCard(quickCard,10000);
+    return;
+  }
+  clearQuickCard();
+}
+function showQuickCard(card,duration=10000){quickCard={...card,expiresAt:Date.now()+duration};sendUI('island-card',quickCard);refreshIslandCards(['discord','plex','overseerr'].includes(card.source));clearTimeout(quickCardExpiry);quickCardExpiry=setTimeout(expireQuickCard,duration);quickCardExpiry.unref();}
 let nativeTasks={connected:false,tasks:[],activeCount:0};
 let desktopTimer,rps,screenCapture,monitors,captureQuitPending=false,captureQuitReady=false;
 let annotations,scene,captures,visualLedger;
@@ -115,7 +126,7 @@ const pendingApprovals=new Map();
 const sendUI=(event,payload)=>{
   if(event==='native-turn-status'){
     if(payload.finished)taskUpdates.finish(payload.id,payload);
-    else taskUpdates.progress(payload.id,payload.text,payload.detail||'Open chat');
+    else taskUpdates.progress(payload.id,payload.text,payload.detail||'Open chat',payload.phase);
     return;
   }
   if(event==='tasks-changed')taskUpdates.updateTasks(payload);
@@ -125,6 +136,11 @@ const sendUI=(event,payload)=>{
   if(event==='activity'&&activeTurn)taskUpdates.progress(activeTurn.messageId,payload.text,'Open chat');
   if(event==='busy'&&payload.busy&&activeTurn&&taskUpdates.foreground?.id!==activeTurn.messageId)taskUpdates.progress(activeTurn.messageId,'Working…','Open chat');
   if(win&&!win.isDestroyed())win.webContents.send(event,payload);
+  if(event==='message-added'&&payload.message?.role==='assistant'){
+    const {id,mediaLookup}=payload.message;
+    const source=mediaLookup?.sessions?.length?'plex':mediaLookup?.result||mediaLookup?.choices?.length?'overseerr':null;
+    if(source)showQuickCard({kind:'media-result',source,chatId:payload.chatId,messageId:id,mediaLookup},30000);
+  }
 };
 const taskUpdates=new IslandTaskUpdates(card=>{sendUI('island-task-status',card);refreshIslandCards(Boolean(card));});
 function createWindow(){
@@ -137,7 +153,8 @@ function createWindow(){
     if(!quitting&&store.data.settings.runInBackground){event.preventDefault();sendUI('voice-hotkey','cancel');island.showCompact();}
     else if(!quitting){quitting=true;app.quit();}
   });
-  if(store.data.settings.startMinimized||process.argv.includes('--background'))island.showCompact();
+  if(app.isPackaged&&process.argv.includes('--updated'))island.show();
+  else if(store.data.settings.startMinimized||process.argv.includes('--background'))island.showCompact();
   win.webContents.setWindowOpenHandler(({url})=>{
     if(/^https?:\/\//i.test(url))void openPreferredWebLink(url).catch(error=>{
       if(win&&!win.isDestroyed())void dialog.showMessageBox(win,{type:'warning',message:'Could not open the link',detail:error.message});
@@ -226,6 +243,22 @@ function registerIpc(){
   ipcMain.handle('backend-refresh',e=>{fromAnnotationUI(e);return heyclicky.refresh();});
   const fromCody=e=>{if(!win||e.sender!==win.webContents)throw Error('Computer controls are only accessible from the C.O.D.Y interface')};
   const fromAnnotationUI=e=>{fromCody(e);if(e.senderFrame!==win.webContents.mainFrame)throw Error('Annotations require the trusted main C.O.D.Y frame');};
+  ipcMain.handle('rgb-lighting-state',e=>{fromAnnotationUI(e);return rgbLighting.status();});
+  ipcMain.handle('rgb-lighting-discover',e=>{fromAnnotationUI(e);return rgbLighting.discover();});
+  ipcMain.handle('rgb-lighting-select',(e,id,value)=>{fromAnnotationUI(e);return rgbLighting.select(id,value===true);});
+  ipcMain.handle('rgb-lighting-enable',(e,value)=>{fromAnnotationUI(e);return rgbLighting.enable(value===true);});
+  ipcMain.handle('whatsapp-open-app',e=>{fromAnnotationUI(e);return whatsappDrafts.openApp();});
+  ipcMain.handle('whatsapp-web-state',(e,check)=>{fromAnnotationUI(e);return whatsappWeb.status({check:check===true});});
+  ipcMain.handle('whatsapp-web-link',e=>{fromAnnotationUI(e);return whatsappWeb.link();});
+  ipcMain.handle('whatsapp-web-enable',async(e,enabled)=>{
+    fromAnnotationUI(e);
+    if(enabled===true&&!(await whatsappWeb.status()).ready)throw Error('Link WhatsApp Web first.');
+    store.setWhatsAppHandsFree(enabled);
+    if(!enabled)whatsappWeb.cancel();
+    return whatsappWeb.status();
+  });
+  ipcMain.handle('whatsapp-draft-preview',(e,id)=>{fromAnnotationUI(e);return whatsappDrafts.preview(id);});
+  ipcMain.handle('whatsapp-draft-open',(e,id)=>{fromAnnotationUI(e);return whatsappDrafts.openDraft(id);});
   ipcMain.handle('monitor-access-state',e=>{fromAnnotationUI(e);return monitorAccess.refresh();});
   ipcMain.handle('monitor-access-configure',async(e,settings)=>{
     fromAnnotationUI(e);
@@ -631,6 +664,10 @@ else app.whenReady().then(()=>{
   nativeTheme.themeSource='dark';app.setAppUserModelId(branding.appId);
   store=new StateStore(app.getPath('userData'));
   selfHosted=new SelfHosted({file:path.join(app.getPath('userData'),'self-hosted-connections.dat'),cipher:safeStorage,fetcher:(url,options)=>require('electron').net.fetch(url,options)});
+  whatsappWeb=new WhatsAppWeb({BrowserWindow,session,icon:branding.icon,enabled:()=>store.data.settings.whatsappHandsFree===true});
+  whatsappDrafts=new WhatsAppDrafts({open:url=>shell.openExternal(url),browser:whatsappWeb});
+  rgbLighting=new RgbLighting({onChange:status=>sendUI('rgb-lighting-changed',status)});
+  island.onStateChanged(state=>rgbLighting.setPhase(state));
   overseerrRequestFlow=new OverseerrRequests({service:selfHosted});
   plexSignIn=new PlexSignIn({service:selfHosted,version:app.getVersion(),openBrowser:openPreferredWebLink,
     onServersReady:()=>{if(!quitting&&win&&!win.isDestroyed())island.showSettings({tab:'integrations',plugin:'plex'});},
@@ -729,7 +766,7 @@ else app.whenReady().then(()=>{
   let lastSavedCapture=null;screenCapture.on('change',state=>{sendUI('capture-state',state);refreshIslandCards();if(state.status==='starting')island.collapse();if(state.status==='saved'&&state.savedPath!==lastSavedCapture){lastSavedCapture=state.savedPath;showQuickCard({kind:'utility',text:'Recording saved',detail:'Click to open',icon:'camera',captureKind:'recording'});}if(state.status==='error')showQuickCard({kind:'utility',text:'Recording error',detail:state.error,icon:'circle-alert'});});
   monitors=new IslandMonitors({settingsFile:path.join(app.getPath('userData'),'island-monitors.json'),weather,readDesktopFrames:()=>nativeEngine.request('desktop-frames'),fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact({automatic:true});lastMonitorActive=state.active;});
-  const islandUtilities=new IslandUtilities({selfHosted,overseerrRequests:overseerrRequestFlow,textContext:async()=>{
+  const islandUtilities=new IslandUtilities({selfHosted,overseerrRequests:overseerrRequestFlow,whatsappDrafts,textContext:async()=>{
     const result=await nativeEngine.request('text-capture',{clientPid:process.pid});
     return {editable:typeof result?.target==='string'&&result.target.length>0,protected:result?.isPassword===true||result?.sensitive===true};
   },modes:assistantModes,tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,appSettings:{show:island.showSettings,update:island.updatePreferences},showCompact:()=>{island.showCompact({automatic:true});if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
@@ -911,5 +948,11 @@ else app.whenReady().then(()=>{
   app.on('activate',showMain);
 });
 app.on('second-instance',(_event,args)=>{pendingNativeLinks.push(...linksFromArgs(args));void deliverNativeLinks();if(singleInstance&&!args.includes('--background'))showMain();});
-app.on('before-quit',event=>{if(screenCapture?.active&&!captureQuitReady){event.preventDefault();if(!captureQuitPending){captureQuitPending=true;void screenCapture.execute('stop').catch(error=>console.error(error)).finally(()=>{captureQuitReady=true;app.quit();});}return;}updates?.close();trayMenu?.close();wakeListener?.close();controlOverlay?.close();nativeEngine.close();monitors?.close();quitting=true;usageClient?.close();memory?.close();codexAgent?.close();annotations?.close();scene?.close();captures?.clear();clearTimeout(quickCardExpiry);timerAlarm.stop();spotify?.close();desktopTimer?.close();stopPushToTalk();island.stop();speech?.cancel();for(const request of pendingApprovals.values()){try{if(request.resolve)request.resolve(false);else codex?.respond(request.id,'decline');}catch{}}codex?.close();visualPlanner?.close();void webBrowser?.quit();void firefoxBridge?.close();});
+app.on('before-quit',event=>{if(screenCapture?.active&&!captureQuitReady){event.preventDefault();if(!captureQuitPending){captureQuitPending=true;void screenCapture.execute('stop').catch(error=>console.error(error)).finally(()=>{captureQuitReady=true;app.quit();});}return;}
+  if(rgbLighting?.client&&!rgbQuitReady){
+    event.preventDefault();
+    if(!rgbQuitPending){rgbQuitPending=true;void rgbLighting.close().catch(error=>console.error(error)).finally(()=>{rgbQuitReady=true;app.quit();});}
+    return;
+  }
+  whatsappWeb?.close();updates?.close();trayMenu?.close();wakeListener?.close();controlOverlay?.close();nativeEngine.close();monitors?.close();quitting=true;usageClient?.close();memory?.close();codexAgent?.close();annotations?.close();scene?.close();captures?.clear();clearTimeout(quickCardExpiry);timerAlarm.stop();spotify?.close();desktopTimer?.close();stopPushToTalk();island.stop();speech?.cancel();for(const request of pendingApprovals.values()){try{if(request.resolve)request.resolve(false);else codex?.respond(request.id,'decline');}catch{}}codex?.close();visualPlanner?.close();void webBrowser?.quit();void firefoxBridge?.close();});
 app.on('window-all-closed',()=>{if(quitting&&process.platform!=='darwin')app.quit();});

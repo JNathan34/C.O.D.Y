@@ -1,5 +1,12 @@
 !include "WordFunc.nsh"
 
+!macro customInit
+  ; Older C.O.D.Y. updaters pass --updated without the silent flag.
+  ${If} ${isUpdated}
+    SetSilent silent
+  ${EndIf}
+!macroend
+
 !macro customInstall
   InitPluginsDir
   DetailPrint "Preparing C.O.D.Y. engine prerequisites..."

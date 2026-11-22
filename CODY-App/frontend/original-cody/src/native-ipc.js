@@ -8,7 +8,9 @@ const {setPersonalCodexEnabled}=require('./usage-policy');
 const {localMemoryText,SHARED_PAUSED}=require('./memory/commands');
 const {localMentions,localMentionRoute}=require('./mentions');
 const {normalizeMentions}=require('./mentions-normalize');
-const {normalizePluginCatalog}=require('./plugin-catalog');
+const {normalizePluginCatalog,isReplacedWhatsAppPlugin}=require('./plugin-catalog');
+const {WHATSAPP_DRAFTS_PLUGIN}=require('./integrations/whatsapp-drafts');
+const {PLEX_PLUGIN_ID,hasRecentPlexRequest,hasPlexAvailabilityContext}=require('./media-commands');
 const {WordSession}=require('./word-session');
 const NATIVE_VOICES=Object.freeze(['cedar','marin','alloy','ash','ballad','coral','echo','sage','shimmer','verse']);
 const {attachmentNames}=require('./attachments');
@@ -51,7 +53,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   });
   handle('plugins-list',async()=>normalizePluginCatalog(await engine.request('plugins-list')));
   handle('mentions-list',async localOnly=>{
-    const items=utilities?localMentions:[];
+    const items=utilities?localMentions.filter(item=>
+      (item.id!==WHATSAPP_DRAFTS_PLUGIN||utilities.whatsappDrafts)&&(item.id!==PLEX_PLUGIN_ID||utilities.selfHosted)):[];
     if(localOnly===true||localMemoryOnly()||selection(store.data.settings).provider!=='heyclicky')return {items:normalizeMentions([],items)};
     try{return {items:normalizeMentions(await engine.request('mentions-list'),items)};}
     catch{return {items:normalizeMentions([],items),error:'Could not load available mentions.'};}
@@ -85,6 +88,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   handle('agents-privacy',capability=>{if(!['broadFileSystemAccess','documentsLibrary','picturesLibrary','contacts','appointments','microphone','webcam','location'].includes(capability))throw Error('Unknown privacy setting');return engine.request('agents-privacy',{capability});});
   handle('plugins-action',async({id,action,accountId}={})=>{
     if(typeof id!=='string'||!id||id.length>200||!['connect','disconnect'].includes(action)||accountId!==undefined&&(typeof accountId!=='string'||accountId.length>300))throw Error('Invalid plugin action');
+    if(isReplacedWhatsAppPlugin({id,kind:'cloud'}))throw Error('Use the WhatsApp plugin in Settings → Plugins.');
     return engine.request('plugins-action',{pluginId:id,action,accountId:accountId||''});
   });
   handle('plugins-add',async({name,url,apiKey}={})=>{
@@ -110,10 +114,12 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     handle('computer-emergency-stop',async()=>{await engine.request('permissions-configure',{enabled:false});await engine.request('drive-stop');await cancel();controller.configure({enabled:false});sendUI('settings-changed',store.data.settings);return{stopped:true};});
     if(chooseWorkingFolder)handle('browse-folder',async()=>{const folder=await chooseWorkingFolder();if(!folder)return null;const native=await engine.request('permissions-configure',{workingFolder:folder});store.settings({workingFolder:folder});rememberPermissions(native);return folder;});
   }
-  const sendMessage=(role,text,provider='heyclicky',mediaLookup)=>{
+  const sendMessage=(role,text,provider='heyclicky',{mediaLookup,draftId,plexAvailability=false}={})=>{
     const persist=!active.utility&&!(active.voice&&role==='user');
     const message=store.addMessage(active.chatId,role,text,provider,{persist,...(role==='user'&&active.mention?{mention:active.mention}:{})});
     if(role==='assistant'&&mediaLookup)message.mediaLookup=mediaLookup;
+    if(role==='assistant'&&plexAvailability)message.plexAvailability=true;
+    if(role==='assistant'&&draftId)message.whatsappDraftId=draftId;
     if(role==='user'&&active.files?.length){
       message.attachments=active.attachmentBatch?.items||attachmentNames(active.files);
       if(persist)store.save();
@@ -123,8 +129,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   function replace(message,text){if(!active||!message)return;store.updateMessage(active.chatId,message.id,text,{persist:false});sendUI('message-replace',{chatId:active.chatId,messageId:message.id,text});}
   const quickUtilityActions=new Set(['weather','time','date','maths','timer','volume-status','audio.adjust','audio.set','audio.mute','spotify-status','spotify.control','media.control','app.open','island-monitors','app-settings.open','app-settings.change']);
   const usesUtilityCard=route=>quickUtilityActions.has(route?.action)||route?.action?.startsWith('system.')===true;
-  function publishProgress(operation,text){
-    if(!operation.quietUtility&&(!operation.voice||operation.voiceClassified))sendUI('native-turn-status',{id:operation.turn,text});
+  function publishProgress(operation,text,phase){
+    if(!operation.quietUtility&&(!operation.voice||operation.voiceClassified))sendUI('native-turn-status',{id:operation.turn,text,...(phase?{phase}:{})});
   }
   function finish(error){
     if(!active)return;
@@ -136,15 +142,16 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   async function runUtility(operation,text,speak,route){
     operation.utility=true;
     operation.quietUtility=usesUtilityCard(route);
+    if(route?.action==='whatsapp-draft')operation.abort??=new AbortController();
     if(operation.voice&&route?.action==='text.proofread'&&!operation.proofreadTarget)throw Error('Click the text box, then hold your voice shortcut and say “spell check this”. The box must expose editable text.');
     if(operation.user?.attachments)delete operation.user.attachments;
     if(route?.command==='start'&&rps?.active){rps.close();await gameVoice.cancel();}
     const gameRequest=route?.action==='rps';
-    const result=await utilities.run(text,operation.chatId,{proofreadTarget:operation.proofreadTarget,route});
+    const result=await utilities.run(text,operation.chatId,{proofreadTarget:operation.proofreadTarget,hasAttachments:Boolean(operation.files?.length),signal:operation.abort?.signal,route});
     if(active!==operation)return;
     operation.cancelled=Boolean(result.cancelled);
     operation.utilityError=result.error?result.reply:undefined;
-    active.answer=sendMessage('assistant',result.reply,'heyclicky',result.mediaLookup);
+    active.answer=sendMessage('assistant',result.reply,'heyclicky',{...result,plexAvailability:route?.action==='overseerr-availability'});
     finish();
     if(gameRequest&&rps?.active&&rps.phase==='ready'){void gameVoice.start();return result;}
     if(speak&&!localMemoryOnly()&&!result.error&&!result.cancelled)void engine.request('speak',{turn:operation.turn,text:result.confirmation||result.reply}).catch(error=>sendUI('diagnostic',error.message));
@@ -175,7 +182,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   engine.on('classify-utility',data=>{
     const operation=active?.voice&&active.turn===data.turn?active:null;
     const text=operation?.wake?stripWakeText(data.text):data.text;
-    const route=operation&&!operation.files?.length?utilities?.match(text,{spoken:true}):null;
+    const route=operation&&!operation.files?.length?utilities?.match(text,{spoken:true,...operation.mediaContext}):null;
     const word=operation&&wordRoute(text,operation.chatId,'',route,operation.files,operation.user?.id);
     const handled=Boolean(operation&&(operation.files?.length||route||word||localMemoryText(text,localMemoryOnly())));
     if(operation&&!operation.voiceClassified){
@@ -189,7 +196,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     sendUI('native-phase',data);
     if(data.state!=='Idle')sendUI('busy',{busy:Boolean(active)&&data.state!=='Listening'});
     if(active?.turn===data.turn&&['Processing','Responding'].includes(data.state)){
-      publishProgress(active,data.state==='Responding'?'Replying…':'Working…');
+      const replying=data.state==='Responding';
+      publishProgress(active,replying?'Replying…':'Working…',replying?'speaking':undefined);
     }
   });
   engine.on('turn-progress',data=>{if(active?.turn===data.turn)publishProgress(active,data.label||'Working…');});
@@ -199,7 +207,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(!active||active.turn!==data.turn)return;
     const transcript=active.wake?stripWakeText(data.text):data.text;
     if(!transcript)return;
-    const text=localMemoryText(transcript,localMemoryOnly())?'Private memory request':transcript;
+    const privateDraft=utilities?.match(transcript,{spoken:true})?.action==='whatsapp-draft';
+    const text=privateDraft?'Private WhatsApp draft':localMemoryText(transcript,localMemoryOnly())?'Private memory request':transcript;
     if(!active.user)active.user=sendMessage('user',text);else replace(active.user,text);
   });
   engine.on('response',data=>{if(!active||active.turn!==data.turn)return;if(!active.answer)active.answer=sendMessage('assistant',data.text);else replace(active.answer,data.text);});
@@ -299,11 +308,17 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     return state;
   });
   handle('state',()=>({...getState(),busy:Boolean(active||externalBusy()),nativeEngine:true,connected:engine.connected}));
+  function mediaContext(chatId){
+    const messages=store.chat(chatId)?.messages;
+    return {plexContext:hasRecentPlexRequest(messages),availabilityContext:hasPlexAvailabilityContext(messages)};
+  }
   const submit=async({chatId,text,voice=false,capabilityId='',mention=null})=>{
     if(active||externalBusy())return {error:'Another reply is in progress'};
     text=String(text||'').trim();if(text.length>25000)return {error:'Enter a message under 25,000 characters'};
     if(!store.chat(chatId))return {error:'Select a conversation'};
     if(typeof capabilityId!=='string'||capabilityId.length>300)return {error:'Invalid capability selection.'};
+    if(/^(?:plugin|skill):/.test(capabilityId)&&isReplacedWhatsAppPlugin({id:capabilityId,kind:'plugin'}))
+      return {error:'Choose the WhatsApp plugin to prepare a private draft.'};
      // This is display metadata only. Capability authorization and routing still
      // use the separately validated ID; a styled label cannot grant access.
      const validMention=capabilityId&&mention&&typeof mention==='object'&&!Array.isArray(mention)&&
@@ -326,7 +341,10 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     const files=batch.paths;
     if(active||changingMemoryMode)return {error:'Another operation is in progress'};
     if(!text&&!files.length)return {error:'Enter a message or attach a file.'};
-    const localRoute=capabilityId?null:files.length?null:utilities?.match(text);
+    const matchedRoute=utilities?.match(text,{capabilityId,...mediaContext(chatId)});
+    const whatsappRoute=matchedRoute?.action==='whatsapp-draft'?matchedRoute:null;
+    if(whatsappRoute&&capabilityId&&capabilityId!==WHATSAPP_DRAFTS_PLUGIN)return {error:'Clear the selected tool before preparing a private WhatsApp draft.'};
+    const localRoute=whatsappRoute||(capabilityId||files.length?null:matchedRoute);
     const word=wordRoute(text,chatId,capabilityId,localRoute,files);
     if(word){
       const operation=active={turn:randomUUID(),chatId,word:true,abort:new AbortController(),files,attachmentBatch:batch,mention:cleanMention,capabilityId};
@@ -338,7 +356,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(selected&&files.length)return {error:'Remove attached files before using this tool.'};
     const route=capabilityId?selected?.route:localRoute;
     if(route){
-      active={turn:randomUUID(),chatId,utility:true,quietUtility:usesUtilityCard(route),mention:cleanMention};active.user=sendMessage('user',text);sendUI('busy',{busy:true});
+      active={turn:randomUUID(),chatId,utility:true,quietUtility:usesUtilityCard(route),mention:cleanMention,...(whatsappRoute?{files}:{})};
+      active.user=sendMessage('user',whatsappRoute?'Private WhatsApp draft':text);sendUI('busy',{busy:true});
       publishProgress(active,'Working…');
       const operation=active;
       void runUtility(operation,text,voice||store.data.settings.voiceAutoSpeak,route).catch(error=>{if(active===operation)finish(error.message);});
@@ -376,6 +395,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     if(gameVoice?.running)return {listening:!wake&&gameVoice.capture};
     if(active){const drive=await engine.request('drive-state');throw Error(drive.active?'Press Esc to stop computer use first.':'Finish the current reply first');}
     const operation=active={turn:randomUUID(),chatId:store.data.activeChatId,voice:true,wake,streamedAudio:wake&&streamedAudio,provider:selection(store.data.settings).provider};
+    operation.mediaContext=mediaContext(operation.chatId);
     remember(operation);
     try{
       operation.attachmentBatch=attachments?await attachments.prepare(operation.chatId):{paths:[],ids:[]};
@@ -404,8 +424,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     try{
       const result=await engine.request('end');if(active!==operation)return result;
       if(operation.wake){result.utilityText=stripWakeText(result.utilityText||result.transcript||'');if(!result.utilityText||isListeningCancellation(result.utilityText)){finish();return {...result,empty:!result.utilityText,cancelled:Boolean(result.utilityText)};}}
-      const matchedRoute=result.utilityText?utilities?.match(result.utilityText,{spoken:true}):null;
-      const route=operation.files?.length&&matchedRoute?.action!=='text.proofread'?null:matchedRoute;
+      const matchedRoute=result.utilityText?utilities?.match(result.utilityText,{spoken:true,...operation.mediaContext}):null;
+      const route=operation.files?.length&&!['text.proofread','whatsapp-draft'].includes(matchedRoute?.action)?null:matchedRoute;
       const word=result.utilityText&&wordRoute(result.utilityText,operation.chatId,'',route,operation.files,operation.user?.id);
       if(result.controlStopped){operation.cancelled=true;if(!operation.user&&result.transcript)operation.user=sendMessage('user',result.transcript);operation.answer=sendMessage('assistant','Stopped.');finish();}
       else if(word){
@@ -433,7 +453,13 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
         if(!operation.user)operation.user=sendMessage('user',result.utilityText);operation.answer=sendMessage('assistant','');sendUI('busy',{busy:true});
         const [answer]=await Promise.all([engine.request('submit',{turn:operation.turn,text:result.utilityText,speak:true,files:operation.files}),operation.attachmentBatch?.ids.length?attachments.clearSent(operation.chatId,operation.attachmentBatch.ids):Promise.resolve()]);
         if(active===operation){if(!operation.answer.text&&answer.text)replace(operation.answer,answer.text);finish();}
-      }else if(result.utilityText){await runUtility(operation,result.utilityText,true,route);}else{
+      }else if(result.utilityText){
+        if(route?.action==='whatsapp-draft'){
+          if(operation.user)replace(operation.user,'Private WhatsApp draft');
+          else operation.user=sendMessage('user','Private WhatsApp draft','local');
+        }
+        await runUtility(operation,result.utilityText,true,route);
+      }else{
         // Reconcile the final text before releasing the turn if a streaming
         // update was missed. No answer means the session may still contain a
         // previous turn's text (for example after a silent microphone tap).

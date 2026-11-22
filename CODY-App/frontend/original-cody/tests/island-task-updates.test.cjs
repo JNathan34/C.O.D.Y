@@ -27,9 +27,13 @@ test('updates show immediately and avoid replaying past results',t=>{
   assert.equal(updates.current,null);
   updates.progress('turn','Reading file…');
   assert.equal(updates.current.text,'Reading file…');
+  updates.progress('turn','Replying…','Open chat','speaking');
+  assert.equal(updates.current.phase,'speaking');
+  assert.equal(updates.current.kind,'progress');
   updates.finish('turn',{answered:true});
   assert.equal(updates.current.text,'Reply ready');
   assert.equal(updates.current.id,'turn');
+  assert.equal(updates.current.phase,undefined);
   updates.progress('next','Working…');
   updates.finish('next',{cancelled:true});
   assert.equal(updates.current.text,'Request stopped');

@@ -1,8 +1,10 @@
 'use strict';
+const {parseWhatsAppDraft,WHATSAPP_DRAFTS_PLUGIN}=require('./integrations/whatsapp-drafts');
 const {routeRequest,localAnswer,localCard}=require('./router');
 const {parseDirectAction}=require('./control/parser');
 const {commandText,repairSpeechCommand}=require('./command-text');
-const {parseMediaCommand,parsePlexAvailability,isPlexSessionRequest,isOverseerrRequestList}=require('./media-commands');
+const {PLEX_PLUGIN_ID,parseMediaCommand,parsePlexAvailability,parsePlexAvailabilityFollowUp,
+  isPlexSessionRequest,isOverseerrRequestList,isPlexRecentRequest}=require('./media-commands');
 const {parseAppCommand}=require('./app-commands');
 const {isProofreadCommand}=require('./proofread-command');
 const {parseSystemCommand}=require('./control/system-settings');
@@ -45,19 +47,20 @@ function matchesApp(window,name){
 }
 
 class IslandUtilities {
-  constructor({selfHosted,overseerrRequests,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,overseerrRequests,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
-  match(input,{spoken=false}={}){
-    if(this.selfHosted&&isPlexSessionRequest(input))return {kind:'local',action:'self-hosted-plex-sessions'};
+  constructor({selfHosted,overseerrRequests,whatsappDrafts,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,overseerrRequests,whatsappDrafts,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
+  match(input,{spoken=false,capabilityId,plexContext=false,availabilityContext=false}={}){
+    const draft=this.whatsappDrafts&&parseWhatsAppDraft(input,{selected:capabilityId===WHATSAPP_DRAFTS_PLUGIN});
+    if(draft)return {kind:'local',action:'whatsapp-draft',args:draft};
+    if(this.selfHosted&&isPlexSessionRequest(input,{spoken,plexContext,selected:capabilityId===PLEX_PLUGIN_ID}))return {kind:'local',action:'self-hosted-plex-sessions'};
     if(this.selfHosted&&isOverseerrRequestList(input,this.selfHosted.data?.overseerr))return {kind:'local',action:'self-hosted-overseerr-requests'};
-    const availability=this.overseerrRequests&&parsePlexAvailability(input);
+    if(this.selfHosted&&isPlexRecentRequest(input,{spoken}))return {kind:'local',action:'self-hosted-plex-recent'};
+    const availability=this.overseerrRequests&&parsePlexAvailability(input,{spoken,availabilityContext});
     if(availability)return {kind:'local',action:'overseerr-availability',args:availability};
     if(this.textContext&&/^(?:what can you do (?:with|in) this (?:text ?box|field|text)|suggest (?:some )?(?:edits|actions) (?:for|in) this (?:text|field)|help me (?:edit|write) (?:this|the) (?:text|field))$/i.test(commandText(input,{preserveShow:true})))
       return {kind:'local',action:'text-context-help'};
     if(this.selfHosted){
       const text=commandText(input,{preserveShow:true}).toLowerCase();
-      if(/^(?:show|check) (?:my )?(?:recent|recently added) plex (?:movies|shows|media)$|^(?:what was|what's) recently added to plex$/.test(text))
-        return {kind:'local',action:'self-hosted-plex-recent'};
-      const search=/^(?:search|find) (?:on |in )?overseerr (?:for )?(.+)$/.exec(text);
+      const search=/^(?:search|find) (?:on |in )?overseerr? (?:for )?(.+)$/.exec(text);
       if(search&&search[1].length>=2&&search[1].length<=100)return {kind:'local',action:'self-hosted-overseerr-search',query:search[1]};
     }
     if(this.modes){
@@ -94,6 +97,8 @@ class IslandUtilities {
     if(/^(?:(?:what(?:s| is)|show|check) (?:the |my |current )?)?(?:volume|volume level)$/.test(query))return {kind:'local',action:'volume-status'};
     const relative=/^(?:turn (?:the )?(?:volume|music|sound) (up|down)|(?:make (?:the )?(?:music|sound) )?(louder|quieter))(?: (?:by )?(\d{1,2})(?: percent|%)?)?$/.exec(query);
     if(relative)return {kind:'direct',action:'audio.adjust',delta:(/up|louder/.test(relative[1]||relative[2])?1:-1)*Number(relative[3]||10),text};
+    const followUp=availabilityContext&&this.overseerrRequests&&parsePlexAvailabilityFollowUp(input,{spoken});
+    if(followUp)return {kind:'local',action:'overseerr-availability',args:followUp};
     return null;
   }
   cancel(){
@@ -114,6 +119,10 @@ class IslandUtilities {
     try{
       let reply,confirmation;
       switch(route.action){
+        case 'whatsapp-draft':{
+          if(context.hasAttachments)return {handled:true,error:true,reply:'Cody’s WhatsApp plugin supports text messages. Remove the attachments and try again.'};
+          return {handled:true,...await this.whatsappDrafts.submit(route.args,{signal:context.signal})};
+        }
         case 'overseerr-availability':return {handled:true,...await this.overseerrRequests.lookup(route.args)};
         case 'window-choose':{
           reply='Which app should I bring to the front? Say “Switch to Word” or “List open windows”.';
@@ -129,11 +138,18 @@ class IslandUtilities {
           show({kind:'utility',text:current?.protected?'Protected field':current?.editable?'Text tools':'No editable field',detail:'Only on request',icon:'pencil'});break;
         }
         case 'self-hosted-plex-sessions':{
-          const data=await this.selfHosted.plexSessions();
-          const sessions=data.count===1?'1 Plex viewing session':`${data.count} Plex viewing sessions`;
-          const details=data.sessions.slice(0,5).map(({viewer,title,state})=>`${viewer} · ${title} (${state})`);
-          reply=data.count?[sessions+' right now.',...details,...(data.count>details.length?[`And ${data.count-details.length} more.`]:[])].join('\n'):'Nobody is watching Plex right now.';
-          show({kind:'utility',text:data.count?sessions:'Nobody watching Plex',detail:'Your connected server',icon:'play'});break;
+          const {count,sessions}=await this.selfHosted.plexSessions({artwork:true});
+          if(!count){
+            reply='Nobody is watching Plex right now.';
+            show({kind:'utility',source:'plex',chatId,text:'Nobody watching Plex',detail:'Your connected server',icon:'play'});
+            break;
+          }
+          const label=count===1?'1 Plex viewing session':`${count} Plex viewing sessions`;
+          reply=label+' right now.';
+          const viewers=sessions.slice(0,5).map(({viewer,title,showTitle,state})=>
+            state==='paused'?`${viewer} paused ${showTitle||title}.`:`${viewer} is watching ${showTitle||title}.`);
+          const more=count>viewers.length?` And ${count-viewers.length} more.`:'';
+          return {handled:true,reply,confirmation:[reply,...viewers].join(' ')+more,mediaLookup:{sessions,count}};
         }
         case 'self-hosted-plex-recent':{
           const items=await this.selfHosted.plexRecent();
@@ -254,7 +270,8 @@ class IslandUtilities {
     }catch(error){
       const reply=error.message||'That utility is unavailable.';
       const weather=['weather','weather-forecast'].includes(route.action),brightness=route.action.startsWith('system.brightness.');
-      show(discord?discordCard('Failed','shield-alert',reply):{kind:weather?'weather':brightness?'brightness':'utility',text:'Unavailable',detail:weather?'Weather':brightness?'Brightness':'C.O.D.Y.',icon:weather?'cloud-off':'circle-alert',tooltip:reply});
+      const plex=route.action==='self-hosted-plex-sessions';
+      show(discord?discordCard('Failed','shield-alert',reply):{kind:weather?'weather':brightness?'brightness':'utility',...(plex?{source:'plex',chatId}:{}),text:plex?'Plex activity unavailable':'Unavailable',detail:weather?'Weather':brightness?'Brightness':plex?'Open chat':'C.O.D.Y.',icon:weather?'cloud-off':'circle-alert',tooltip:reply});
       return {handled:true,reply,error:true};
     }
   }

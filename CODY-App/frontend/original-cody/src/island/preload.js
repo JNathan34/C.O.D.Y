@@ -2,11 +2,18 @@
 const {contextBridge,ipcRenderer,webUtils}=require('electron');
 const allowedEvents=new Set(['updates-state','status','diagnostic','auth-changed','chats-changed','settings-changed','message-added','message-delta','message-replace','activity','usage','busy','approval','approval-resolved','window-state','quota','web-status','firefox-status','voice-hotkey','timer-changed','island-card','island-task-status','spotify-changed','native-phase','native-meter','rps-state','capture-state','monitor-state','computer-approvals','attachments-state','tasks-changed','tasks-open','browser-setup','browser-setup-open','wake-word-state']);
 allowedEvents.add('monitor-access-changed');
+allowedEvents.add('rgb-lighting-changed');
 contextBridge.exposeInMainWorld('assistant',{
+  rgb:{state:()=>ipcRenderer.invoke('rgb-lighting-state'),discover:()=>ipcRenderer.invoke('rgb-lighting-discover'),
+    select:(id,value)=>ipcRenderer.invoke('rgb-lighting-select',id,value),enable:value=>ipcRenderer.invoke('rgb-lighting-enable',value)},
+  whatsapp:{openApp:()=>ipcRenderer.invoke('whatsapp-open-app'),preview:id=>ipcRenderer.invoke('whatsapp-draft-preview',id),
+    link:()=>ipcRenderer.invoke('whatsapp-web-link'),state:check=>ipcRenderer.invoke('whatsapp-web-state',check===true),
+    enable:enabled=>ipcRenderer.invoke('whatsapp-web-enable',enabled),
+    open:id=>ipcRenderer.invoke('whatsapp-draft-open',id)},
   monitorAccess:{state:()=>ipcRenderer.invoke('monitor-access-state'),configure:value=>ipcRenderer.invoke('monitor-access-configure',value)},
   browserSetup:{state:()=>ipcRenderer.invoke('browser-setup-state'),choose:value=>ipcRenderer.invoke('browser-setup-choice',value),folder:()=>ipcRenderer.invoke('browser-setup-folder')},
   browserPreference:{state:()=>ipcRenderer.invoke('browser-preference-state'),select:id=>ipcRenderer.invoke('browser-preference-select',id)},
-  updates:{state:()=>ipcRenderer.invoke('updates-state'),check:()=>ipcRenderer.invoke('updates-check'),download:()=>ipcRenderer.invoke('updates-download'),install:()=>ipcRenderer.invoke('updates-install'),configure:value=>ipcRenderer.invoke('updates-configure',value),releases:()=>ipcRenderer.invoke('updates-releases')},
+  updates:{state:()=>ipcRenderer.invoke('updates-state'),check:()=>ipcRenderer.invoke('updates-check'),apply:()=>ipcRenderer.invoke('updates-apply'),configure:value=>ipcRenderer.invoke('updates-configure',value),releases:()=>ipcRenderer.invoke('updates-releases')},
   state:()=>ipcRenderer.invoke('state'),
   settingsBackup:{import:()=>ipcRenderer.invoke('settings-import'),export:()=>ipcRenderer.invoke('settings-export')},
   modes:{list:()=>ipcRenderer.invoke('assistant-modes-list'),activate:id=>ipcRenderer.invoke('assistant-modes-activate',id),save:(name,options)=>ipcRenderer.invoke('assistant-modes-save',name,options),remove:id=>ipcRenderer.invoke('assistant-modes-delete',id)},
@@ -99,6 +106,7 @@ contextBridge.exposeInMainWorld('cody',Object.freeze({
   openPreview:()=>ipcRenderer.send('island:open-preview'),
   expand:open=>ipcRenderer.send('island:expand',open),
   setChatExpanded:value=>ipcRenderer.send('island:chat-expanded',value===true),
+  setMediaPreview:kind=>ipcRenderer.send('island:media-preview',kind),
   toggleChatPin:()=>ipcRenderer.send('island:toggle-chat-pin'),
   setView:view=>ipcRenderer.send('island:view',view),
   setPickerOpen:open=>ipcRenderer.send('island:picker-open',Boolean(open)),

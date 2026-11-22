@@ -4,6 +4,7 @@ using System.IO.Pipes;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using HeyClicky.Core.Browser;
@@ -67,7 +68,7 @@ public static class CodyEngineBridge
         host.Real.Core.Settings.Update(settings=>{
             settings.DictationLanguageCode=language;settings.DictationSpecificLanguageCode="en";
             settings.DictationCustomWords??=new System.Collections.Generic.List<string>();
-            foreach(string word in new[]{"Discord","Discord call","Discord voice channel","CPU","GPU","RAM","Wi-Fi","Plezy","C.O.D.Y.","Derby","weather"})
+            foreach(string word in new[]{"Plex","Overseerr","Discord","Discord call","Discord voice channel","CPU","GPU","RAM","Wi-Fi","Plezy","C.O.D.Y.","Derby","weather"})
                 if(settings.DictationCustomWords.Count<100&&!settings.DictationCustomWords.Contains(word,StringComparer.OrdinalIgnoreCase))settings.DictationCustomWords.Add(word);
         });
         if(save)File.WriteAllText(RecognitionLanguagePath,language);
@@ -528,27 +529,33 @@ public static class CodyEngineBridge
     }
 
     private static object PermissionState()=>host.Real.Core.Settings.Read(s=>new{enabled=CodyPermissions.Enabled,level=CodyPermissions.Current.level,computerUse=CodyPermissions.Current.computerUse,backgroundTasks=CodyPermissions.Current.backgroundTasks,readApps=s.OneBrainReadsApps,extraUsage=s.AgentAutoApproveExtraUsage,workingFolder=s.AgentFolderPath});
-    public static System.Text.Json.Nodes.JsonObject RouteVoiceUtility()
+    public static async Task<bool> RouteVoiceUtilityAsync(string text)
     {
-        if(!IsRunning || !voiceEnding || string.IsNullOrWhiteSpace(lastTranscript)) return null;
-        if(!CodyIndependentInput.Active&&CodyControlCommands.IsStop(lastTranscript)){
+        if(!IsRunning || !voiceEnding) return false;
+        if(!CodyIndependentInput.Active&&CodyControlCommands.IsStop(text)){
             voiceControlStopped=true;CodyIndependentInput.End();host.DispatcherQueue.TryEnqueue(()=>host.ClickyDrive?.HandleEscape());
-            ((CompanionSession)host.Services.Companion).InterruptForDrive();return null;
+            return true;
         }
         var decision = utilityDecision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        string text = lastTranscript;
         Emit("classify-utility", new { text, turn });
         try
         {
-            if(utilityOnly || (decision.Task.Wait(500) && decision.Task.Result))
-            {
-                routedUtility = text;
-                ((CompanionSession)host.Services.Companion).InterruptForDrive();
-                Log.Info("cody-speed", "voice utility routed locally before AI request");
-            }
+            if(!utilityOnly && !IsPrivateWhatsAppDraft(text) && !await decision.Task.WaitAsync(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false))
+                return false;
+            routedUtility = text;
+            Log.Info("cody-speed", "voice utility routed locally before capturing screen context");
+            return true;
         }
+        catch(TimeoutException) { throw new TimeoutException("C.O.D.Y. couldn’t route that voice request in time. Try again."); }
         finally { utilityDecision = null; }
-        return null;
+    }
+
+    private static bool IsPrivateWhatsAppDraft(string input)
+    {
+        // Keep the local draft private even if Electron misses the classification deadline.
+        string text = Regex.Replace(input.Trim(), @"^(?:(?:hey\s+)?c[.\s]*o[.\s]*d[.\s]*y[,.!:]?\s+)?(?:(?:can|could|would|will) you\s+)?(?:please\s+)?", "", RegexOptions.IgnoreCase);
+        if (Regex.IsMatch(text, @"^tell me\b", RegexOptions.IgnoreCase)) return false;
+        return Regex.IsMatch(text, @"^(?:message|text|tell|(?:send|draft) (?:a )?message to)\s+[^\n]{1,90}?\s+(?:on|using|via)\s+whats\s?app(?:\s|[:;,]|$)|^(?:send|draft) (?:a )?whats\s?app message to\s+[^\n]{1,90}?(?:\s+saying\b|\s*[:;,]|$)", RegexOptions.IgnoreCase);
     }
 
     private static void StopSpeech(bool keepGame = false)

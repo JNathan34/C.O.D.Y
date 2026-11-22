@@ -13,39 +13,111 @@ test('clock, date, weather and maths publish the original Island card formats',a
   assert.deepEqual(cards.map(c=>c.kind),['time','date','weather','utility']);assert.equal(cards[2].text,'12°C');assert.match(cards[3].text,/48/);
 });
 test('ordinary AI questions stay with HeyClicky',()=>{const {utilities}=setup();for(const prompt of ['Explain why weather changes','Draw a 3D bicycle','Write a song about time','Set volume to 25 and email my manager'])assert.equal(utilities.match(prompt),null);});
-test('natural questions about current Plex viewers call the Plex plugin before movie lookup',async()=>{
+test('natural questions about current Plex viewers return cards and a spoken summary',async()=>{
   let calls=0;
-  const {utilities}=setup({selfHosted:{plexSessions:async()=>{
-    calls++;return {count:1,sessions:[{viewer:'Plex Viewer',title:'Fixture Movie',state:'playing'}]};
+  const session={viewer:'Plex Viewer',title:'Fixture Movie',state:'playing',poster:'data:image/png;base64,YQ=='};
+  const {utilities,cards}=setup({selfHosted:{plexSessions:async({artwork})=>{
+    assert.equal(artwork,true);calls++;return {count:1,sessions:[session]};
   }},overseerrRequests:{lookup:()=>assert.fail('Plex activity is a server session lookup')}});
   const prompts=['is anyone watching plex','Is anybody watching on Plex right now?',
     'Can you check if anyone is watching my Plex server?', 'Show me who’s watching Plex', 'How many people are watching Plex?', 'Plex sessions',
-    'whose watching plex', 'Whos currently watching on my Plex server?', 'Who watching Plex now?'];
+    'whose watching plex', 'Whos currently watching on my Plex server?', 'Who watching Plex now?',
+    'Who on Plex is streaming something?', 'How many active streams does Plex have?', 'Which movie is playing on Plex?'];
   for(const prompt of prompts){
     assert.equal(utilities.match(prompt).action,'self-hosted-plex-sessions',prompt);
-    const result=await utilities.run(prompt);
-    assert.match(result.reply,/1 Plex viewing session right now.*Plex Viewer.*Fixture Movie.*playing/s);
+    const result=await utilities.run(prompt,'plex-chat');
+    assert.equal(result.reply,'1 Plex viewing session right now.');
+    assert.match(result.confirmation,/Plex Viewer is watching Fixture Movie/);
+    assert.deepEqual(result.mediaLookup,{sessions:[session],count:1});
   }
   assert.equal(calls,prompts.length);
+  assert.equal(cards.length,0); // The assistant message supplies the poster preview.
   assert.equal(utilities.match('Is Dune on Plex?').action,'overseerr-availability');
   assert.equal(utilities.match('Who owns Plex?'),null);
   assert.equal(utilities.match('Whose Plex server is this?'),null);
+  assert.equal(utilities.match('Check the Plex activity').action,'self-hosted-plex-sessions');
+  assert.equal(utilities.match('Can you use the Plex plugin to check who’s watching right now?').action,'self-hosted-plex-sessions');
+  assert.equal(utilities.match('Check who’s watching with the Plex plug-in.').action,'self-hosted-plex-sessions');
+  assert.equal(utilities.match('Is Dune on Plek?').action,'overseerr-availability');
+});
+test('Plex follow-up repair needs a recent Plex activity request in the same chat',()=>{
+  const {hasRecentPlexRequest,isPlexSessionRequest}=require('../src/media-commands');
+  const prompt={role:'user',text:'Who’s watching Plek?',at:'2026-11-22T08:00:00Z'};
+  const followup='Is washing collect?';
+  const now=Date.parse('2026-11-22T08:01:00Z');
+  assert.equal(hasRecentPlexRequest([prompt],now),true);
+  assert.equal(hasRecentPlexRequest([prompt],now+10*60000),false);
+  assert.equal(hasRecentPlexRequest([prompt,{role:'user',text:'How hot should I wash wool?'}],now),false);
+  assert.equal(isPlexSessionRequest(followup,{spoken:true,plexContext:true}),true);
+  assert.equal(isPlexSessionRequest(followup,{spoken:true,plexContext:false}),false);
+  assert.equal(isPlexSessionRequest('Is anyone washing clothes?',{spoken:true,plexContext:true}),false);
 });
 test('recent request questions use the connected Overseerr server before title lookup',async()=>{
   const selfHosted={data:{overseerr:{}},overseerrRequests:async()=>[{title:'Fixture Film',status:1},{title:'Fixture Show',status:5}]};
   const {utilities,cards}=setup({selfHosted,overseerrRequests:{lookup:()=>assert.fail('Recent requests should not trigger a title lookup')}});
   for(const prompt of ['show me recent requests','Could you show me the latest Overseerr requests?',
-    'Check recent requests on Overseerr','What are my latest media requests?', 'What’s been requested on Overseerr recently?', 'overseerr requests']){
+    'Check recent requests on Overseerr','What are my latest media requests?', 'What’s been requested on Overseerr recently?', 'overseerr requests',
+    'Any requests on Overseer?','Check overseer.','Are there any requests on the Overseer server?',
+    'Show me the pending requests in Overseerr', 'What pending requests are there on Overseerr?']){
     assert.equal(utilities.match(prompt).action,'self-hosted-overseerr-requests',prompt);
     const result=await utilities.run(prompt);
     assert.match(result.reply,/Fixture Film · Pending approval.*Fixture Show · Completed/s);
   }
   assert.equal(cards.at(-1).detail,'Overseerr');
   assert.equal(utilities.match('Show me recent API requests'),null);
+  assert.equal(utilities.match('Show recent requests on Jira'),null);
   assert.equal(utilities.match('Is Dune on Plex?').action,'overseerr-availability');
   delete selfHosted.data.overseerr;
   assert.equal(utilities.match('show me recent requests'),null);
   assert.equal(utilities.match('show me recent requests on Overseerr').action,'self-hosted-overseerr-requests');
+});
+test('Plex availability and Overseerr lookups use the same title search',async()=>{
+  const queries=[];
+  const {utilities}=setup({selfHosted:{plexSessions:()=>assert.fail('Availability is not a session lookup')},
+    overseerrRequests:{lookup:async args=>{queries.push(args.query);return {reply:'Available on Plex'};}}});
+  const prompts=['Is Dune on Plex?','Do I have Dune on Plex?','Is Dune on Overseer?','Check Overseer for Dune.',
+    'Does our Plex server have Dune?', 'Can I watch Dune through Plex yet?', 'On Plex, can we stream Dune?',
+    'Has Dune been added to Plex yet?', 'Check whether Dune was recently added to Plex',
+    'Check my Plex library to see if it has Dune', 'Confirm that Plex has Dune.',
+    'Could you tell me whether Dune is on Plex?', 'Does Plex still have Dune?'];
+  for(const prompt of prompts)
+    assert.equal((await utilities.run(prompt)).reply,'Available on Plex');
+  assert.equal((await utilities.run('Is The Overseer on Plex?')).reply,'Available on Plex');
+  assert.equal((await utilities.run('Is Open Water on Plex?')).reply,'Available on Plex');
+  assert.equal((await utilities.run('Is What Love Is on Plex?')).reply,'Available on Plex');
+  assert.deepEqual(queries,[...prompts.map(()=> 'Dune'),'The Overseer','Open Water','What Love Is']);
+  for(const prompt of ['Why does Plex buffer?', 'Help me with Plex', 'What is new about Plex?', 'Does Plex have Dune and open Word?'])
+    assert.equal(utilities.match(prompt),null,prompt);
+});
+test('natural questions about recent library additions use Plex directly',async()=>{
+  const {utilities}=setup({
+    selfHosted:{plexRecent:async()=>[{title:'Fixture Film'}]},
+    overseerrRequests:{lookup:()=>assert.fail('Recent additions come from Plex')}
+  });
+  for(const prompt of ['What movies has Plex added lately?', 'What’s new in our Plex library?',
+    'Which titles have been added on Plex?', 'Show me Plex’s latest additions']){
+    assert.equal(utilities.match(prompt)?.action,'self-hosted-plex-recent',prompt);
+    assert.equal((await utilities.run(prompt)).reply,'Recently added to Plex: Fixture Film.');
+  }
+});
+test('media follow-ups use the previous availability turn and keep its topic within the chat',()=>{
+  const {hasPlexAvailabilityContext}=require('../src/media-commands');
+  const {utilities}=setup({selfHosted:{},overseerrRequests:{}});
+  const availability=[{role:'user',text:'Is the latest Spider-Man movie on Plex?'},{role:'assistant',text:'Available.'}];
+  assert.equal(hasPlexAvailabilityContext(availability),true);
+  const followUp='What about The Odyssey?';
+  assert.equal(utilities.match(followUp),null);
+  assert.deepEqual(utilities.match(followUp,{availabilityContext:hasPlexAvailabilityContext(availability)}).args,
+    {query:'The Odyssey',latest:false,type:null,year:''});
+  const continued=[...availability,{role:'user',text:followUp},{role:'assistant',plexAvailability:true,text:'No matches found.'}];
+  assert.equal(hasPlexAvailabilityContext(continued),true);
+  assert.equal(utilities.match('How about Dune Part Two?',{availabilityContext:true}).args.query,'Dune Part Two');
+  assert.equal(hasPlexAvailabilityContext([...continued,{role:'user',text:'What time is it?'},{role:'assistant',text:'Nine.'}]),false);
+  assert.equal(hasPlexAvailabilityContext([{role:'assistant',mediaLookup:{sessions:[],count:0}}]),false);
+  assert.equal(hasPlexAvailabilityContext([]),false);
+  assert.equal(utilities.match('What about the weather?',{availabilityContext:true}),null);
+  assert.equal(utilities.match('and open Word',{availabilityContext:true}),null);
+  assert.equal(utilities.match('Is the odysseum plex?').args.query,'the Odyssey');
 });
 test('media commands target the actual player and clear an older quick card',async()=>{const {utilities,actions,cleared}=setup();await utilities.run('pause my music','chat');assert.deepEqual(actions,[{action:'media.control',args:{command:'pause',target:'current'}}]);assert.equal(cleared(),1);});
 test('volume cards use the actual resulting volume, including relative changes',async()=>{const {utilities,cards,actions}=setup();await utilities.run('turn the volume down by 10 percent','chat');assert.deepEqual(actions,[{action:'audio.set',args:{level:32}}]);assert.equal(cards.at(-1).text,'42%');});

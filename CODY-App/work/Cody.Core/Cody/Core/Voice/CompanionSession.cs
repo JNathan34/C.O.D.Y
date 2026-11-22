@@ -1227,7 +1227,10 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 				highlight.BeginWatch(current.CursorColorHex);
 			});
 		}
-		pageReads?.BeginRead();
+		if (options.RouteVoiceLocally == null)
+		{
+			pageReads?.BeginRead();
+		}
 		SetState(VoiceState.Listening);
 		StartLiveTranscriptLoop(deepgramTranscriber2);
 		WatchForEarsPaywall(deepgramTranscriber2);
@@ -1303,9 +1306,11 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		audio.PlayEarcon("textSend");
 		BrainTurnTiming.NoteReleased();
 		OneBrainStats.Shared.NoteKeyUp();
-		(string? DisplayName, string? ProcessName) frontApp = options.DesktopActions.FrontApplication();
-		double num2 = options.CaptureSettleSeconds?.Invoke() ?? 0.0;
-		Task<TurnCapture> captureTask = ((num2 > 0.0) ? Task.Delay(TimeSpan.FromSeconds(num2)).ContinueWith((Task _) => CaptureForTurnAsync(endHighlight: true), TaskScheduler.Default).Unwrap() : CaptureForTurnAsync(endHighlight: true));
+		var routeLocally = options.RouteVoiceLocally;
+		(string? DisplayName, string? ProcessName) frontApp = routeLocally == null ? options.DesktopActions.FrontApplication() : default;
+		Task<TurnCapture>? captureTask = routeLocally == null ? CaptureReleasedVoiceAsync() : null;
+		// Preserve a deliberate highlight at key release without capturing the screen.
+		var highlightTask = routeLocally == null ? null : EndVoiceHighlightAsync();
 		bool capturesFromBluetooth = !externalAudio && microphone.IsBluetoothDevice;
 		if (!externalAudio && heldMs > (capturesFromBluetooth ? 3000 : 1500) && num == 0)
 		{
@@ -1384,7 +1389,7 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 		}
 		else if (string.IsNullOrEmpty(words))
 		{
-			await captureTask.ConfigureAwait(continueOnCapturedContext: false);
+			if (captureTask != null) await captureTask.ConfigureAwait(continueOnCapturedContext: false);
 			Log.Info("Companion", earsFailed ? "nothing heard (speech recognition failed)" : "nothing heard");
 			NotifyTerminating();
 			SetState(VoiceState.Idle);
@@ -1401,25 +1406,60 @@ public sealed class CompanionSession : ICompanionSession, IAsyncDisposable
 			{
 				PrepareWarmEars();
 			}
-			await RunTurnAsync(new TurnRequest(words, null, Typed: false, AnswersInText: false, await captureTask.ConfigureAwait(continueOnCapturedContext: false), frontApp, audioSeconds, "voice", releasedAtTicks, transcriptMs), releaseGeneration).ConfigureAwait(continueOnCapturedContext: false);
+			if (routeLocally != null)
+			{
+				bool handled;
+				try
+				{
+					handled = await routeLocally(words).ConfigureAwait(continueOnCapturedContext: false);
+				}
+				catch
+				{
+					FinishTurnQuietly(generation == releaseGeneration);
+					throw;
+				}
+				if (handled)
+				{
+					FinishTurnQuietly(generation == releaseGeneration);
+					return;
+				}
+				var strokes = await highlightTask!.ConfigureAwait(continueOnCapturedContext: false);
+				if (generation != releaseGeneration) return;
+				frontApp = options.DesktopActions.FrontApplication();
+				pageReads?.BeginRead();
+				captureTask = CaptureReleasedVoiceAsync(strokes);
+			}
+			await RunTurnAsync(new TurnRequest(words, null, Typed: false, AnswersInText: false, await captureTask!.ConfigureAwait(continueOnCapturedContext: false), frontApp, audioSeconds, "voice", releasedAtTicks, transcriptMs), releaseGeneration).ConfigureAwait(continueOnCapturedContext: false);
 		}
 	}
 
-	private async Task<TurnCapture> CaptureForTurnAsync(bool endHighlight)
+	private async Task<TurnCapture> CaptureReleasedVoiceAsync(IReadOnlyList<HighlightStroke>? endedStrokes = null)
 	{
-		long started = Environment.TickCount64;
-		IReadOnlyList<HighlightStroke> strokes = Array.Empty<HighlightStroke>();
-		if (endHighlight && highlight != null)
+		double settle = options.CaptureSettleSeconds?.Invoke() ?? 0.0;
+		if (settle > 0.0) await Task.Delay(TimeSpan.FromSeconds(settle)).ConfigureAwait(continueOnCapturedContext: false);
+		return await CaptureForTurnAsync(endHighlight: endedStrokes == null, endedStrokes).ConfigureAwait(continueOnCapturedContext: false);
+	}
+
+	private async Task<IReadOnlyList<HighlightStroke>> EndVoiceHighlightAsync()
+	{
+		if (highlight != null)
 		{
 			try
 			{
-				strokes = await ui.InvokeAsync(() => highlight.EndWatch()).ConfigureAwait(continueOnCapturedContext: false);
+				return await ui.InvokeAsync(() => highlight.EndWatch()).ConfigureAwait(continueOnCapturedContext: false);
 			}
 			catch (Exception ex)
 			{
 				Log.Warn("Companion", "highlight: " + ex.Message);
 			}
 		}
+		return Array.Empty<HighlightStroke>();
+	}
+
+	private async Task<TurnCapture> CaptureForTurnAsync(bool endHighlight, IReadOnlyList<HighlightStroke>? endedStrokes = null)
+	{
+		long started = Environment.TickCount64;
+		var strokes = endHighlight ? await EndVoiceHighlightAsync().ConfigureAwait(continueOnCapturedContext: false) : endedStrokes ?? Array.Empty<HighlightStroke>();
 		Task<string?> highlightTextTask = ((strokes.Count > 0) ? HarvestHighlightTextAsync(strokes) : Task.FromResult<string>(null));
 		IReadOnlyList<ScreenCaptureFrame> frames;
 		IReadOnlyList<DisplayInfo> displays;

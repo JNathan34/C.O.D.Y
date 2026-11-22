@@ -2,7 +2,7 @@
 const {contextBridge,ipcRenderer}=require('electron');
 const allowedEvents=new Set(['updates-state','status','diagnostic','auth-changed','chats-changed','settings-changed','message-added','message-delta','message-replace','activity','usage','busy','approval','window-state','quota','web-status','firefox-status','voice-hotkey']);
 contextBridge.exposeInMainWorld('cody',{
-  updates:{state:()=>ipcRenderer.invoke('updates-state'),check:()=>ipcRenderer.invoke('updates-check'),download:()=>ipcRenderer.invoke('updates-download'),install:()=>ipcRenderer.invoke('updates-install'),configure:value=>ipcRenderer.invoke('updates-configure',value),releases:()=>ipcRenderer.invoke('updates-releases')},
+  updates:{state:()=>ipcRenderer.invoke('updates-state'),check:()=>ipcRenderer.invoke('updates-check'),apply:()=>ipcRenderer.invoke('updates-apply'),configure:value=>ipcRenderer.invoke('updates-configure',value),releases:()=>ipcRenderer.invoke('updates-releases')},
   state:()=>ipcRenderer.invoke('state'),
   backends:{status:()=>ipcRenderer.invoke('backend-status'),refresh:()=>ipcRenderer.invoke('backend-refresh')},
   memory:{status:()=>ipcRenderer.invoke('memory-status'),search:(query,sourceId)=>ipcRenderer.invoke('memory-search',query,sourceId),configure:(id,patch)=>ipcRenderer.invoke('memory-source',id,patch),removeSource:id=>ipcRenderer.invoke('memory-delete-source',id),remove:id=>ipcRenderer.invoke('memory-delete-record',id),update:(id,text)=>ipcRenderer.invoke('memory-update',id,text),save:value=>ipcRenderer.invoke('memory-save',value),import:()=>ipcRenderer.invoke('memory-import'),export:()=>ipcRenderer.invoke('memory-export'),codexList:cursor=>ipcRenderer.invoke('memory-codex-list',cursor),codexImport:id=>ipcRenderer.invoke('memory-codex-import',id)},

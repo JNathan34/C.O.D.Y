@@ -66,6 +66,7 @@
   settings.microphoneMuted=false;
   let state = 'idle';
   let displayedState = 'idle';
+  let mascotTarget='idle',taskAppearance=null,notificationIdentity=null;
   let panelOpen = false;
   let revealTransition = 0, concealRequest;
   let expressionTimer = null, transitionTimers = [], transitionFrame = null;
@@ -350,7 +351,7 @@
       nextBlink=performance.now()+random(2700,5500);
       nextGag=performance.now()+random(6800,12500);
     }
-    morphTo(next);
+    updateTaskAppearance();
     micButton.setAttribute('aria-label',microphoneMuted?'C.O.D.Y. microphone muted. Press Ctrl + Alt + M to unmute.':next==='listening'?'Stop listening':'Start listening');
     micButton.setAttribute('aria-pressed',String(next==='listening'));
     document.getElementById('mic-status').textContent=next==='listening'?'Listening…':'';
@@ -517,12 +518,12 @@
     if(next&&!panelOpen)setActiveView('chat');
     panelOpen=Boolean(next);
     body.classList.toggle('panel-open',panelOpen);
-      document.dispatchEvent(new CustomEvent('cody:panel-change',{detail:{open:panelOpen}}));
     api?.setView?.(activeView);
     island.setAttribute('aria-expanded',String(panelOpen));
     panel.setAttribute('aria-hidden',String(!panelOpen));
     panel.inert=!panelOpen;
     island.tabIndex=panelOpen?-1:0;
+    document.dispatchEvent(new CustomEvent('cody:panel-change',{detail:{open:panelOpen}}));
     if(notify)api?.expand(panelOpen);
     if(panelOpen && activeView==='chat')setTimeout(()=>{if(panelOpen && activeView==='chat'){const log=document.getElementById('conversation');log.scrollTop=log.scrollHeight;input.focus({preventScroll:true});}},290);
     if(!panelOpen){stopMicTest();try{speechSynthesis.cancel();}catch{}}
@@ -632,6 +633,13 @@
     document.getElementById('settings-content').scrollTop=0;
     if(tab==='voice')void updateAudioOutputs();
     document.dispatchEvent(new CustomEvent('cody:settings-tab-changed',{detail:tab}));
+  }
+  function openSettings(destination,notify=true){
+    if(!panelOpen)setPanelOpen(true,notify);
+    setActiveView('settings');
+    if(destination?.query)openSettingsSearch(destination.query);
+    else if(destination?.tab)setSettingsTab(destination.tab);
+    if(destination?.tab==='integrations'&&destination.plugin==='plex')document.dispatchEvent(new Event('cody:plex-server-ready'));
   }
   function closeSettingsSearch(){
     setSettingsTab(settingsTabs.find(tab=>tab.classList.contains('selected'))?.dataset.content||'general');
@@ -822,7 +830,7 @@
     }catch(error){stopMicTest();document.getElementById('mic-permission-status').textContent=error.name==='NotAllowedError'?'Microphone permission denied':'Microphone unavailable';}
   });
   island.addEventListener('click',event=>{
-    if(event.target.closest('button,textarea,select,input,label,nav,.settings-content'))return;
+    if(event.target.closest('button,textarea,select,input,label,nav,.settings-content,.island-media-preview'))return;
     if(performance.now()<pointerOpenUntil){pointerOpenUntil=0;return;}
     if(panelOpen){
       // The little mascot at the top is also a collapse target.
@@ -858,7 +866,16 @@
     api.onHotkey(onHotkey);
     api.onCommand(action=>{
       if(action?.type==='quick-message'){void window.CODYIsland?.onQuickMessage?.(action.text);return;}
-      if(action==='pointer-open'){pointerOpenUntil=performance.now()+1500;setPanelOpen(true,false);return;}
+      if(action==='dismiss-media-preview'){window.CODYMediaLookup?.dismissPreview();return;}
+      if(action?.type==='media-preview-pointer'){window.CODYMediaLookup?.activatePreviewAt(action.x,action.y);return;}
+      if(action?.type==='pointer-open'){
+        pointerOpenUntil=performance.now()+1500;
+        const target=document.elementFromPoint(action.x,action.y);
+        if(target?.closest('#island-info[data-update="true"]'))openSettings({tab:'updates'},false);
+        else if(target?.closest('#island-info[data-plex="true"]')&&window.CODYIsland?.onPlexActivity)window.CODYIsland.onPlexActivity();
+        else setPanelOpen(true,false);
+        return;
+      }
       if(action==='start')void startMicrophone();else if(action==='stop')stopMicrophone();
       else if(action==='chat'){setActiveView('chat');setPanelOpen(true,false);}
     });
@@ -867,13 +884,7 @@
     api.onCursor(applyCursor);api.onVisibility(showIsland);
     api.onExpanded(next=>{if(panelOpen!==next)setPanelOpen(next,false);});
     api.onChatPinned?.(renderChatPin);
-    api.onShowSettings(destination=>{
-      if(!panelOpen)setPanelOpen(true,false);
-      setActiveView('settings');
-      if(destination?.query)openSettingsSearch(destination.query);
-      else if(destination?.tab)setSettingsTab(destination.tab);
-      if(destination?.tab==='integrations'&&destination.plugin==='plex')document.dispatchEvent(new Event('cody:plex-server-ready'));
-    });
+    api.onShowSettings(destination=>openSettings(destination,false));
     Promise.all([api.getSettings(),api.getState()]).then(([prefs,current])=>{
       applySettings(prefs);
       if(current!=='idle')setState(current,false);
@@ -889,27 +900,36 @@
       applyCursor({x:(event.clientX-mx)/210,y:(event.clientY-my)/130,near:distance<100,hovered:distance<18,speed:0});
     });
   }
-  let notificationIdentity=null;
   function renderTaskAppearance(card) {
-    if(!card){delete body.dataset.notificationState;notificationIdentity=null;return;}
-    let face='working';
-    if(card.kind==='attention')face=card.target==='approval'||card.requiresApproval?'approval':'input';
-    else if(card.kind==='reply')face='reply';
-    else if(card.icon==='mouse-pointer-2')face='controlling';
-    else if(card.icon==='check')face='ready';
-    else if(card.icon==='circle-alert')face='failed';
-    else if(card.icon==='square')face='stopped';
-    else if(card.kind==='progress'&&card.target==='tasks'&&/^draft(?:ing)? notes\b/i.test(card.text))face='drafting';
-    else if(card.taskStatus==='Starting')face='starting';
-    const identity=JSON.stringify([face,card.target,card.taskId??card.id]);
-    if(identity===notificationIdentity)return;
-    if(body.dataset.notificationState===face){
-      // Play the entrance again for a new task or reply with the same pose.
-      delete body.dataset.notificationState;
-      void layers.idle.offsetWidth;
+    taskAppearance=card;
+    updateTaskAppearance();
+  }
+  function updateTaskAppearance(){
+    const card=['listening','speaking'].includes(state)?null:taskAppearance;
+    let face,activity=state;
+    if(card){
+      if(card.kind==='attention')face=card.target==='approval'||card.requiresApproval?'approval':'input';
+      else if(card.kind==='reply')face='reply';
+      else if(card.icon==='mouse-pointer-2')face='controlling';
+      else if(card.icon==='check')face='ready';
+      else if(card.icon==='circle-alert')face='failed';
+      else if(card.icon==='square')face='stopped';
+      else if(card.kind==='progress'&&card.target==='tasks'&&/^draft(?:ing)? notes\b/i.test(card.text))face='drafting';
+      else if(card.taskStatus==='Starting')face='starting';
+      else if(card.kind==='progress'&&['idle','thinking'].includes(state))activity=card.phase==='speaking'?'speaking':'thinking';
     }
-    body.dataset.notificationState=face;
-    notificationIdentity=identity;
+    const identity=face?JSON.stringify([face,card.target,card.taskId??card.id]):null;
+    if(identity!==notificationIdentity){
+      if(face&&body.dataset.notificationState===face){
+        // Replay the entrance for a new card with the same face.
+        delete body.dataset.notificationState;
+        void layers.idle.offsetWidth;
+      }
+      if(face)body.dataset.notificationState=face;
+      else delete body.dataset.notificationState;
+      notificationIdentity=identity;
+    }
+    if(activity!==mascotTarget){mascotTarget=activity;morphTo(activity);}
   }
   function renderTaskStatus(card) {
     document.getElementById('island-info-text').textContent=card.text;
@@ -946,7 +966,7 @@
     });
   }
   window.CODYIsland={
-    setState,setAudioLevel,connectSpeakingAudio,stopMicTest,setSettingsTab,updateInput,wakeUp,setMediaPlaying,resetExpression:()=>setExpression('normal',0,true),
+    setState,setAudioLevel,connectSpeakingAudio,stopMicTest,setSettingsTab,openSettings,updateInput,wakeUp,setMediaPlaying,resetExpression:()=>setExpression('normal',0,true),
     startListening:()=>void startMicrophone(),stopListening:()=>stopMicrophone(),
     togglePanel,getState:()=>state,onPrompt:null,onNewChat:null,backendConnected:false,
     appendMessage,renderMessage:window.CODYChatFormat.render,newConversation,setActiveView,

@@ -7,6 +7,7 @@ const {shouldRecoverPointer}=require('./pointer-open');
 const mascotLooks=require('./renderer/mascot-looks');
 const { spawn, execFile } = require('node:child_process');
 const preferenceListeners=new Set();
+const stateListeners=new Set();
 let fileDragActive=false;
 let mascotSleeping=false,wakeClickUntil=0;
 let captureUIActive=false,captureUIGraceUntil=0;
@@ -19,6 +20,9 @@ const SIZES = Object.freeze({
   medium: { width: 216, height: 32, icon: 27 },
   large: { width: 244, height: 36, icon: 30 }
 });
+const MEDIA_PREVIEW_SIZE={width:448,height:200,gutter:44};
+const PLEX_PREVIEW_SIZE={...MEDIA_PREVIEW_SIZE,width:520};
+let mediaPreviewKind=null,mediaPreviewHovered=false;
 const PANEL_WIDTH = 940;
 const PANEL_HEIGHT = 750;
 const CHAT_WIDTH = 520;
@@ -271,6 +275,7 @@ function setIslandState(next) {
   if (state !== next) {
     state = next;
     emit('island:state', state);
+    for(const listener of stateListeners)listener(state);
   }
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
   if (isActive()) forcedVisible = true;
@@ -362,9 +367,11 @@ function pollCursor(clickedPoint=null) {
   if (!islandWindow || islandWindow.isDestroyed()) return;
   const point = clickedPoint||screen.getCursorScreenPoint();
   const bounds = islandWindow.getBounds();
-  const size=SIZES[settings.islandSize];
-  const left = (bounds.width-size.width)/2;
-  const nearIsland = point.x >= bounds.x + left && point.x < bounds.x + left+size.width && point.y >= bounds.y && point.y < bounds.y + size.height;
+  const mediaPreview=expanded?null:mediaPreviewKind;
+  const size=mediaPreview==='plex'?PLEX_PREVIEW_SIZE:mediaPreview==='media'?MEDIA_PREVIEW_SIZE:SIZES[settings.islandSize];
+  const islandWidth=Math.min(size.width,bounds.width);
+  const left = (bounds.width-islandWidth)/2;
+  const nearIsland = point.x >= bounds.x + left && point.x < bounds.x + left+islandWidth && point.y >= bounds.y && point.y < bounds.y + Math.min(size.height,bounds.height);
   // All visible expanded content remains interactive; outside is click-through.
   const wide=['settings','history'].includes(currentPanelView)||currentPanelView==='tasks'&&taskDetailExpanded||currentPanelView==='chat'&&chatExpanded;
   const scale = settings.guiScale/100;
@@ -379,10 +386,21 @@ function pollCursor(clickedPoint=null) {
   const dist = Math.hypot(point.x-centerX, point.y-(bounds.y+size.height/2));
   // Match the top-attached notch silhouette instead of blocking mouse input through its transparent shoulders.
   const inset = y < 8 ? Math.max(0,y)*1.8 : y < 24 ? 14.4+(y-8)*.8 : 27.2+(y-24)*1.7;
-  const silhouetteHit = nearIsland && Math.abs(point.x-centerX) < (size.width/2-inset);
+  // Preview controls sit inside the curved shoulders, so the shoulders stay click-through.
+  const silhouetteHit = nearIsland && Math.abs(point.x-centerX) < islandWidth/2-(mediaPreview?size.gutter:inset);
   const interactive = islandWindow.isVisible() && shouldShow();
-  if(clickedPoint&&shouldRecoverPointer({visible:interactive,expanded,hit:silhouetteHit,button:clickedPoint.button||'left'})){
-    mascotSleeping=false;wakeClickUntil=0;setExpanded(true);emit('island:command','pointer-open');
+  mediaPreviewHovered=Boolean(mediaPreview)&&interactive&&silhouetteHit;
+  if(clickedPoint&&mediaPreview&&interactive){
+    if(!silhouetteHit&&!pickerOpen&&!fileDialogs&&!captureUIBusy())emit('island:command','dismiss-media-preview');
+    else if(silhouetteHit&&mouseIgnored&&(clickedPoint.button||'left')==='left'){
+      // A touch can land before the transparent host receives its hover event.
+      emit('island:command',{type:'media-preview-pointer',x:point.x-bounds.x,y:point.y-bounds.y});
+    }
+  }else if(clickedPoint&&shouldRecoverPointer({visible:interactive,expanded,hit:silhouetteHit,button:clickedPoint.button||'left'})){
+    mascotSleeping=false;wakeClickUntil=0;
+    // Resolve the compact target before expansion moves its controls.
+    emit('island:command',{type:'pointer-open',x:point.x-bounds.x,y:point.y-bounds.y});
+    setExpanded(true);
   }
   if(clickedPoint&&interactive&&expanded&&!captureUIBusy()&&!pickerOpen&&!fileDialogs&&!onPanel&&!silhouetteHit)setExpanded(false,{automatic:true});
   const ignoreMouse = !(interactive && (pickerOpen || silhouetteHit || onPanel));
@@ -437,6 +455,8 @@ function onModifierEvent(event) {
   }
 }
 function createIsland() {
+  mediaPreviewKind=null;
+  mediaPreviewHovered=false;
   islandWindow = new BrowserWindow({
     title:branding.name,icon:branding.icon,
     ...windowBounds(),
@@ -538,6 +558,11 @@ function setupIpc() {
   on('island:expand',(_event,open)=>setExpanded(open));
   on('island:toggle-chat-pin',toggleChatPin);
   on('island:chat-expanded',(_event,value)=>{chatExpanded=value===true;});
+  on('island:media-preview',(event,value)=>{
+    if(event.sender!==islandWindow?.webContents)return;
+    mediaPreviewKind=['media','plex'].includes(value)?value:null;
+    if(!mediaPreviewKind)mediaPreviewHovered=false;
+  });
   on('island:task-detail',(_event,open)=>{taskDetailExpanded=open===true;});
   on('island:view',(_event,view)=>{if(['chat','settings','tasks','history'].includes(view))currentPanelView=view;});
   on('island:show',()=>{forcedVisible=true;updateVisibility();if(!isActive())scheduleHide();});
@@ -620,6 +645,7 @@ function stop(){
   if(settingsWindow&&!settingsWindow.isDestroyed())settingsWindow.destroy();
 }
 function onClearDrawings(listener){clearDrawingsListener=listener;}
+function onStateChanged(listener){stateListeners.add(listener);listener(state);return ()=>stateListeners.delete(listener);}
 function handleHotkey(action){
   if(action==='clear-drawings'){clearDrawingsListener?.();return;}
   if(action==='pin-up'){pinShortcutHeld=false;return;}
@@ -673,3 +699,5 @@ function handleHotkey(action){
   onModifierEvent(action==='down'?'DOWN':'UP');
 }
 module.exports={onClearDrawings,withFileDialog,showSettings,setDisplayProvider(provider){displayProvider=provider;positionWindow();},positionDisplay:positionWindow,setWakeListening(value){wakeListeningActive=Boolean(value);if(wakeListeningActive)suspended=false;updateVisibility();},setCaptureUIActive(value){captureUIActive=Boolean(value);captureUIGraceUntil=Date.now()+600;},setFileDragActive(value){fileDragActive=Boolean(value);if(fileDragActive)suspended=false;updateVisibility();},preferences:()=>({...settings}),validateSettings,updatePreferences,onPreferencesChanged:listener=>preferenceListeners.add(listener),mount,stop,handleHotkey,setIslandState,collapse(){setExpanded(false);},showCompact({automatic=false}={}){suspended=false;mount();setExpanded(false,{automatic});updateVisibility();},setRecordingActive(value){const next=Boolean(value);if(next&&!recordingActive)suspended=false;recordingActive=next;updateVisibility();},setGameActive(value){const next=Boolean(value);if(next&&!gameActive)suspended=false;gameActive=next;updateVisibility();},setTimerVisible(value,reveal=false){timerVisible=Boolean(value);if(timerVisible&&reveal)suspended=false;updateVisibility();},hide(){suspended=true;updateVisibility();},show,window:()=>islandWindow};
+module.exports.onStateChanged=onStateChanged;
+module.exports.isMediaPreviewHovered=()=>Boolean(mediaPreviewKind)&&!expanded&&mediaPreviewHovered;

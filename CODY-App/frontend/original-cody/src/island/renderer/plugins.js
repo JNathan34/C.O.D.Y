@@ -4,7 +4,9 @@
  const $=id=>document.getElementById(id),list=$('plugins-list'),status=$('plugins-status'),pending=new Map(),busy=new Set();let browserState={offline:true},catalog=null,loading=false,filter='all',confirmRemoval=null,lastLoaded=0;
  let mediaState={services:{}};
  let computerUse=null,masterControlEnabled=false,savingComputerUse=false;
+ let rgbEnabled=false;
  const mediaPanels=[...document.querySelectorAll('[data-media-panel]')];
+ const localPanels=new Map([...page.querySelectorAll('[data-plugin-panel]')].map(panel=>[panel.dataset.pluginPanel,panel]));
  const plexActions=$('plex-connection-actions');
  const overseerrTest=$('overseerr-test'),overseerrStatus=$('overseerr-status');
  const visible=()=>!page.hidden&&document.body.classList.contains('settings-open');
@@ -37,31 +39,36 @@
  function all(){return [
   {id:'local-word',name:'Word (Desktop)',description:'Draft and format the Word document open on this PC, or insert pictures with text wrapping. Built into C.O.D.Y.',kind:'word',icon:'file-text',connected:false},
   {id:'computer-use',name:'Computer Use',description:'Let Cody use the mouse and keyboard in Windows apps.',kind:'computer-use',connected:computerUse===true},
+  {id:'whatsapp-drafts',name:'WhatsApp',description:'Send messages hands-free through your linked WhatsApp Web account, or prepare a draft for review.',searchName:'WhatsApp Business',kind:'built-in',icon:'whatsapp',connected:false},
+  {id:'rgb-lighting',name:'Reactive RGB Lighting',description:'Match your OpenRGB lights to Cody’s listening, thinking and speaking.',kind:'built-in',icon:'palette',connected:rgbEnabled},
   ...['plex','overseerr'].map(id=>({id:'media-'+id,service:id,name:id==='plex'?'Plex':'Overseerr',kind:'media',
     connected:mediaState.services?.[id]?.connected===true,
-    description:id==='plex'?'Connect your Plex account to use your media server.':'Find movies and TV shows, request titles and check your Overseerr requests.'})),
+    description:id==='plex'?'See who is watching on your Plex server and what they’re playing.':'Find movies and TV shows, request titles and check your Overseerr requests.'})),
   ...['Chrome','Edge'].map(name=>({id:'browser-'+name.toLowerCase(),name,description:'Connect '+name+' so Cody can work with its websites and tabs.',browser:name,connected:browserState.connectedBrowsers?.includes(name)===true,kind:'browser',status:'available'})),
   ...(catalog?.plugins||[]),...(catalog?.custom||[])
  ].sort((a,b)=>Number(b.connected)-Number(a.connected)||a.name.localeCompare(b.name));}
  function render(){
   $('plugins-signin').hidden=catalog?.signedIn!==false;
-  const query=$('plugins-search').value.trim().toLocaleLowerCase(),items=all().filter(p=>(filter!=='connected'||p.connected)&&(!query||(p.name+' '+p.description).toLocaleLowerCase().includes(query)));
+  const query=$('plugins-search').value.trim().toLocaleLowerCase(),items=all().filter(p=>(filter!=='connected'||p.connected)&&(!query||[p.name,p.description,p.searchName].join(' ').toLocaleLowerCase().includes(query)));
   const focused=document.activeElement;
-  const restoreFocus=focused===computerUseSwitch||focused===overseerrTest||plexActions.contains(focused)||mediaPanels.some(panel=>panel.contains(focused));
+  const restoreFocus=focused===computerUseSwitch||focused===overseerrTest||plexActions.contains(focused)||[...mediaPanels,...localPanels.values()].some(panel=>panel.contains(focused));
   $('plugins-count').textContent=items.length+' '+(items.length===1?'plugin':'plugins');
   $('self-hosted-settings').append(...mediaPanels,plexActions,overseerrTest,overseerrStatus);
+  $('local-plugin-settings').append(...localPanels.values());
   list.replaceChildren();
   if(!items.length){list.append(element('p','setting-help',query?'No plugins match your search.':filter==='connected'?'No plugins connected yet.':'No plugins are available yet.'));return;}
   for(const plugin of items){
    if(plugin.connected)pending.delete(plugin.id);const working=busy.has(plugin.id),waiting=pending.has(plugin.id)||plugin.status==='AwaitingBrowser';
    const card=element('article','plugin-card');card.dataset.pluginId=plugin.id;const heading=element('div','plugin-card-heading'),fallback=element('span','plugin-logo-fallback',plugin.name.slice(0,1).toUpperCase());
-   const bundledLogo=plugin.kind==='word'?'assets/task-apps/word.png':
+   const bundledLogo=plugin.id==='whatsapp-drafts'?'assets/task-apps/whatsapp.png':
+    plugin.kind==='word'?'assets/task-apps/word.png':
     plugin.kind==='media'?'assets/media/'+plugin.service+'.svg':
     plugin.kind==='computer-use'?window.CODYIcons?.computerUseLogo:
     plugin.kind==='browser'?window.CODYIcons?.browserLogo(plugin.browser):null;
    const logo=bundledLogo||(typeof plugin.logo==='string'&&plugin.logo.startsWith('https://')?plugin.logo:null);
    if(plugin.kind==='browser')window.CODYIcons?.set(fallback,'globe');
    if(plugin.kind==='computer-use')window.CODYIcons?.set(fallback,'mouse-pointer-2');
+   if(plugin.id==='rgb-lighting'){fallback.classList.add('plugin-rgb-icon');window.CODYIcons?.set(fallback,plugin.icon);}
    if(logo){
     const icon=element('img');icon.alt='';icon.width=32;icon.height=32;
     if(!bundledLogo)icon.loading='lazy';
@@ -70,6 +77,7 @@
    }else heading.append(fallback);
    const connectedLabel=plugin.service==='plex'&&mediaState.services.plex?.name?'Connected · '+mediaState.services.plex.name:'Connected';
    const label=plugin.kind==='computer-use'?(computerUse===null?'Loading…':plugin.connected?'On':'Off'):
+    plugin.id==='rgb-lighting'?(rgbEnabled?'On':'Off'):plugin.kind==='built-in'?'Built-in plugin':
     plugin.connected?connectedLabel:waiting?'Finish sign-in in your browser':plugin.kind==='word'?'Built-in plugin':plugin.kind==='custom'?'MCP plugin · '+plugin.status:plugin.status==='needs_reconnect'?'Needs reconnection':plugin.kind==='local'?'Local plugin':'Available';
    const title=element('div');title.append(element('h3','',plugin.name),element('small',plugin.connected?'plugin-connected':'',label));heading.append(title);card.append(heading,element('p','plugin-description',plugin.description));
    const actions=element('div','plugin-card-actions');
@@ -88,8 +96,17 @@
     computerUseSwitch.checked=plugin.connected;
     computerUseSwitch.disabled=savingComputerUse||computerUse===null;
     actions.append(computerUseLabel);
-   }else if(plugin.kind==='word'){
-    actions.append(button('Use in chat',()=>{window.CODYIsland?.setActiveView('chat');const composer=window.CODYInlineComposer;const offset=composer?.selectionOffsets()?.end??0;composer?.insertMention({id:'plugin:word',name:plugin.name,kind:'plugin',icon:'file-text'},offset,offset);document.getElementById('quick-input')?.focus();}));
+   }else if(plugin.kind==='word'||plugin.id==='whatsapp-drafts'){
+    const mentionId=plugin.kind==='word'?'plugin:word':'plugin:whatsapp-drafts';
+    if(plugin.id==='whatsapp-drafts'&&window.assistant.whatsapp)actions.append(button('Open WhatsApp',async event=>{
+      const open=event.currentTarget;open.disabled=true;
+      try{await window.assistant.whatsapp.openApp();}
+      catch{status.textContent='Could not open WhatsApp. Try again.';}
+      finally{open.disabled=false;}
+    }));
+    actions.append(button('Use in chat',()=>{window.CODYIsland?.setActiveView('chat');const composer=window.CODYInlineComposer;const offset=composer?.selectionOffsets()?.end??0;composer?.insertMention({id:mentionId,name:plugin.name,kind:'plugin',icon:plugin.icon},offset,offset);document.getElementById('quick-input')?.focus();}));
+   }else if(plugin.kind==='built-in'){
+    // These controls are rendered in the built-in panel below.
    }else if(plugin.kind==='browser'){actions.append(button(plugin.connected?'Manage':'Install',()=>window.CODYBrowserSetup?.open(plugin.browser),browserState.busy===true));}else if(confirmRemoval?.id===plugin.id){
     card.append(element('p','plugin-removal-question',confirmRemoval.accountId?'Disconnect this account?':'Remove access for this plugin?'));
     actions.append(button('Remove access',()=>void act(plugin,'disconnect',confirmRemoval.accountId),working),button('Cancel',()=>{confirmRemoval=null;render();},working));
@@ -101,7 +118,10 @@
     if(plugin.kind!=='custom'||plugin.canConnect)actions.append(button(working?'Working…':waiting?'Waiting for sign-in…':plugin.kind==='local'?'Configure':plugin.status==='needs_reconnect'?'Reconnect':plugin.kind==='custom'?'Connect':'Install',()=>void act(plugin,'connect'),working||waiting));
     if(plugin.kind==='custom')actions.append(button('Remove',()=>remove(),working));
    }
-   card.append(plugin.kind==='media'&&plugin.service==='plex'?plexActions:actions);
+   if(plugin.kind==='media'&&plugin.service==='plex')card.append(plexActions);
+   else if(actions.childElementCount)card.append(actions);
+   const localPanel=localPanels.get(plugin.id);
+   if(localPanel)card.append(localPanel);
    if(plugin.kind==='computer-use')card.append(computerUseStatus);
    if(plugin.service==='overseerr')card.append(overseerrStatus);
    if(plugin.kind==='media')card.append(mediaPanels.find(item=>item.dataset.mediaPanel===plugin.service));
@@ -137,6 +157,7 @@
  const observe=new MutationObserver(()=>{if(visible()&&(!catalog||Date.now()-lastLoaded>30000))void refresh();});observe.observe(page,{attributes:true,attributeFilter:['hidden']});observe.observe(document.body,{attributes:true,attributeFilter:['class']});
  document.addEventListener('cody:browser-setup',event=>{browserState=event.detail||{offline:true};if(catalog)render();});
  document.addEventListener('cody:self-hosted',event=>{mediaState=event.detail;render();});
+ window.assistant.on('rgb-lighting-changed',state=>{if(rgbEnabled!==state.enabled){rgbEnabled=state.enabled;render();}});
  window.assistant.on('settings-changed',settings=>updateComputerUse(settings.nativePermissions,settings.computerControl));
  void window.assistant.state().then(({settings})=>{
   if(computerUse===null)updateComputerUse(settings.nativePermissions,settings.computerControl);
