@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.38 — 22 November 2026
+
+- Route local voice commands before screen capture. Recognize more Plex pronunciations and keep media availability follow-ups with Overseerr in the same chat.
+- Show Plex viewers, posters, playback progress and player icons in expanded Island cards. Give Overseerr results the same curved Island presentation.
+- Open Settings directly from the Island update notice. **Update and restart** installs silently and reopens C.O.D.Y.
+- Add WhatsApp Web linking, with optional hands-free sending to a verified contact, and add the RGB Lighting plugin for OpenRGB devices.
+- Use the standard thinking and speaking animations during active requests.
+
 ## 0.15.37 — 21 November 2026
 
 - Sync subtitles to speech playback so each line stays visible longer at slower voice speeds.
