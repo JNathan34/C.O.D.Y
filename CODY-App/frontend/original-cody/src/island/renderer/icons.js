@@ -100,6 +100,7 @@
   ]);
   function setMention(node,item){
     const id=String(item.id||'').toLowerCase();
+    if(id==='plugin:rgb-lighting'){set(node,'palette');return;}
     const plugin=id.startsWith('plugin:')||item.kind==='plugin';
     if(plugin){
       const initial=document.createElement('span');

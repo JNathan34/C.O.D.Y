@@ -6,7 +6,10 @@
  const preview=document.getElementById('island-media-preview');
  const previewContent=document.getElementById('island-media-preview-content');
  const previewChat=document.getElementById('island-media-open-chat');
- let previewId=null,dismissedId=null,openPreviewChat;
+ const previewBrand=document.getElementById('island-preview-brand');
+ const rgbControls=document.getElementById('island-rgb-controls');
+ const rgbClose=document.getElementById('island-rgb-close');
+ let previewId=null,previewSource=null,dismissedId=null,openPreviewChat;
  const labels={available:'Available on Plex',partial:'Partly available',processing:'Request processing',
   requested:'Already requested',missing:'Missing from Plex',unknown:'Availability unclear'};
  const element=(tag,cls,text)=>{
@@ -197,45 +200,70 @@
   for(const view of card.views)if(!view.isConnected)card.views.delete(view);
   card.views.add(root);paintView(card,root);
  }
+ function paintPreviewBrand(source){
+  previewBrand.replaceChildren();
+  if(source==='rgb'){
+   const icon=element('span');icon.setAttribute('aria-hidden','true');
+   window.CODYIcons?.set(icon,'palette');previewBrand.append(icon,element('span','','RGB Control'));
+   return;
+  }
+  const plex=source==='plex';
+  const logo=element('img',plex?'plex-wordmark':'');
+  logo.src=plex?'assets/media/plex-wordmark.svg':'assets/media/overseerr.svg';
+  logo.alt=plex?'Plex':'';
+  previewBrand.append(logo);
+  if(!plex)previewBrand.append(element('span','','Overseerr'));
+ }
  function present(candidate,openChat){
   if(!preview)return;
   const id=candidate?.messageId!==dismissedId?candidate?.messageId:null;
   if((id??null)===previewId)return;
   const active=Boolean(id),expanded=document.body.classList.contains('panel-open');
   const plex=active&&candidate.source==='plex';
+  const rgb=active&&candidate.source==='rgb';
   previewId=id??null;
-  openPreviewChat=active?openChat:null;
+  previewSource=active?candidate.source:null;
+  openPreviewChat=active&&!rgb?openChat:null;
   preview.inert=!active;
   document.body.classList.toggle('media-preview-layout',active);
   document.body.classList.toggle('plex-preview-layout',plex);
+  document.body.classList.toggle('rgb-preview-layout',rgb);
   const island=document.getElementById('island');
   if(active){
    island.removeAttribute('role');
    island.removeAttribute('aria-label');
    island.removeAttribute('aria-expanded');
    island.tabIndex=-1;
-   preview.setAttribute('aria-label',plex?'Plex viewing activity':'Media result');
-   previewChat.setAttribute('aria-label',plex?'Open Plex viewing activity in chat':'Open media result in chat');
-   previewContent.scrollTop=0;
-   decorate(previewContent,{role:'assistant',id,mediaLookup:candidate.mediaLookup});
+   paintPreviewBrand(candidate.source);
+   preview.setAttribute('aria-label',rgb?'RGB controls':plex?'Plex viewing activity':'Overseerr result');
+   rgbClose.hidden=!rgb;rgbControls.hidden=!rgb;previewChat.hidden=rgb;previewContent.hidden=rgb;
+   if(rgb)window.CODYRgbLighting?.show();
+   else{
+    previewChat.setAttribute('aria-label',plex?'Open Plex viewing activity in chat':'Open Overseerr result in chat');
+    previewContent.scrollTop=0;
+    decorate(previewContent,{role:'assistant',id,mediaLookup:candidate.mediaLookup});
+   }
   }else{
    island.setAttribute('role','button');
    island.setAttribute('aria-label','Open C.O.D.Y. quick panel');
    island.setAttribute('aria-expanded',String(expanded));
    island.tabIndex=expanded?-1:0;
   }
-  window.cody?.setMediaPreview?.(active?(plex?'plex':'media'):null);
+  window.cody?.setMediaPreview?.(active?(rgb?'rgb':plex?'plex':'media'):null);
  }
  function dismissPreview(){
   if(!previewId)return;
   dismissedId=previewId;
+  if(previewSource==='rgb')void window.assistant.rgb.dismiss(previewId).catch(()=>{});
   present(null);
  }
  function activatePreviewAt(x,y){
   if(!previewId)return;
-  const target=document.elementFromPoint(x,y)?.closest('#island-media-preview button,#island-media-preview label');
-  target?.click();
+  const target=document.elementFromPoint(x,y);
+  if(previewSource==='rgb'&&target?.closest('#island-rgb-wheel'))window.CODYRgbLighting?.pickAt(x,y);
+  else target?.closest('#island-media-preview button,#island-media-preview label,#island-media-preview summary')?.click();
  }
+ rgbClose?.addEventListener('click',dismissPreview);
  previewChat?.addEventListener('click',()=>{
   dismissedId=previewId;
   openPreviewChat?.();

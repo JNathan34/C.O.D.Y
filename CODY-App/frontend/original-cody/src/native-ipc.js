@@ -11,6 +11,7 @@ const {normalizeMentions}=require('./mentions-normalize');
 const {normalizePluginCatalog,isReplacedWhatsAppPlugin}=require('./plugin-catalog');
 const {WHATSAPP_DRAFTS_PLUGIN}=require('./integrations/whatsapp-drafts');
 const {PLEX_PLUGIN_ID,hasRecentPlexRequest,hasPlexAvailabilityContext}=require('./media-commands');
+const {RGB_PLUGIN_ID}=require('./rgb-commands');
 const {WordSession}=require('./word-session');
 const NATIVE_VOICES=Object.freeze(['cedar','marin','alloy','ash','ballad','coral','echo','sage','shimmer','verse']);
 const {attachmentNames}=require('./attachments');
@@ -54,7 +55,8 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   handle('plugins-list',async()=>normalizePluginCatalog(await engine.request('plugins-list')));
   handle('mentions-list',async localOnly=>{
     const items=utilities?localMentions.filter(item=>
-      (item.id!==WHATSAPP_DRAFTS_PLUGIN||utilities.whatsappDrafts)&&(item.id!==PLEX_PLUGIN_ID||utilities.selfHosted)):[];
+      (item.id!==WHATSAPP_DRAFTS_PLUGIN||utilities.whatsappDrafts)&&(item.id!==PLEX_PLUGIN_ID||utilities.selfHosted)&&
+      (item.id!==RGB_PLUGIN_ID||utilities.rgbLighting?.pluginEnabled===true)):[];
     if(localOnly===true||localMemoryOnly()||selection(store.data.settings).provider!=='heyclicky')return {items:normalizeMentions([],items)};
     try{return {items:normalizeMentions(await engine.request('mentions-list'),items)};}
     catch{return {items:normalizeMentions([],items),error:'Could not load available mentions.'};}
@@ -127,7 +129,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
     sendUI('message-added',{chatId:active.chatId,message});return message;
   };
   function replace(message,text){if(!active||!message)return;store.updateMessage(active.chatId,message.id,text,{persist:false});sendUI('message-replace',{chatId:active.chatId,messageId:message.id,text});}
-  const quickUtilityActions=new Set(['weather','time','date','maths','timer','volume-status','audio.adjust','audio.set','audio.mute','spotify-status','spotify.control','media.control','app.open','island-monitors','app-settings.open','app-settings.change']);
+  const quickUtilityActions=new Set(['weather','time','date','maths','timer','volume-status','audio.adjust','audio.set','audio.mute','spotify-status','spotify.control','media.control','app.open','island-monitors','app-settings.open','app-settings.change','rgb.open','rgb.color']);
   const usesUtilityCard=route=>quickUtilityActions.has(route?.action)||route?.action?.startsWith('system.')===true;
   function publishProgress(operation,text,phase){
     if(!operation.quietUtility&&(!operation.voice||operation.voiceClassified))sendUI('native-turn-status',{id:operation.turn,text,...(phase?{phase}:{})});
@@ -142,7 +144,7 @@ function installNativeIpc({ipcMain,engine,store,sendUI,submitExternal,cancelExte
   async function runUtility(operation,text,speak,route){
     operation.utility=true;
     operation.quietUtility=usesUtilityCard(route);
-    if(route?.action==='whatsapp-draft')operation.abort??=new AbortController();
+    if(['whatsapp-draft','rgb.color'].includes(route?.action))operation.abort??=new AbortController();
     if(operation.voice&&route?.action==='text.proofread'&&!operation.proofreadTarget)throw Error('Click the text box, then hold your voice shortcut and say “spell check this”. The box must expose editable text.');
     if(operation.user?.attachments)delete operation.user.attachments;
     if(route?.command==='start'&&rps?.active){rps.close();await gameVoice.cancel();}

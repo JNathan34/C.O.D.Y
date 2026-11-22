@@ -4,7 +4,7 @@
  const $=id=>document.getElementById(id),list=$('plugins-list'),status=$('plugins-status'),pending=new Map(),busy=new Set();let browserState={offline:true},catalog=null,loading=false,filter='all',confirmRemoval=null,lastLoaded=0;
  let mediaState={services:{}};
  let computerUse=null,masterControlEnabled=false,savingComputerUse=false;
- let rgbEnabled=false;
+ let rgbPluginEnabled=null,savingRgbPlugin=false;
  const mediaPanels=[...document.querySelectorAll('[data-media-panel]')];
  const localPanels=new Map([...page.querySelectorAll('[data-plugin-panel]')].map(panel=>[panel.dataset.pluginPanel,panel]));
  const plexActions=$('plex-connection-actions');
@@ -17,6 +17,12 @@
  computerUseLabel.append(element('span','','Allow Computer Use'),computerUseSwitch);
  const computerUseStatus=element('p','setting-help plugin-switch-status');
  computerUseStatus.role='status';computerUseStatus.hidden=true;
+ const rgbOpen=$('rgb-open'),rgbSwitch=element('input');
+ rgbSwitch.id='rgb-plugin-enabled';rgbSwitch.type='checkbox';rgbSwitch.role='switch';
+ const rgbSwitchLabel=element('label','setting-row plugin-switch');
+ rgbSwitchLabel.append(element('span','','Allow RGB Lighting'),rgbSwitch);
+ const rgbPluginStatus=element('p','setting-help plugin-switch-status');
+ rgbPluginStatus.role='status';rgbPluginStatus.hidden=true;
  function button(text,action,disabled=false){const node=element('button','light-action',text);node.type='button';node.disabled=disabled;node.addEventListener('click',action);return node;}
  function updateComputerUse(native,local){
   masterControlEnabled=(native?.enabled??local?.enabled)===true;
@@ -36,11 +42,25 @@
   }catch(error){computerUseStatus.hidden=false;computerUseStatus.textContent='Could not update Computer Use. '+error.message;}
   finally{savingComputerUse=false;render();}
  });
+ function updateRgbPlugin(state){
+  const enabled=state.pluginEnabled===true;
+  if(rgbPluginEnabled===enabled)return;
+  rgbPluginEnabled=enabled;
+  if(!enabled)localPanels.get('rgb-lighting').open=false;
+  render();
+ }
+ rgbSwitch.addEventListener('change',async()=>{
+  const enabled=rgbSwitch.checked;
+  rgbPluginStatus.hidden=true;savingRgbPlugin=true;rgbSwitch.disabled=true;
+  try{updateRgbPlugin(await window.assistant.rgb.configure(enabled));}
+  catch(error){rgbPluginStatus.hidden=false;rgbPluginStatus.textContent=error.message.replace(/^Error invoking remote method '[^']+': Error: /,'');}
+  finally{savingRgbPlugin=false;render();}
+ });
  function all(){return [
   {id:'local-word',name:'Word (Desktop)',description:'Draft and format the Word document open on this PC, or insert pictures with text wrapping. Built into C.O.D.Y.',kind:'word',icon:'file-text',connected:false},
   {id:'computer-use',name:'Computer Use',description:'Let Cody use the mouse and keyboard in Windows apps.',kind:'computer-use',connected:computerUse===true},
   {id:'whatsapp-drafts',name:'WhatsApp',description:'Send messages hands-free through your linked WhatsApp Web account, or prepare a draft for review.',searchName:'WhatsApp Business',kind:'built-in',icon:'whatsapp',connected:false},
-  {id:'rgb-lighting',name:'Reactive RGB Lighting',description:'Match your OpenRGB lights to Cody’s listening, thinking and speaking.',kind:'built-in',icon:'palette',connected:rgbEnabled},
+  {id:'rgb-lighting',name:'RGB Lighting',description:'Let Cody set colors on compatible lights or match them to his activity.',searchName:'Reactive RGB Lighting OpenRGB',kind:'built-in',icon:'palette',connected:rgbPluginEnabled===true},
   ...['plex','overseerr'].map(id=>({id:'media-'+id,service:id,name:id==='plex'?'Plex':'Overseerr',kind:'media',
     connected:mediaState.services?.[id]?.connected===true,
     description:id==='plex'?'See who is watching on your Plex server and what they’re playing.':'Find movies and TV shows, request titles and check your Overseerr requests.'})),
@@ -51,10 +71,10 @@
   $('plugins-signin').hidden=catalog?.signedIn!==false;
   const query=$('plugins-search').value.trim().toLocaleLowerCase(),items=all().filter(p=>(filter!=='connected'||p.connected)&&(!query||[p.name,p.description,p.searchName].join(' ').toLocaleLowerCase().includes(query)));
   const focused=document.activeElement;
-  const restoreFocus=focused===computerUseSwitch||focused===overseerrTest||plexActions.contains(focused)||[...mediaPanels,...localPanels.values()].some(panel=>panel.contains(focused));
+  const restoreFocus=[computerUseSwitch,rgbSwitch,rgbOpen,overseerrTest].includes(focused)||plexActions.contains(focused)||[...mediaPanels,...localPanels.values()].some(panel=>panel.contains(focused));
   $('plugins-count').textContent=items.length+' '+(items.length===1?'plugin':'plugins');
   $('self-hosted-settings').append(...mediaPanels,plexActions,overseerrTest,overseerrStatus);
-  $('local-plugin-settings').append(...localPanels.values());
+  $('local-plugin-settings').append(...localPanels.values(),rgbOpen);
   list.replaceChildren();
   if(!items.length){list.append(element('p','setting-help',query?'No plugins match your search.':filter==='connected'?'No plugins connected yet.':'No plugins are available yet.'));return;}
   for(const plugin of items){
@@ -77,7 +97,7 @@
    }else heading.append(fallback);
    const connectedLabel=plugin.service==='plex'&&mediaState.services.plex?.name?'Connected · '+mediaState.services.plex.name:'Connected';
    const label=plugin.kind==='computer-use'?(computerUse===null?'Loading…':plugin.connected?'On':'Off'):
-    plugin.id==='rgb-lighting'?(rgbEnabled?'On':'Off'):plugin.kind==='built-in'?'Built-in plugin':
+    plugin.id==='rgb-lighting'?(rgbPluginEnabled===null?'Loading…':plugin.connected?'On':'Off'):plugin.kind==='built-in'?'Built-in plugin':
     plugin.connected?connectedLabel:waiting?'Finish sign-in in your browser':plugin.kind==='word'?'Built-in plugin':plugin.kind==='custom'?'MCP plugin · '+plugin.status:plugin.status==='needs_reconnect'?'Needs reconnection':plugin.kind==='local'?'Local plugin':'Available';
    const title=element('div');title.append(element('h3','',plugin.name),element('small',plugin.connected?'plugin-connected':'',label));heading.append(title);card.append(heading,element('p','plugin-description',plugin.description));
    const actions=element('div','plugin-card-actions');
@@ -96,6 +116,11 @@
     computerUseSwitch.checked=plugin.connected;
     computerUseSwitch.disabled=savingComputerUse||computerUse===null;
     actions.append(computerUseLabel);
+   }else if(plugin.id==='rgb-lighting'){
+    rgbSwitch.checked=plugin.connected;
+    rgbSwitch.disabled=savingRgbPlugin||rgbPluginEnabled===null;
+    actions.append(rgbSwitchLabel);
+    if(plugin.connected)actions.append(rgbOpen);
    }else if(plugin.kind==='word'||plugin.id==='whatsapp-drafts'){
     const mentionId=plugin.kind==='word'?'plugin:word':'plugin:whatsapp-drafts';
     if(plugin.id==='whatsapp-drafts'&&window.assistant.whatsapp)actions.append(button('Open WhatsApp',async event=>{
@@ -121,8 +146,9 @@
    if(plugin.kind==='media'&&plugin.service==='plex')card.append(plexActions);
    else if(actions.childElementCount)card.append(actions);
    const localPanel=localPanels.get(plugin.id);
-   if(localPanel)card.append(localPanel);
+   if(localPanel&&(plugin.id!=='rgb-lighting'||plugin.connected))card.append(localPanel);
    if(plugin.kind==='computer-use')card.append(computerUseStatus);
+   if(plugin.id==='rgb-lighting')card.append(rgbPluginStatus);
    if(plugin.service==='overseerr')card.append(overseerrStatus);
    if(plugin.kind==='media')card.append(mediaPanels.find(item=>item.dataset.mediaPanel===plugin.service));
    if(plugin.accounts?.length){const details=document.createElement('details');details.className='plugin-accounts';details.append(element('summary','',plugin.accounts.length+' connected '+(plugin.accounts.length===1?'account':'accounts')));for(const account of plugin.accounts){const row=element('div','plugin-account-row');row.append(element('span','',account.name),button('Disconnect',()=>remove(account.id),working));details.append(row);}card.append(details);}
@@ -157,7 +183,8 @@
  const observe=new MutationObserver(()=>{if(visible()&&(!catalog||Date.now()-lastLoaded>30000))void refresh();});observe.observe(page,{attributes:true,attributeFilter:['hidden']});observe.observe(document.body,{attributes:true,attributeFilter:['class']});
  document.addEventListener('cody:browser-setup',event=>{browserState=event.detail||{offline:true};if(catalog)render();});
  document.addEventListener('cody:self-hosted',event=>{mediaState=event.detail;render();});
- window.assistant.on('rgb-lighting-changed',state=>{if(rgbEnabled!==state.enabled){rgbEnabled=state.enabled;render();}});
+ window.assistant.on('rgb-lighting-changed',updateRgbPlugin);
+ void window.assistant.rgb.state().then(updateRgbPlugin).catch(error=>{status.textContent=error.message;});
  window.assistant.on('settings-changed',settings=>updateComputerUse(settings.nativePermissions,settings.computerControl));
  void window.assistant.state().then(({settings})=>{
   if(computerUse===null)updateComputerUse(settings.nativePermissions,settings.computerControl);

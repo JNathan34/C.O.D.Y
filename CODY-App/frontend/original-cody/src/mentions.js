@@ -2,6 +2,7 @@
 const {parseWordCommand,parseWordInsertion}=require('./control/word-edit');
 const {WHATSAPP_DRAFTS_PLUGIN}=require('./integrations/whatsapp-drafts');
 const {PLEX_PLUGIN_ID}=require('./media-commands');
+const {RGB_PLUGIN_ID}=require('./rgb-commands');
 
 const localMentions = [
   {id:'tool:weather', name:'Weather', description:'Check the current weather here or in a named city.', icon:'cloud-sun', actions:['weather']},
@@ -12,6 +13,7 @@ const localMentions = [
 localMentions.push({id:'plugin:word',name:'Word (Desktop)',description:'Draft and format the Word document open on this PC, or insert attached pictures. Built into C.O.D.Y.',icon:'file-text',kind:'plugin',actions:['word.edit']});
 localMentions.push({id:WHATSAPP_DRAFTS_PLUGIN,name:'WhatsApp',description:'Draft a WhatsApp message for review. Try “Message Mum saying what’s for dinner?”',icon:'whatsapp',kind:'plugin',actions:['whatsapp-draft']});
 localMentions.push({id:PLEX_PLUGIN_ID,name:'Plex',description:'Check who is watching on your connected Plex server. Try “Who’s watching?”',icon:'play',kind:'plugin',actions:['self-hosted-plex-sessions']});
+localMentions.push({id:RGB_PLUGIN_ID,name:'RGB Lighting',description:'Set a light color or open RGB controls.',icon:'palette',kind:'plugin',actions:['rgb.open','rgb.color']});
 
 function localMentionRoute(id, text, utilities) {
   const capability = localMentions.find(item=>item.id===id);

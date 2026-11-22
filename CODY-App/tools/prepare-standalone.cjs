@@ -1,6 +1,10 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {execFileSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..'),source=path.join(root,'frontend/original-cody'),stage=path.join(root,'build/standalone-app');
+const powershellEnv=Object.fromEntries(Object.entries(process.env).filter(([name])=>name.toLowerCase()!=='psmodulepath'));
+execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'prepare-openrgb.ps1'),'-Package'],
+ {stdio:'inherit',windowsHide:true,env:powershellEnv});
 if(path.relative(root,path.resolve(stage))!==path.join('build','standalone-app'))throw Error('Unsafe staging path.');
 fs.rmSync(stage,{recursive:true,force:true});
 fs.mkdirSync(stage,{recursive:true});

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.39 — 22 November 2026
+
+- Bundle the OpenRGB lighting helper with C.O.D.Y. and start it when needed.
+- Add a saved on/off switch for RGB Lighting in Plugins. Use voice commands or `@RGB Lighting` while it’s on.
+- Open RGB Control in the expanded Island with a color wheel, presets, brightness, device selection, and reactive lighting controls.
+- Show the Overseerr logo and name and the Plex wordmark at the top left of their Island popups.
+
 ## 0.15.38 — 22 November 2026
 
 - Route local voice commands before screen capture. Recognize more Plex pronunciations and keep media availability follow-ups with Overseerr in the same chat.

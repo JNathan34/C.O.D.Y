@@ -145,7 +145,12 @@ body.media-preview-layout:not(.panel-open) .island-media-preview{
    transform calc(225ms * var(--motion-factor)) var(--notch-ease) calc(165ms * var(--motion-factor)),
    visibility 0s;
 }
-.island-media-preview-header{display:flex;justify-content:flex-end;padding-right:var(--media-preview-face-gap)}
+.island-media-preview-header{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-right:var(--media-preview-face-gap)}
+.island-preview-brand{display:flex;align-items:center;gap:8px;margin-right:auto;padding-left:8px;font-size:14px;font-weight:700}
+.island-preview-brand>img{width:22px;height:22px;object-fit:contain}
+.island-preview-brand>img.plex-wordmark{width:59px;height:28px}
+.island-preview-brand>span[aria-hidden]{display:grid;place-items:center;width:22px;height:22px;color:#87e7d0}
+.island-preview-brand svg{width:19px;height:19px}
 .island-media-preview-content{
  min-height:0;overflow:auto;overscroll-behavior:contain;
  scrollbar-width:thin;scrollbar-color:#505663 transparent;
@@ -160,6 +165,34 @@ body.media-preview-layout:not(.panel-open) .island-media-preview{
  width:36px;height:36px;padding:0;background:none;border:0;border-radius:50%;
 }
 #island-media-open-chat:focus-visible{outline:2px solid var(--ui-accent);outline-offset:0}
+.island-rgb-close{margin-right:36px;width:26px;height:26px;border:1px solid #3e4350;border-radius:8px;background:#22252e;color:#bfc5d4;font-size:18px;line-height:1}
+.island-rgb-controls{
+ display:grid;grid-template-columns:minmax(94px,130px) minmax(0,1fr);gap:12px;min-height:0;
+ border:1px solid #454a57;border-radius:13px;background:#1d2028;padding:8px;overflow:hidden;
+}
+.island-rgb-controls[hidden],.island-media-preview button[hidden]{display:none}
+.rgb-wheel-area{display:grid;place-items:center;min-height:0}
+.rgb-wheel{
+ position:relative;width:min(100%,115px);aspect-ratio:1;border-radius:50%;cursor:crosshair;touch-action:none;
+ background:radial-gradient(circle closest-side,#fff,transparent),conic-gradient(from 90deg,red,yellow,lime,cyan,blue,magenta,red);
+ box-shadow:inset 0 0 0 1px #ffffff40,0 4px 13px #0005;
+}
+.rgb-wheel:focus-visible,.rgb-options :is(input,button,summary):focus-visible{outline:2px solid var(--ui-accent);outline-offset:1px}
+#island-rgb-marker{position:absolute;left:50%;top:50%;width:12px;height:12px;border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 1px #101118;pointer-events:none}
+.rgb-options{display:flex;flex-direction:column;gap:5px;min-width:0;overflow:auto;scrollbar-width:thin;font-size:11px;color:#d0d5e0}
+.rgb-color-row,.rgb-action-row,.rgb-brightness,.rgb-presets{display:flex;align-items:center;gap:5px;min-width:0}
+.rgb-color-row{justify-content:space-between}
+.rgb-presets button{width:17px;height:17px;padding:0;border-radius:50%;border:1px solid #ffffff55;background:var(--swatch);cursor:pointer}
+#island-rgb-hex{width:68px;height:21px;margin-right:2px;border:1px solid #4a505e;border-radius:5px;background:#15171d;color:inherit;text-align:center;font:11px ui-monospace,monospace}
+.rgb-brightness input{min-width:30px;flex:1;height:14px;accent-color:#86dac9}
+.rgb-brightness output{min-width:30px;text-align:right;font-variant-numeric:tabular-nums}
+.rgb-action-row button{min-height:21px;padding:2px 7px;white-space:nowrap;border:1px solid #494e5c;border-radius:6px;background:#292d37;color:#eef0f7;font:inherit;cursor:pointer}
+.rgb-action-row button.light-action{background:#e4eee9;color:#18251f;border-color:#e4eee9;font-weight:600}
+.rgb-action-row button:disabled{opacity:.5;cursor:default}
+.rgb-devices-menu summary{cursor:pointer;color:#e2e6ef}
+.rgb-device-option{display:flex;align-items:center;gap:4px;min-height:19px}
+.rgb-device-option input{accent-color:#86dac9}
+.rgb-status{margin:0;color:#b4bccd;line-height:1.25;overflow-wrap:anywhere}
 body.media-preview-layout:not(.panel-open) #island{cursor:default}
 body.media-preview-layout:not(.panel-open) :is(.island-info,.island-timer,.media-music-notes){visibility:hidden}
 body.media-preview-layout:not(.panel-open) #island .mascot{

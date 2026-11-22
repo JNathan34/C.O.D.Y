@@ -368,7 +368,7 @@ function pollCursor(clickedPoint=null) {
   const point = clickedPoint||screen.getCursorScreenPoint();
   const bounds = islandWindow.getBounds();
   const mediaPreview=expanded?null:mediaPreviewKind;
-  const size=mediaPreview==='plex'?PLEX_PREVIEW_SIZE:mediaPreview==='media'?MEDIA_PREVIEW_SIZE:SIZES[settings.islandSize];
+  const size=mediaPreview==='plex'||mediaPreview==='rgb'?PLEX_PREVIEW_SIZE:mediaPreview==='media'?MEDIA_PREVIEW_SIZE:SIZES[settings.islandSize];
   const islandWidth=Math.min(size.width,bounds.width);
   const left = (bounds.width-islandWidth)/2;
   const nearIsland = point.x >= bounds.x + left && point.x < bounds.x + left+islandWidth && point.y >= bounds.y && point.y < bounds.y + Math.min(size.height,bounds.height);
@@ -560,7 +560,7 @@ function setupIpc() {
   on('island:chat-expanded',(_event,value)=>{chatExpanded=value===true;});
   on('island:media-preview',(event,value)=>{
     if(event.sender!==islandWindow?.webContents)return;
-    mediaPreviewKind=['media','plex'].includes(value)?value:null;
+    mediaPreviewKind=['media','plex','rgb'].includes(value)?value:null;
     if(!mediaPreviewKind)mediaPreviewHovered=false;
   });
   on('island:task-detail',(_event,open)=>{taskDetailExpanded=open===true;});

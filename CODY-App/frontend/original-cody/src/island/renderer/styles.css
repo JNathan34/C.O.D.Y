@@ -17,7 +17,7 @@ body.media-preview-layout:not(.panel-open){
   --notch-width-time:430ms;--notch-height-time:460ms;--notch-width-delay:0ms;--notch-height-delay:42ms;
   --notch-size-ease:var(--notch-ease);
 }
-body.plex-preview-layout:not(.panel-open){--island-width:min(520px,100vw)}
+body:is(.plex-preview-layout,.rgb-preview-layout):not(.panel-open){--island-width:min(520px,100vw)}
 body[data-state="listening"]{--accent:#24e9f5}
 body[data-state="thinking"]{--accent:#f333c8}
 body[data-state="speaking"]{--accent:#ffb45c}

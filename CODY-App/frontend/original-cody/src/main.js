@@ -15,7 +15,7 @@ const {AssetRegistry}=require('./visuals/assets');
 const {CaptureRegistry}=require('./visuals/captures');
 const {VisualLedger}=require('./visuals/ledger');
 const {screen,powerMonitor}=require('electron');
-const {createHash}=require('node:crypto');
+const {createHash,randomUUID}=require('node:crypto');
 const {CodexClient}=require('./codex-client');
 const {readCodexUsage}=require('./account-usage');
 let usageClient;
@@ -41,6 +41,7 @@ const {ActionAudit}=require('./control/action-audit');
 const {AssistantModes}=require('./assistant-modes');
 const {SelfHosted}=require('./integrations/self-hosted');
 const {RgbLighting}=require('./integrations/rgb-lighting');
+const {OpenRgbRuntime}=require('./integrations/openrgb-runtime');
 const {WhatsAppDrafts}=require('./integrations/whatsapp-drafts');
 const {WhatsAppWeb}=require('./integrations/whatsapp-web');
 const {OverseerrRequests,registerOverseerrRequestIpc}=require('./integrations/overseerr-requests');
@@ -94,13 +95,20 @@ const timerAlarm=new TimerAlarm();let spotify,quickCard=null,quickCardExpiry=nul
 function refreshIslandCards(reveal=false){const media=spotify?.snapshot();island.setGameActive(Boolean(rps?.snapshot().active));island.setRecordingActive(Boolean(screenCapture?.active));island.setTimerVisible(Boolean(taskUpdates.current)||Boolean(monitors?.snapshot().active)||Boolean(desktopTimer?.snapshot())||Boolean(media?.available&&media.title)||Boolean(quickCard&&quickCard.expiresAt>Date.now()),reveal);}
 function clearQuickCard(){clearTimeout(quickCardExpiry);quickCard=null;sendUI("island-card",null);refreshIslandCards();}
 function expireQuickCard(){
-  if(quickCard?.kind==='media-result'&&island.isMediaPreviewHovered()){
+  if(['media-result','rgb-controls'].includes(quickCard?.kind)&&island.isMediaPreviewHovered()){
     showQuickCard(quickCard,10000);
     return;
   }
   clearQuickCard();
 }
-function showQuickCard(card,duration=10000){quickCard={...card,expiresAt:Date.now()+duration};sendUI('island-card',quickCard);refreshIslandCards(['discord','plex','overseerr'].includes(card.source));clearTimeout(quickCardExpiry);quickCardExpiry=setTimeout(expireQuickCard,duration);quickCardExpiry.unref();}
+function showQuickCard(card,duration=10000){quickCard={...card,expiresAt:Date.now()+duration};sendUI('island-card',quickCard);refreshIslandCards(['discord','plex','overseerr','rgb'].includes(card.source));clearTimeout(quickCardExpiry);quickCardExpiry=setTimeout(expireQuickCard,duration);quickCardExpiry.unref();}
+function openRgbPanel({scan=true}={}){
+  rgbLighting.requirePlugin();
+  island.showCompact();
+  showQuickCard({kind:'rgb-controls',source:'rgb',messageId:randomUUID()},120000);
+  if(scan&&!rgbLighting.client&&!rgbLighting.busy)void rgbLighting.discover().catch(error=>sendUI('diagnostic',error.message));
+  return rgbLighting.status();
+}
 let nativeTasks={connected:false,tasks:[],activeCount:0};
 let desktopTimer,rps,screenCapture,monitors,captureQuitPending=false,captureQuitReady=false;
 let annotations,scene,captures,visualLedger;
@@ -244,9 +252,19 @@ function registerIpc(){
   const fromCody=e=>{if(!win||e.sender!==win.webContents)throw Error('Computer controls are only accessible from the C.O.D.Y interface')};
   const fromAnnotationUI=e=>{fromCody(e);if(e.senderFrame!==win.webContents.mainFrame)throw Error('Annotations require the trusted main C.O.D.Y frame');};
   ipcMain.handle('rgb-lighting-state',e=>{fromAnnotationUI(e);return rgbLighting.status();});
+  ipcMain.handle('rgb-lighting-configure',async(e,enabled)=>{
+    fromAnnotationUI(e);
+    if(rgbLighting.releasing||rgbLighting.closed)throw Error('Wait for RGB Lighting to finish turning off.');
+    store.setRgbLightingEnabled(enabled);
+    if(!enabled&&quickCard?.kind==='rgb-controls')clearQuickCard();
+    return rgbLighting.setPluginEnabled(enabled);
+  });
   ipcMain.handle('rgb-lighting-discover',e=>{fromAnnotationUI(e);return rgbLighting.discover();});
   ipcMain.handle('rgb-lighting-select',(e,id,value)=>{fromAnnotationUI(e);return rgbLighting.select(id,value===true);});
   ipcMain.handle('rgb-lighting-enable',(e,value)=>{fromAnnotationUI(e);return rgbLighting.enable(value===true);});
+  ipcMain.handle('rgb-lighting-color',(e,color,brightness)=>{fromAnnotationUI(e);return rgbLighting.setColor(color,brightness);});
+  ipcMain.handle('rgb-lighting-open',e=>{fromAnnotationUI(e);return openRgbPanel();});
+  ipcMain.handle('rgb-lighting-dismiss',(e,id)=>{fromAnnotationUI(e);if(quickCard?.kind==='rgb-controls'&&quickCard.messageId===id)clearQuickCard();});
   ipcMain.handle('whatsapp-open-app',e=>{fromAnnotationUI(e);return whatsappDrafts.openApp();});
   ipcMain.handle('whatsapp-web-state',(e,check)=>{fromAnnotationUI(e);return whatsappWeb.status({check:check===true});});
   ipcMain.handle('whatsapp-web-link',e=>{fromAnnotationUI(e);return whatsappWeb.link();});
@@ -666,7 +684,11 @@ else app.whenReady().then(()=>{
   selfHosted=new SelfHosted({file:path.join(app.getPath('userData'),'self-hosted-connections.dat'),cipher:safeStorage,fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   whatsappWeb=new WhatsAppWeb({BrowserWindow,session,icon:branding.icon,enabled:()=>store.data.settings.whatsappHandsFree===true});
   whatsappDrafts=new WhatsAppDrafts({open:url=>shell.openExternal(url),browser:whatsappWeb});
-  rgbLighting=new RgbLighting({onChange:status=>sendUI('rgb-lighting-changed',status)});
+  const openRgbRuntime=new OpenRgbRuntime({directory:app.isPackaged?path.join(process.resourcesPath,'openrgb'):
+    path.resolve(__dirname,'../../../run/openrgb/OpenRGB Windows 64-bit'),profile:path.join(app.getPath('userData'),'openrgb')});
+  rgbLighting=new RgbLighting({pluginEnabled:store.data.settings.rgbLightingEnabled!==false,
+    openClient:()=>openRgbRuntime.connect(),stopRuntime:closing=>closing?openRgbRuntime.close():openRgbRuntime.stopChild(),
+    onChange:status=>sendUI('rgb-lighting-changed',status)});
   island.onStateChanged(state=>rgbLighting.setPhase(state));
   overseerrRequestFlow=new OverseerrRequests({service:selfHosted});
   plexSignIn=new PlexSignIn({service:selfHosted,version:app.getVersion(),openBrowser:openPreferredWebLink,
@@ -766,7 +788,7 @@ else app.whenReady().then(()=>{
   let lastSavedCapture=null;screenCapture.on('change',state=>{sendUI('capture-state',state);refreshIslandCards();if(state.status==='starting')island.collapse();if(state.status==='saved'&&state.savedPath!==lastSavedCapture){lastSavedCapture=state.savedPath;showQuickCard({kind:'utility',text:'Recording saved',detail:'Click to open',icon:'camera',captureKind:'recording'});}if(state.status==='error')showQuickCard({kind:'utility',text:'Recording error',detail:state.error,icon:'circle-alert'});});
   monitors=new IslandMonitors({settingsFile:path.join(app.getPath('userData'),'island-monitors.json'),weather,readDesktopFrames:()=>nativeEngine.request('desktop-frames'),fetcher:(url,options)=>require('electron').net.fetch(url,options)});
   let lastMonitorActive=false;monitors.on('change',state=>{sendUI('monitor-state',state);refreshIslandCards();if(state.active&&!lastMonitorActive)island.showCompact({automatic:true});lastMonitorActive=state.active;});
-  const islandUtilities=new IslandUtilities({selfHosted,overseerrRequests:overseerrRequestFlow,whatsappDrafts,textContext:async()=>{
+  const islandUtilities=new IslandUtilities({selfHosted,overseerrRequests:overseerrRequestFlow,whatsappDrafts,rgbLighting,openRgbPanel,textContext:async()=>{
     const result=await nativeEngine.request('text-capture',{clientPid:process.pid});
     return {editable:typeof result?.target==='string'&&result.target.length>0,protected:result?.isPassword===true||result?.sensitive===true};
   },modes:assistantModes,tasks:{open:()=>{island.show();sendUI("tasks-open");}},monitors,capture:screenCapture,rps,weather,timer:desktopTimer,spotify,controller,appSettings:{show:island.showSettings,update:island.updatePreferences},showCompact:()=>{island.showCompact({automatic:true});if(win?.isVisible())win.moveTop();},showCard:showQuickCard,clearCard:clearQuickCard,refreshMedia:refreshIslandCards,audioState:()=>nativeEngine.request("audio-state")});
@@ -949,7 +971,7 @@ else app.whenReady().then(()=>{
 });
 app.on('second-instance',(_event,args)=>{pendingNativeLinks.push(...linksFromArgs(args));void deliverNativeLinks();if(singleInstance&&!args.includes('--background'))showMain();});
 app.on('before-quit',event=>{if(screenCapture?.active&&!captureQuitReady){event.preventDefault();if(!captureQuitPending){captureQuitPending=true;void screenCapture.execute('stop').catch(error=>console.error(error)).finally(()=>{captureQuitReady=true;app.quit();});}return;}
-  if(rgbLighting?.client&&!rgbQuitReady){
+  if(rgbLighting&&!rgbQuitReady){
     event.preventDefault();
     if(!rgbQuitPending){rgbQuitPending=true;void rgbLighting.close().catch(error=>console.error(error)).finally(()=>{rgbQuitReady=true;app.quit();});}
     return;

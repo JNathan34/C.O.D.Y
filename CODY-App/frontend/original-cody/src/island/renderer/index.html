@@ -114,9 +114,36 @@
     <div id="island-task-announcement" class="sr-only" role="status" aria-atomic="true"></div>
     <section id="island-media-preview" class="island-media-preview" aria-label="Media result" inert>
       <div class="island-media-preview-header">
+        <div id="island-preview-brand" class="island-preview-brand"></div>
+        <button id="island-rgb-close" class="island-rgb-close" type="button" aria-label="Close RGB controls" hidden>×</button>
         <button id="island-media-open-chat" type="button" aria-label="Open media result in chat"></button>
       </div>
       <div id="island-media-preview-content" class="island-media-preview-content"></div>
+      <div id="island-rgb-controls" class="island-rgb-controls" hidden>
+        <div class="rgb-wheel-area">
+          <div id="island-rgb-wheel" class="rgb-wheel" role="slider" tabindex="0" aria-label="Color wheel hue" aria-valuemin="0" aria-valuemax="359" aria-valuenow="0">
+            <span id="island-rgb-marker" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="rgb-options">
+          <div class="rgb-color-row">
+            <div id="island-rgb-presets" class="rgb-presets" aria-label="Color presets"></div>
+            <input id="island-rgb-hex" type="text" maxlength="7" spellcheck="false" aria-label="Hex color" value="#50DCAB">
+          </div>
+          <label class="rgb-brightness">Brightness <input id="island-rgb-brightness" type="range" min="0" max="100" value="100"><output id="island-rgb-level">100%</output></label>
+          <div class="rgb-action-row">
+            <button id="island-rgb-apply" type="button" class="light-action">Apply color</button>
+            <button id="island-rgb-off" type="button">Off</button>
+            <button id="island-rgb-discover" type="button">Find devices</button>
+          </div>
+          <details id="island-rgb-devices-menu" class="rgb-devices-menu">
+            <summary id="island-rgb-device-count">Devices</summary>
+            <div id="island-rgb-devices"></div>
+            <label class="rgb-device-option"><input id="island-rgb-reactive" type="checkbox"> React to Cody</label>
+          </details>
+          <p id="island-rgb-status" class="rgb-status" role="status"></p>
+        </div>
+      </div>
     </section>
     <div id="file-drop-hint" hidden>Drop files here<small>Then ask C.O.D.Y. about them</small></div>
     <section class="quick-panel" id="quick-panel" aria-label="C.O.D.Y. assistant" aria-hidden="true" inert>
@@ -408,11 +435,12 @@
                   <summary>Manage devices</summary>
                   <div class="plugin-settings-content">
                     <label class="setting-row"><span><strong>React to Cody’s activity</strong><small>Cyan for listening, pink for thinking and amber for speaking.</small></span><input id="rgb-enabled" type="checkbox" disabled></label>
-                    <div class="setting-row"><span><strong>OpenRGB devices</strong><small>Start OpenRGB’s local SDK Server on port 6742. Set your devices to Direct mode in OpenRGB.</small></span><button id="rgb-discover" class="light-action" type="button" disabled>Find devices</button></div>
-                    <div id="rgb-devices" aria-label="OpenRGB devices"></div>
+                    <div class="setting-row"><span><strong>RGB devices</strong><small>Choose the lights Cody can control.</small></span><button id="rgb-discover" class="light-action" type="button" disabled>Find devices</button></div>
+                    <div id="rgb-devices" aria-label="RGB devices"></div>
                     <p id="rgb-status" class="setting-help settings-inline-status" role="status"></p>
                   </div>
                 </details>
+                <button id="rgb-open" class="light-action" type="button">Open RGB controls</button>
               </div>
               <div id="self-hosted-settings" hidden>
                 <div class="plugin-connection plugin-plex-connection" data-media-panel="plex" hidden>

@@ -7,7 +7,8 @@ module.exports={
  publish:{provider:'github',owner:'JNathan34',repo:'C.O.D.Y',releaseType:'draft'},
  directories:{app:path.join(root,'build/standalone-app'),buildResources:path.join(root,'build/installer'),output:path.join(root,'dist','standalone-'+version)},
  files:['src/**/*','assets/**/*','windows/**/*','ui/**/*','node_modules/**/*','package.json','!**/tests/**/*'],
- extraResources:[{from:path.join(root,'run/current'),to:'native-engine',filter:['**/*','!**/*.log','!**/*.pdb']}],
+ extraResources:[{from:path.join(root,'run/current'),to:'native-engine',filter:['**/*','!**/*.log','!**/*.pdb']},
+  {from:path.join(root,'build/openrgb/OpenRGB Windows 64-bit'),to:'openrgb'}],
  asarUnpack:['windows/**/*','src/voice/*.ps1','src/voice/*.py'],
  win:{icon:path.join(root,'frontend/original-cody/assets/brand/cody.ico'),target:[{target:'nsis',arch:['x64','arm64']}],signExecutable:false,artifactName:'C.O.D.Y-Setup-${version}-${arch}.${ext}'},
  // Keep the small ASAR uncompressed so frontend changes can reuse its unchanged blocks.

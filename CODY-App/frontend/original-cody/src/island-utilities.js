@@ -11,6 +11,7 @@ const {parseSystemCommand}=require('./control/system-settings');
 const {parseSettingsCommand}=require('./settings-commands');
 const {parseDiscordCommand}=require('./control/discord');
 const {parseWordCommand}=require('./control/word-edit');
+const {parseRgbCommand,RGB_PLUGIN_ID,RGB_DISABLED_MESSAGE}=require('./rgb-commands');
 
 const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy',word:'Word',discord:'Discord',browser:'Browser'};
 const APP_ALIASES={'google chrome':'chrome','microsoft edge':'edge','mozilla firefox':'firefox','windows explorer':'file explorer'};
@@ -47,7 +48,7 @@ function matchesApp(window,name){
 }
 
 class IslandUtilities {
-  constructor({selfHosted,overseerrRequests,whatsappDrafts,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,overseerrRequests,whatsappDrafts,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
+  constructor({selfHosted,overseerrRequests,whatsappDrafts,rgbLighting,openRgbPanel,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,overseerrRequests,whatsappDrafts,rgbLighting,openRgbPanel,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false,capabilityId,plexContext=false,availabilityContext=false}={}){
     const draft=this.whatsappDrafts&&parseWhatsAppDraft(input,{selected:capabilityId===WHATSAPP_DRAFTS_PLUGIN});
     if(draft)return {kind:'local',action:'whatsapp-draft',args:draft};
@@ -56,6 +57,8 @@ class IslandUtilities {
     if(this.selfHosted&&isPlexRecentRequest(input,{spoken}))return {kind:'local',action:'self-hosted-plex-recent'};
     const availability=this.overseerrRequests&&parsePlexAvailability(input,{spoken,availabilityContext});
     if(availability)return {kind:'local',action:'overseerr-availability',args:availability};
+    const lighting=this.rgbLighting&&parseRgbCommand(input,{selected:capabilityId===RGB_PLUGIN_ID});
+    if(lighting)return {kind:'local',...lighting};
     if(this.textContext&&/^(?:what can you do (?:with|in) this (?:text ?box|field|text)|suggest (?:some )?(?:edits|actions) (?:for|in) this (?:text|field)|help me (?:edit|write) (?:this|the) (?:text|field))$/i.test(commandText(input,{preserveShow:true})))
       return {kind:'local',action:'text-context-help'};
     if(this.selfHosted){
@@ -124,6 +127,16 @@ class IslandUtilities {
           return {handled:true,...await this.whatsappDrafts.submit(route.args,{signal:context.signal})};
         }
         case 'overseerr-availability':return {handled:true,...await this.overseerrRequests.lookup(route.args)};
+        case 'rgb.open':
+          if(this.rgbLighting.pluginEnabled===false)return {handled:true,reply:RGB_DISABLED_MESSAGE};
+          this.openRgbPanel();
+          return {handled:true,reply:'Opened RGB controls.'};
+        case 'rgb.color':{
+          if(this.rgbLighting.pluginEnabled===false)return {handled:true,reply:RGB_DISABLED_MESSAGE};
+          const result=await this.rgbLighting.setColor(route.args.color,undefined,{signal:context.signal});
+          if(!result.applied)this.openRgbPanel({scan:false});
+          return {handled:true,error:!result.applied,reply:result.message};
+        }
         case 'window-choose':{
           reply='Which app should I bring to the front? Say “Switch to Word” or “List open windows”.';
           break;

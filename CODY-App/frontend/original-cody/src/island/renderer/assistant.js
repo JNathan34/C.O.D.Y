@@ -22,12 +22,13 @@
   function renderTimer(){
     const infoUpdate=$('island-info');
     const currentCard=quickCard?.expiresAt>Date.now()?quickCard:null;
-    const utilityCard=currentCard?.kind==='media-result'||(currentCard?.source==='plex'&&island.getState()==='listening')?null:currentCard;
+    const previewCard=['media-result','rgb-controls'].includes(currentCard?.kind);
+    const utilityCard=previewCard||(currentCard?.source==='plex'&&island.getState()==='listening')?null:currentCard;
     const discord=utilityCard?.source==='discord'?utilityCard:null;
     const recording=['starting','recording','paused','stopping'].includes(capture.status);
-    const showPreview=currentCard?.kind==='media-result'&&!app.busy&&!recording&&!game.active&&
+    const showPreview=previewCard&&!app.busy&&!recording&&!game.active&&
       !wakeListening()&&island.getState()!=='listening'&&taskStatus?.kind!=='attention'&&timer?.status!=='finished'&&
-      !preferences?.hideNotificationText&&!document.body.classList.contains('panel-open');
+      (currentCard.kind==='rgb-controls'||!preferences?.hideNotificationText)&&!document.body.classList.contains('panel-open');
     window.CODYMediaLookup?.present(showPreview?currentCard:null,openResultChat);
     visibleTaskStatus=!recording&&!game.active&&taskStatus&&(taskStatus.kind==='attention'||(!wakeListening()&&!utilityCard&&timer?.status!=='finished'))?taskStatus:null;
     const activeCard=visibleTaskStatus||utilityCard;

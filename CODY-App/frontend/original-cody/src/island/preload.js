@@ -4,8 +4,10 @@ const allowedEvents=new Set(['updates-state','status','diagnostic','auth-changed
 allowedEvents.add('monitor-access-changed');
 allowedEvents.add('rgb-lighting-changed');
 contextBridge.exposeInMainWorld('assistant',{
-  rgb:{state:()=>ipcRenderer.invoke('rgb-lighting-state'),discover:()=>ipcRenderer.invoke('rgb-lighting-discover'),
-    select:(id,value)=>ipcRenderer.invoke('rgb-lighting-select',id,value),enable:value=>ipcRenderer.invoke('rgb-lighting-enable',value)},
+  rgb:{state:()=>ipcRenderer.invoke('rgb-lighting-state'),configure:enabled=>ipcRenderer.invoke('rgb-lighting-configure',enabled),discover:()=>ipcRenderer.invoke('rgb-lighting-discover'),
+    select:(id,value)=>ipcRenderer.invoke('rgb-lighting-select',id,value),enable:value=>ipcRenderer.invoke('rgb-lighting-enable',value),
+    setColor:(color,brightness)=>ipcRenderer.invoke('rgb-lighting-color',color,brightness),open:()=>ipcRenderer.invoke('rgb-lighting-open'),
+    dismiss:id=>ipcRenderer.invoke('rgb-lighting-dismiss',id)},
   whatsapp:{openApp:()=>ipcRenderer.invoke('whatsapp-open-app'),preview:id=>ipcRenderer.invoke('whatsapp-draft-preview',id),
     link:()=>ipcRenderer.invoke('whatsapp-web-link'),state:check=>ipcRenderer.invoke('whatsapp-web-state',check===true),
     enable:enabled=>ipcRenderer.invoke('whatsapp-web-enable',enabled),
