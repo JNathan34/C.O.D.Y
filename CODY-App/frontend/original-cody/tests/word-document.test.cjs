@@ -43,6 +43,7 @@ function fixture({changed=false,planner,voiceText,history=[],paragraphs=[],utili
     ipcMain:{removeHandler(){},handle:(name,fn)=>handlers.set(name,fn)},engine,controller,
     utilities,getWindow:()=>({webContents:wc}),getState:()=>({}),
     sendUI(){},store:{data:{activeChatId:'one',settings:{},chats:[]},chat:()=>({messages}),save(){},publicState:()=>({}),
+      updateMessage(chatId,id,text){messages.find(message=>message.id===id).text=text;},
       addMessage(chatId,role,text){const message={id:String(messages.length),role,text};messages.push(message);return message;}}
   });
   const send=(text,capabilityId='')=>handlers.get('send-message')({sender:wc,senderFrame:wc.mainFrame},{chatId:'one',text,capabilityId});
@@ -57,6 +58,88 @@ function fixture({changed=false,planner,voiceText,history=[],paragraphs=[],utili
   const invoke=(name,...args)=>handlers.get(name)({sender:wc,senderFrame:wc.mainFrame},...args);
   return {send,settled,calls,edits,messages,invoke,engine};
 }
+
+const previousAnswer={id:'building-answer',role:'assistant',
+  text:"The Burj Khalifa in Dubai is the world's tallest building, at 828 metres.",
+  wordImages:['C:\\Cody\\answer-visuals\\drawing-1.png']};
+
+test('the reported Word follow-up copies the previous answer and its artwork without another AI request',async()=>{
+  for(const text of ['put it in the word doc','Copy your previous answer and drawings into my Word document.',
+    'Can you put what you just told me in Word?','add that to this document']){
+    const f=fixture({history:[{role:'user',text:'What is the tallest building?'},previousAnswer]});
+    assert.equal((await f.send(text)).word,true,text);
+    await f.settled();
+    assert.equal(f.calls.length,0);
+    assert.equal(f.edits[0].args.plan.steps[0].text,previousAnswer.text);
+    assert.deepEqual(f.edits[0].args.images,previousAnswer.wordImages);
+    assert.equal(f.edits[0].args.plan.steps[1].type,'picture');
+    assert.equal(f.edits[0].args.plan.steps[1].wrap,'inline');
+    assert.equal(f.edits[0].args.allowSave,false);
+    assert.equal(f.messages.at(-1).wordTransferSourceId,previousAnswer.id);
+  }
+});
+
+test('a spoken Word follow-up resolves its reference before the voice session can submit it as a new question',async()=>{
+  const text='put it in the word doc';
+  const f=fixture({voiceText:text,history:[previousAnswer]});
+  await f.invoke('native-begin');
+  const turn=f.calls[0].args.turn;
+  f.engine.emit('transcript',{turn,text});
+  f.engine.emit('classify-utility',{turn,text});
+  assert.equal(f.calls.find(call=>call.command==='utility-route').args.handled,true);
+  await f.invoke('native-end');
+  assert.equal(f.edits[0].args.plan.steps[0].text,previousAnswer.text);
+  assert.deepEqual(f.edits[0].args.images,previousAnswer.wordImages);
+  assert.equal(f.calls.some(call=>call.command==='word-plan'||call.command==='submit'),false);
+});
+
+test('a retry after a Word clarification still refers to the original answer',async()=>{
+  const f=fixture({history:[
+    {role:'user',text:'What is the tallest building?'},previousAnswer,
+    {role:'user',text:'put it in the Word doc'},
+    {role:'assistant',text:'What would you like me to write or change in your Word document?'}
+  ]});
+  await f.send('put it in the Word doc');await f.settled();
+  assert.equal(f.edits[0].args.plan.steps[0].text,previousAnswer.text);
+  assert.deepEqual(f.edits[0].args.images,previousAnswer.wordImages);
+});
+
+test('Word follow-ups respect text-only, drawings-only and explicit literal requests',async()=>{
+  for(const [text,includeText,includeImages] of [
+    ['put only the answer in Word',true,false],['copy it without pictures to Word',true,false],
+    ['insert just the drawings into Word',false,true],['type “that answer” in Word',true,false]
+  ]){
+    const f=fixture({history:[previousAnswer]});
+    await f.send(text);await f.settled();
+    const edit=f.edits[0];
+    if(text.includes('“')){assert.equal(edit.args.text,'that answer');continue;}
+    assert.equal(edit.args.plan.steps.some(step=>step.type==='paragraph'),includeText,text);
+    assert.equal(edit.args.images.length>0,includeImages,text);
+  }
+});
+
+test('missing answer context or unavailable drawings never inserts a new explanation or the command itself',async()=>{
+  for(const history of [[],[{...previousAnswer,wordImages:null}]]){
+    const f=fixture({history});
+    await f.send('put it in the Word doc');await f.settled();
+    assert.equal(f.edits.length,0);
+    assert.equal(f.calls.length,0);
+    assert.match(f.messages.at(-1).text,/Ask me a question first|drawings.*could not be saved/);
+  }
+});
+
+test('answer artwork returned by the native engine is retained with its chat response for a later Word follow-up',async()=>{
+  const f=fixture();
+  const original=f.engine.request;
+  f.engine.refresh=async()=>({signedIn:true});
+  f.engine.request=async(command,args)=>command==='submit'?
+    {text:previousAnswer.text,wordImages:previousAnswer.wordImages}:original(command,args);
+  await f.send('What is the tallest building?');await f.settled();
+  assert.deepEqual(f.messages.at(-1).wordImages,previousAnswer.wordImages);
+  await f.send('put it in Word');await f.settled();
+  assert.equal(f.edits[0].args.plan.steps[0].text,previousAnswer.text);
+  assert.deepEqual(f.edits[0].args.images,previousAnswer.wordImages);
+});
 
 test('reported two-turn Word request generates a plan and edits the same open document locally',async()=>{
   const f=fixture({planner:()=>({steps:[paragraph]})});
@@ -138,7 +221,7 @@ test('generic writing and introductions work in Word without the AI connection',
 
 test('ordinary chat and requests about Word are kept out of document edits',()=>{
   const session=new WordSession({controller:{},engine:{}});
-  for(const text of ['Tell me about yourself','Tell me about Microsoft Word','Explain what is written in this Word doc'])
+  for(const text of ['Tell me about yourself','Tell me about Microsoft Word','Explain what is written in this Word doc','Copy that answer.','Write the answer.'])
     assert.equal(session.matches(text,'one','',null),false,text);
 });
 

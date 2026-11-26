@@ -136,11 +136,13 @@
             <button id="island-rgb-off" type="button">Off</button>
             <button id="island-rgb-discover" type="button">Find devices</button>
           </div>
-          <details id="island-rgb-devices-menu" class="rgb-devices-menu">
-            <summary id="island-rgb-device-count">Devices</summary>
-            <div id="island-rgb-devices"></div>
-            <label class="rgb-device-option"><input id="island-rgb-reactive" type="checkbox"> React to Cody</label>
-          </details>
+          <div class="rgb-device-row">
+            <label class="rgb-reactive" title="Cyan for listening, pink for thinking and amber for speaking."><input id="island-rgb-reactive" type="checkbox" role="switch" disabled> React to Cody’s activity</label>
+            <details id="island-rgb-devices-menu" class="rgb-devices-menu">
+              <summary id="island-rgb-device-count">Devices</summary>
+              <ul id="island-rgb-devices" aria-label="RGB devices"></ul>
+            </details>
+          </div>
           <p id="island-rgb-status" class="rgb-status" role="status"></p>
         </div>
       </div>
@@ -429,15 +431,6 @@
                     </div>
                     <label class="setting-row"><span><strong>Send messages hands-free</strong><small>Cody sends immediately when your command matches one contact. Say “draft” to preview instead.</small></span><input id="whatsapp-enabled" type="checkbox" disabled></label>
                     <p id="whatsapp-status" class="setting-help settings-inline-status" role="status"></p>
-                  </div>
-                </details>
-                <details class="plugin-settings" data-plugin-panel="rgb-lighting">
-                  <summary>Manage devices</summary>
-                  <div class="plugin-settings-content">
-                    <label class="setting-row"><span><strong>React to Cody’s activity</strong><small>Cyan for listening, pink for thinking and amber for speaking.</small></span><input id="rgb-enabled" type="checkbox" disabled></label>
-                    <div class="setting-row"><span><strong>RGB devices</strong><small>Choose the lights Cody can control.</small></span><button id="rgb-discover" class="light-action" type="button" disabled>Find devices</button></div>
-                    <div id="rgb-devices" aria-label="RGB devices"></div>
-                    <p id="rgb-status" class="setting-help settings-inline-status" role="status"></p>
                   </div>
                 </details>
                 <button id="rgb-open" class="light-action" type="button">Open RGB controls</button>

@@ -10,7 +10,8 @@
   const faceGaze = document.getElementById('face-gaze');
   const morphDot = document.getElementById('morph-dot');
   const layers = Object.fromEntries(['idle','listening','thinking','speaking','error','offline','restored'].map(key => [key,document.getElementById(`symbol-${key}`)]));
-  const bars = [...document.querySelectorAll('.waveform i')];
+  const listeningBars = [...document.querySelectorAll('#symbol-listening .waveform i')];
+  const speakingBars = [...document.querySelectorAll('#symbol-speaking .waveform i')];
   const micButton = document.getElementById('panel-mic');
   const note = document.getElementById('integration-note');
   const chatView = document.getElementById('view-chat');
@@ -390,12 +391,15 @@
     if(now-audioLastSample>180)audioTarget=0;
     const alpha=1-Math.pow(audioTarget>audioSmooth?.71:.84,dt);
     audioSmooth+=(audioTarget-audioSmooth)*alpha;
-    const weights=[.45,.78,1,.77,.47];
-    bars.forEach((bar,i)=>{
-      const breathing=(.018*Math.sin(now/175+i*.85));
-      const scale=clamp(.17 + audioSmooth*.87*weights[i] + breathing,.15,.98);
-      bar.style.transform=`scaleY(${scale.toFixed(3)})`;
-    });
+    if(state==='listening'||state==='speaking'){
+      const weights=[.45,.78,1,.77,.47];
+      const activeBars=state==='listening'?listeningBars:speakingBars;
+      activeBars.forEach((bar,i)=>{
+        const breathing=(.018*Math.sin(now/175+i*.85));
+        const scale=clamp(.17 + audioSmooth*.87*weights[i] + breathing,.15,.98);
+        bar.style.transform=`scaleY(${scale.toFixed(3)})`;
+      });
+    }
     if(body.dataset.reveal==='hidden'&&!panelOpen){
       setTimeout(()=>requestAnimationFrame(animateFrame),180);
     }else requestAnimationFrame(animateFrame);

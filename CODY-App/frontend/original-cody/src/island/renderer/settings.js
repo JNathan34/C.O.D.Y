@@ -69,7 +69,6 @@
   };
   const TASK_STATUSES=[
     {kind:'progress',text:'Controlling your PC',detail:'Opening an app',icon:'mouse-pointer-2',target:'chat'},
-    {kind:'reply',text:'Reply ready',detail:'Open chat',icon:'check',target:'chat'},
     {kind:'outcome',text:'Request stopped',detail:'Open chat',icon:'square',target:'chat'},
     {kind:'outcome',text:'Request failed',detail:'Open chat',icon:'circle-alert',target:'chat'},
     {kind:'attention',text:'Approval needed',detail:'Review request',icon:'shield-check',target:'approval'},

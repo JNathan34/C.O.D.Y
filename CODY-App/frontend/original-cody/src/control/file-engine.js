@@ -26,7 +26,7 @@ function locate(root,rel,{mustExist=true,kind=null}={}){
   }
   return target;
 }
-function readText(root,rel){const file=locate(root,rel,{kind:'file'});if(/(?:^|[\/])(?:\.env(?:\..*)?|id_(?:rsa|ed25519)|.*\.(?:pem|p12|pfx)|credentials(?:\.[^\/]+)?)$/i.test(rel))throw Error('Sensitive credential files cannot be sent to ChatGPT');const st=fs.statSync(file);if(st.size>MAX_FILE)throw Error('File exceeds 256 KiB');const data=fs.readFileSync(file);let encoding='utf8',bom=false,text;
+function readText(root,rel){const file=locate(root,rel,{kind:'file'});if(/(?:^|[\/])(?:\.env(?:\..*)?|id_(?:rsa|ed25519)|.*\.(?:pem|p12|pfx)|credentials(?:\.[^\/]+)?)$/i.test(rel))throw Error('Sensitive credential files cannot be sent to the assistant');const st=fs.statSync(file);if(st.size>MAX_FILE)throw Error('File exceeds 256 KiB');const data=fs.readFileSync(file);let encoding='utf8',bom=false,text;
   if(data.length>=2&&data[0]===0xff&&data[1]===0xfe){encoding='utf16le';bom=true;text=data.subarray(2).toString(encoding);}
   else if(data.length>=2&&data[0]===0xfe&&data[1]===0xff){encoding='utf16be';bom=true;const b=Buffer.from(data.subarray(2));b.swap16();text=b.toString('utf16le');}
   else{bom=data.length>=3&&data.subarray(0,3).equals(Buffer.from([0xef,0xbb,0xbf]));const content=bom?data.subarray(3):data;if(content.includes(0)||!Buffer.from(content.toString('utf8'),'utf8').equals(content))throw Error('Binary or invalid UTF-8 content');text=content.toString('utf8');}

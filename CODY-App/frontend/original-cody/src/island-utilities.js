@@ -11,6 +11,7 @@ const {parseSystemCommand}=require('./control/system-settings');
 const {parseSettingsCommand}=require('./settings-commands');
 const {parseDiscordCommand}=require('./control/discord');
 const {parseWordCommand}=require('./control/word-edit');
+const {parseNoteCommand,parseDrawingScope}=require('./sticky-notes/commands');
 const {parseRgbCommand,RGB_PLUGIN_ID,RGB_DISABLED_MESSAGE}=require('./rgb-commands');
 
 const APP_NAMES={calc:'Calculator',calculator:'Calculator',explorer:'File Explorer','file explorer':'File Explorer',notepad:'Notepad',paint:'Paint',edge:'Microsoft Edge',chrome:'Google Chrome',firefox:'Firefox',spotify:'Spotify',settings:'Settings',plezy:'Plezy',word:'Word',discord:'Discord',browser:'Browser'};
@@ -48,8 +49,10 @@ function matchesApp(window,name){
 }
 
 class IslandUtilities {
-  constructor({selfHosted,overseerrRequests,whatsappDrafts,rgbLighting,openRgbPanel,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{selfHosted,overseerrRequests,whatsappDrafts,rgbLighting,openRgbPanel,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
+  constructor({stickyNotes,drawingScope,selfHosted,overseerrRequests,whatsappDrafts,rgbLighting,openRgbPanel,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact=()=>{},now=()=>new Date()}){Object.assign(this,{stickyNotes,drawingScope,selfHosted,overseerrRequests,whatsappDrafts,rgbLighting,openRgbPanel,textContext,modes,tasks,monitors,capture,rps,weather,timer,spotify,controller,appSettings,showCard,clearCard,refreshMedia,audioState,showCompact,now});}
   match(input,{spoken=false,capabilityId,plexContext=false,availabilityContext=false}={}){
+    const note=this.stickyNotes&&parseNoteCommand(input);if(note)return {kind:'local',...note};
+    const scope=this.drawingScope&&parseDrawingScope(input);if(scope)return {kind:'local',...scope};
     const draft=this.whatsappDrafts&&parseWhatsAppDraft(input,{selected:capabilityId===WHATSAPP_DRAFTS_PLUGIN});
     if(draft)return {kind:'local',action:'whatsapp-draft',args:draft};
     if(this.selfHosted&&isPlexSessionRequest(input,{spoken,plexContext,selected:capabilityId===PLEX_PLUGIN_ID}))return {kind:'local',action:'self-hosted-plex-sessions'};
@@ -122,6 +125,12 @@ class IslandUtilities {
     try{
       let reply,confirmation;
       switch(route.action){
+        case 'sticky-note.create':
+          await this.stickyNotes.create(route.args);
+          return {handled:true,reply:route.args.text?'Created your sticky note.':'Opened a blank sticky note. Type in it and drag its top edge to move it.'};
+        case 'drawing.scope':
+          await this.drawingScope(route.args);
+          return {handled:true,reply:route.args.global?'This drawing will stay visible across apps.':'This drawing will only show on its original app.'};
         case 'whatsapp-draft':{
           if(context.hasAttachments)return {handled:true,error:true,reply:'Cody’s WhatsApp plugin supports text messages. Remove the attachments and try again.'};
           return {handled:true,...await this.whatsappDrafts.submit(route.args,{signal:context.signal})};

@@ -46,7 +46,6 @@
   const enabled=state.pluginEnabled===true;
   if(rgbPluginEnabled===enabled)return;
   rgbPluginEnabled=enabled;
-  if(!enabled)localPanels.get('rgb-lighting').open=false;
   render();
  }
  rgbSwitch.addEventListener('change',async()=>{
@@ -60,7 +59,7 @@
   {id:'local-word',name:'Word (Desktop)',description:'Draft and format the Word document open on this PC, or insert pictures with text wrapping. Built into C.O.D.Y.',kind:'word',icon:'file-text',connected:false},
   {id:'computer-use',name:'Computer Use',description:'Let Cody use the mouse and keyboard in Windows apps.',kind:'computer-use',connected:computerUse===true},
   {id:'whatsapp-drafts',name:'WhatsApp',description:'Send messages hands-free through your linked WhatsApp Web account, or prepare a draft for review.',searchName:'WhatsApp Business',kind:'built-in',icon:'whatsapp',connected:false},
-  {id:'rgb-lighting',name:'RGB Lighting',description:'Let Cody set colors on compatible lights or match them to his activity.',searchName:'Reactive RGB Lighting OpenRGB',kind:'built-in',icon:'palette',connected:rgbPluginEnabled===true},
+  {id:'rgb-lighting',name:'RGB Lighting',description:'Let Cody set colors on compatible lights or match them to his activity.',searchName:'Reactive RGB Lighting Corsair iCUE OpenRGB',kind:'built-in',icon:'palette',connected:rgbPluginEnabled===true},
   ...['plex','overseerr'].map(id=>({id:'media-'+id,service:id,name:id==='plex'?'Plex':'Overseerr',kind:'media',
     connected:mediaState.services?.[id]?.connected===true,
     description:id==='plex'?'See who is watching on your Plex server and what they’re playing.':'Find movies and TV shows, request titles and check your Overseerr requests.'})),
@@ -146,7 +145,7 @@
    if(plugin.kind==='media'&&plugin.service==='plex')card.append(plexActions);
    else if(actions.childElementCount)card.append(actions);
    const localPanel=localPanels.get(plugin.id);
-   if(localPanel&&(plugin.id!=='rgb-lighting'||plugin.connected))card.append(localPanel);
+   if(localPanel)card.append(localPanel);
    if(plugin.kind==='computer-use')card.append(computerUseStatus);
    if(plugin.id==='rgb-lighting')card.append(rgbPluginStatus);
    if(plugin.service==='overseerr')card.append(overseerrStatus);

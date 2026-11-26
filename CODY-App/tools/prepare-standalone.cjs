@@ -19,6 +19,6 @@ required.push('Assets/Cody/identity.md','sherpa-onnx.dll','onnxruntime.dll','she
 for(const name of required)if(!fs.existsSync(path.join(root,'run/current',name)))throw Error('Missing bundled engine dependency: '+name);
 function files(directory){return fs.readdirSync(directory,{withFileTypes:true}).flatMap(item=>item.isDirectory()?files(path.join(directory,item.name)):[path.join(directory,item.name)]);}
 const runtime=path.join(root,'run/current');
-const manifest=files(runtime).filter(file=>!file.endsWith('.log')&&!file.endsWith('.pdb')).map(file=>({path:path.relative(runtime,file).replaceAll('\\','/'),size:fs.statSync(file).size,sha256:crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')}));
+const manifest=files(runtime).filter(file=>!file.endsWith('.log')&&!file.endsWith('.pdb')&&!path.relative(runtime,file).startsWith('CodexRuntime'+path.sep)).map(file=>({path:path.relative(runtime,file).replaceAll('\\','/'),size:fs.statSync(file).size,sha256:crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')}));
 fs.writeFileSync(path.join(root,'build/engine-manifest.json'),JSON.stringify(manifest,null,2));
 console.log('Prepared current C.O.D.Y. GUI and '+manifest.length+' engine files. No account/profile data is included.');

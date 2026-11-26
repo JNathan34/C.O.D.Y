@@ -9,7 +9,12 @@ dotnet build .\work\Cody.Engine\Cody.Engine.csproj -v:quiet -p:EnableWindowsTarg
 if ($LASTEXITCODE -ne 0) { Get-Content .\reports\build-cody-frontend.log -Tail 25; exit 1 }
 $runtime = Join-Path $reworkRoot 'run\current'
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
-Copy-Item -Path .\pristine\windows-1.1.3\* -Destination $runtime -Recurse -Force
+Get-ChildItem -LiteralPath (Join-Path $reworkRoot 'pristine\windows-1.1.3') |
+  Where-Object { $_.Name -ne 'CodexRuntime' } |
+  Copy-Item -Destination $runtime -Recurse -Force
+$retiredRuntime = [IO.Path]::GetFullPath((Join-Path $runtime 'CodexRuntime'))
+if ($retiredRuntime -ne [IO.Path]::GetFullPath((Join-Path $reworkRoot 'run\current\CodexRuntime'))) { throw 'Unexpected retired runtime path.' }
+if (Test-Path -LiteralPath $retiredRuntime) { Remove-Item -LiteralPath $retiredRuntime -Recurse -Force }
 Copy-Item -LiteralPath .\work\Cody.Engine\bin\Debug\net9.0-windows10.0.22621.0\HeyClicky.dll -Destination (Join-Path $runtime 'HeyClicky.dll') -Force
 Copy-Item -LiteralPath .\work\Cody.Core\bin\Debug\net9.0-windows10.0.22621.0\HeyClicky.Core.dll -Destination (Join-Path $runtime 'HeyClicky.Core.dll') -Force
 node (Join-Path $PSScriptRoot 'sync-wake-runtime.cjs')

@@ -287,6 +287,7 @@ public sealed class RealStack : IAsyncDisposable
 		AppHost.PrepareStoredSettings(core.Settings, agentRuntimeOptions);
 		if (CodyEngineBridge.EngineMode)
 		{
+			AgentHarnessPreferences.Pick(AgentHarness.H1);
 			CodyAgentUsage.Load();
 			core.Http.WorkerRequestPolicy = request =>
 			{

@@ -118,7 +118,7 @@ class LocalSpeech {
       const repaired=repairSpeechCommand(windowsText);
       // Keep clear short commands instant. Arbitrary low-confidence dictation
       // gets checked against the SAME recording, never guessed from history.
-      const clearShortCommand=Boolean(repaired&&(routeRequest(repaired,'chatgpt').kind==='local'||parseDirectAction(repaired)));
+      const clearShortCommand=Boolean(repaired&&(routeRequest(repaired).kind==='local'||parseDirectAction(repaired)));
       verificationAttempted=!clearShortCommand&&(!windowsText||!Number.isFinite(result.confidence)||result.confidence<.65);
       if(verificationAttempted&&this.whisperPaths().valid){
         try{

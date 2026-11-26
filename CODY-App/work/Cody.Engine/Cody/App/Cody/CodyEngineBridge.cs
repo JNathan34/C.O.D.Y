@@ -23,6 +23,7 @@ public static class CodyEngineBridge
     internal static bool MicrophoneMuted { get; private set; }
     internal static readonly CodyConsent Consent=new();
     private static AppHost host;
+    private static System.Collections.Generic.Dictionary<HeyClicky.Drawing.ScreenDrawingCanvas, string> voiceDrawingBaseline;
     private static CodyEscapeTakeBack escapeCancellation;
     private static CodyDictationShortcuts dictationShortcuts;
     private static volatile bool escapeWork;
@@ -110,7 +111,7 @@ public static class CodyEngineBridge
         session.SpeechInterrupted += ClearSpeechSubtitles;
         session.TurnProgress += label => Emit("turn-progress", new { label, turn });
         session.StateChanged += (_, _) => {if(session.State!=VoiceState.Listening)CodyVoiceActivity.End();Emit("phase", new { state = session.State.ToString(), turn });};
-        session.UserTranscriptUpdated += (_, text) => { lastTranscript = text; Emit("transcript", new { text, turn }); };
+        session.UserTranscriptUpdated += (_, text) => { lastTranscript = text; CodyDrawingScope.ForRequest(text); Emit("transcript", new { text, turn }); };
         session.ResponseTextUpdated += (_, text) => Emit("response", new { text, turn });
         session.Failed += (_, error) => Emit("failure", new { error.Code, error.Message, turn });
         meter = host.DispatcherQueue.CreateTimer();
@@ -159,7 +160,7 @@ public static class CodyEngineBridge
                 }
             }
             catch (Exception error) { Log.Warn("cody-engine", "pipe closed: " + error.GetType().Name); }
-            finally { output = null;CodyIndependentInput.End();host.DispatcherQueue.TryEnqueue(()=>host.ClickyDrive?.HandleEscape()); }
+            finally { output = null;CodyIndependentInput.End();host.DispatcherQueue.TryEnqueue(()=>host.ClickyDrive?.HandleEscape());await CodyIcueLighting.Close(); }
         }
     }
 
@@ -176,6 +177,25 @@ public static class CodyEngineBridge
             {
                 bool accepted = request.GetProperty("turn").GetString() == turn && utilityDecision?.TrySetResult(request.GetProperty("handled").GetBoolean()) == true;
                 await Send(new { id, result = new { accepted } });
+                return;
+            }
+            if (command == "icue-discover")
+            {
+                await Send(new { id, result = await CodyIcueLighting.Discover() });
+                return;
+            }
+            if (command == "icue-color")
+            {
+                var value = request.GetProperty("color");
+                byte[] color = value.ValueKind == JsonValueKind.Null ? null : value.EnumerateArray().Select(channel => channel.GetByte()).ToArray();
+                if (color != null && color.Length != 3) throw new ArgumentException("An RGB color requires three channels.");
+                await Send(new { id, result = await CodyIcueLighting.SetColor(color) });
+                return;
+            }
+            if (command == "icue-close")
+            {
+                await CodyIcueLighting.Close();
+                await Send(new { id, result = new { closed = true } });
                 return;
             }
             object result = await OnUi(async () =>
@@ -337,6 +357,15 @@ public static class CodyEngineBridge
                         CodyProofread.Client(clientPid);
                         CodyDrawingOwner.Client(clientPid, islandWindow);
                         return new{registered=true};
+                    case "drawing-neutral-window":
+                        if (!nint.TryParse(Text("window"), out var neutralWindow) ||
+                            !CodyDrawingOwner.NeutralWindow(neutralWindow, request.GetProperty("enabled").GetBoolean()))
+                            throw new InvalidOperationException("Expected a Cody note window.");
+                        return new { registered = true };
+                    case "drawing-scope":
+                        return await CodyDrawingControls.SetScope(host, request.GetProperty("global").GetBoolean());
+                    case "drawing-scope-test-request":
+                        CodyDrawingScope.ForRequest(Text("text"));return new { global = CodyDrawingScope.GlobalRequest };
                     case "text-capture":return new{target=await CodyProofread.Capture(request.GetProperty("clientPid").GetInt32())};
                     case "proofread":return await CodyProofread.Run(host,Text("target"));
                     case "word-plan":
@@ -386,9 +415,12 @@ public static class CodyEngineBridge
                         if (CodyMemoryPolicy.LocalOnly) throw new InvalidOperationException(CodyMemoryPolicy.BlockedMessage);
                         turn = Text("turn", id);
                         bool speak = request.TryGetProperty("speak", out var speakValue) ? speakValue.GetBoolean() : host.Services.Settings.LibraryModeEnabled;
+                        CodyDrawingScope.ForRequest(text);
+                        var drawingBaseline = CodyAnswerVisuals.Before(host);
                         if (capability == null) await session.SubmitTextAsync(text,speak,CodyAttachments.Paths(request));
                         else await session.SubmitTextWithCapabilityAsync(text,speak,CodyAttachments.Paths(request),capability);
-                        return new { text = session.ResponseText, audioPlaybackStarts = session.AudioPlaybackBeganCount };
+                        return new { text = session.ResponseText, audioPlaybackStarts = session.AudioPlaybackBeganCount,
+                            wordImages = CodyAnswerVisuals.Save(host, drawingBaseline) };
                     case "speak":
                         turn = Text("turn", id);
                         return await SpeakFast(Text("text"));
@@ -438,6 +470,7 @@ public static class CodyEngineBridge
                         bool wake=request.TryGetProperty("wake",out var wakeCapture)&&wakeCapture.GetBoolean();
                         bool streamed=wake&&request.TryGetProperty("streamedAudio",out var streamAudio)&&streamAudio.GetBoolean();
                         CodyVoiceActivity.Begin(host.Services.Microphone,wake&&!streamed);
+                        voiceDrawingBaseline = CodyAnswerVisuals.Before(host);
                         await session.BeginPushToTalkWithPrefixAsync(audioPrefix,streamed);
                         if(MicrophoneMuted){session.Cancel();CodyVoiceActivity.End();return new { listening=false,textTarget };}
                         if(streamed&&session.State==VoiceState.Listening){
@@ -460,7 +493,9 @@ public static class CodyEngineBridge
                         try { await session.EndPushToTalkAsync(); }
                         catch(OperationCanceledException) when(routedUtility != null||voiceControlStopped) { }
                         finally { voiceEnding = false; }
-                        return new { text = session.ResponseText, utilityText = routedUtility, transcript = lastTranscript,controlStopped=voiceControlStopped };
+                        return new { text = session.ResponseText, utilityText = routedUtility, transcript = lastTranscript,controlStopped=voiceControlStopped,
+                            wordImages = routedUtility == null && !voiceControlStopped && voiceDrawingBaseline != null
+                                ? CodyAnswerVisuals.Save(host, voiceDrawingBaseline) : Array.Empty<string>() };
                     case "cancel": voiceStartGeneration++;CodyIndependentInput.End();host.ClickyDrive?.HandleEscape();CodyProofread.Cancel();CodyWordPlan.Cancel();StopSpeech(); session.Cancel(); return new { cancelled = true };
                     case "fresh": session.StartFreshSession(); return new { fresh = true };
                     case "clear": host.Real.ClearDrawings(); return new { cleared = true };
@@ -660,6 +695,7 @@ public static class CodyEngineBridge
     internal static void PublishBrowserSetup(object data)=>Emit("browser-setup",data);
     internal static void PublishCursor(object data)=>Emit("cursor-state",data);
     internal static void PublishAgentLaunch(object data)=>Emit("agent-launch",data);
+    internal static void PublishIcueDisconnected()=>Emit("icue-disconnected",new {});
     private static void Emit(string name, object data) => _ = Send(new { @event = name, data });
     private static async Task Send(object value)
     {

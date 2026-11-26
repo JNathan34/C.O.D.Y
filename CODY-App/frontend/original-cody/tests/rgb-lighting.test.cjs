@@ -5,6 +5,7 @@ const net=require('node:net');
 const {once,EventEmitter}=require('node:events');
 const {setTimeout:delay}=require('node:timers/promises');
 const {OpenRgbClient,controllerInfo}=require('../src/integrations/openrgb');
+const {IcueLightingClient}=require('../src/integrations/icue-lighting');
 const {RgbLighting}=require('../src/integrations/rgb-lighting');
 const {IslandUtilities}=require('../src/island-utilities');
 const {installNativeIpc}=require('../src/native-ipc');
@@ -78,40 +79,40 @@ async function fixture(t,{switchable=false,announceDuringScan=false}={}){
 test('OpenRGB rejects corrupt device records',()=>{
   assert.throws(()=>controllerInfo(Buffer.from('01000000','hex')),/invalid device record/);
 });
-test('OpenRGB discovers without writing and changes only selected devices, restoring the original colors',async t=>{
+test('OpenRGB includes every Direct-capable device without writing and restores their original colors',async t=>{
   const {rgb,writes,original}=await fixture(t);
   rgb.setPhase('listening');
-  assert.equal((await rgb.discover()).devices.length,3);
+  const state=await rgb.discover();
+  assert.deepEqual(state.devices.map(device=>device.selected),[true,true,false]);
   assert.equal(writes.length,0);
-  assert.throws(()=>rgb.select(2,true),/Direct mode/);
-  await assert.rejects(rgb.enable(true),/select/);
-  rgb.select(1,true);await rgb.enable(true);
-  await until(()=>writes.length===1);
-  assert.deepEqual(writes[0],{id:1,colors:Buffer.from('24e9f50024e9f500','hex')});
-  rgb.setPhase('thinking');await until(()=>writes.length===2);
-  assert.deepEqual(writes[1].colors,Buffer.from('f333c800f333c800','hex'));
-  rgb.setPhase('speaking');await until(()=>writes.length===3);
-  assert.deepEqual(writes[2].colors,Buffer.from('ffb45c00ffb45c00','hex'));
-  rgb.setPhase('idle');await until(()=>writes.length===4);
-  assert.deepEqual(writes[3].colors,original);
-  rgb.setPhase('thinking');await until(()=>writes.length===5);
+  await rgb.enable(true);
+  await until(()=>writes.length===2);
+  assert.ok(writes.every(write=>write.colors.toString('hex')==='24e9f50024e9f500'));
+  rgb.setPhase('thinking');await until(()=>writes.length===4);
+  assert.equal(writes[3].colors.toString('hex'),'f333c800f333c800');
+  rgb.setPhase('speaking');await until(()=>writes.length===6);
+  assert.equal(writes[5].colors.toString('hex'),'ffb45c00ffb45c00');
+  rgb.setPhase('idle');await until(()=>writes.length===8);
+  assert.deepEqual(writes.slice(6,8).map(write=>write.colors),[original,original]);
+  rgb.setPhase('thinking');await until(()=>writes.length===10);
   await rgb.enable(false);
-  await until(()=>writes.length===6);
-  assert.deepEqual(writes[5].colors,original);
-  assert.ok(writes.every(write=>write.id===1));
+  await until(()=>writes.length===12);
+  assert.deepEqual(writes.slice(-2).map(write=>write.colors),[original,original]);
+  assert.deepEqual(writes.map(write=>write.id),[0,1,0,1,0,1,0,1,0,1,0,1]);
 });
-test('OpenRGB yields to external color changes and removes consent when device IDs change',async t=>{
+test('OpenRGB yields to external color changes and discards stale device IDs',async t=>{
   const {rgb,writes,devices,notify}=await fixture(t);
-  await rgb.discover();rgb.select(0,true);rgb.setPhase('thinking');await rgb.enable(true);
-  await until(()=>writes.length===1);
+  await rgb.discover();rgb.setPhase('thinking');await rgb.enable(true);
+  await until(()=>writes.length===2);
   const external=Buffer.alloc(8,99);devices[0].colors=external;
-  rgb.setPhase('idle');await until(()=>!rgb.status().enabled);
-  assert.equal(writes.length,1);assert.deepEqual(devices[0].colors,external);
+  rgb.setPhase('idle');await until(()=>!rgb.status().devices[0].selected);
+  assert.deepEqual(devices[0].colors,external);
+  await until(()=>writes.length===3);
   assert.match(rgb.status().message,/changed outside Cody/);
-  rgb.select(0,true);notify();
+  notify();
   await until(()=>!rgb.status().connected);
   assert.equal(rgb.status().devices.length,0);
-  await rgb.discover();assert.ok(rgb.status().devices.every(device=>!device.selected));
+  await rgb.discover();assert.deepEqual(rgb.status().devices.map(device=>device.selected),[true,true,false]);
 });
 test('manual lighting switches to Direct mode and keeps the verified color after speech',async t=>{
   const {rgb,writes,modeWrites}=await fixture(t,{switchable:true});
@@ -124,13 +125,11 @@ test('manual lighting switches to Direct mode and keeps the verified color after
   await rgb.close();
   assert.equal(writes.length,1);
 });
-test('manual lighting asks for a device selection when more than one is available',async t=>{
+test('manual lighting applies the requested color to every compatible device',async t=>{
   const {rgb,writes}=await fixture(t);
   const result=await rgb.setColor('#00ff00');
-  assert.match(result.message,/Choose the devices/);
-  assert.equal(writes.length,0);
-  rgb.select(1,true);assert.equal((await rgb.setColor('#00ff00')).applied,1);
-  assert.equal(writes[0].id,1);
+  assert.equal(result.applied,2);
+  assert.deepEqual(writes.map(write=>write.id),[0,1]);
 });
 test('discovery retries a changing device list without losing the count reply',async t=>{
   const {rgb}=await fixture(t,{announceDuringScan:true});
@@ -139,33 +138,77 @@ test('discovery retries a changing device list without losing the count reply',a
   assert.equal(state.connected,true);
   assert.equal(state.devices.length,3);
 });
-test('the plugin switch restores reactive colors and blocks device actions until reenabled',async t=>{
-  const {rgb,writes,original}=await fixture(t);
-  await rgb.discover();rgb.select(0,true);rgb.setPhase('thinking');await rgb.enable(true);
-  await until(()=>writes.length===1);
+test('the plugin switch restores reactive colors and includes new devices when reenabled',async t=>{
+  const {rgb,writes,original,devices}=await fixture(t);
+  await rgb.discover();rgb.setPhase('thinking');await rgb.enable(true);
+  await until(()=>writes.length===2);
   const off=await rgb.setPluginEnabled(false);
   assert.equal(off.pluginEnabled,false);
   assert.equal(off.enabled,false);
   assert.equal(off.connected,false);
   assert.equal(off.busy,false);
-  await until(()=>writes.length===2);
-  assert.deepEqual(writes[1].colors,original);
+  await until(()=>writes.length===4);
+  assert.deepEqual(writes.slice(-2).map(write=>write.colors),[original,original]);
   await assert.rejects(rgb.discover(),/Turn on RGB Lighting/);
   await assert.rejects(rgb.enable(true),/Turn on RGB Lighting/);
   await assert.rejects(rgb.setColor('#00ff00'),/Turn on RGB Lighting/);
-  assert.equal((await rgb.setPluginEnabled(true)).enabled,false);
-  await rgb.discover();rgb.select(0,true);
-  assert.equal((await rgb.setColor('#00ff00')).applied,1);
+  devices.push({id:3,direct:true,colors:original});
+  const enabled=await rgb.setPluginEnabled(true);
+  assert.equal(enabled.enabled,false);
+  assert.deepEqual(enabled.devices.filter(device=>device.selected).map(device=>device.id),[0,1,3]);
+  assert.equal((await rgb.setColor('#00ff00')).applied,3);
 });
 test('turning off the plugin releases an in-flight discovery without reading devices',async()=>{
   let complete,closed=0,stopped=0;
   const rgb=new RgbLighting({openClient:()=>new Promise(resolve=>{complete=resolve;}),stopRuntime:()=>{stopped++;}});
   const scan=rgb.discover();
+  await until(()=>complete);
   const disabled=rgb.setPluginEnabled(false);
   assert.equal(rgb.status().pluginEnabled,false);
   complete({close(){closed++;},count(){assert.fail('A disabled plugin must not read devices');}});
   await scan;await disabled;
   assert.deepEqual([closed,stopped],[1,1]);
+});
+test('the iCUE SDK discovers all lights on each enable and releases its shared layer on disable',async t=>{
+  const engine=new EventEmitter(),calls=[];
+  engine.connected=true;
+  const devices=[{id:0,name:'Keyboard'},{id:1,name:'Lighting Node'}];
+  engine.request=async(command,args)=>{
+    calls.push({command,args});
+    if(command==='icue-discover')return {running:true,devices:devices.slice()};
+    if(command==='icue-color')return {applied:devices.length};
+    assert.equal(command,'icue-close');
+  };
+  const rgb=new RgbLighting({pluginEnabled:false,openClient:()=>IcueLightingClient.connect(engine)});
+  t.after(()=>rgb.close());
+  const first=await rgb.setPluginEnabled(true);
+  assert.equal(first.provider,'iCUE SDK');
+  assert.deepEqual(first.devices.map(device=>device.selected),[true,true]);
+  assert.deepEqual(calls.map(call=>call.command),['icue-discover']);
+  const colors=()=>calls.filter(call=>call.command==='icue-color').map(call=>call.args.color);
+  rgb.setPhase('listening');await rgb.enable(true);await until(()=>colors().length===1);
+  rgb.setPhase('idle');await until(()=>colors().length===2);
+  assert.deepEqual(colors(),[[36,233,245],null]);
+  assert.equal((await rgb.setColor('#00ff00',40)).applied,2);
+  assert.deepEqual(colors().at(-1),[0,102,0]);
+  await rgb.setPluginEnabled(false);
+  assert.equal(calls.at(-1).command,'icue-close');
+  assert.equal(engine.listenerCount('icue-disconnected'),0);
+  devices.push({id:2,name:'Mouse'});
+  const enabled=await rgb.setPluginEnabled(true);
+  assert.deepEqual(enabled.devices.map(device=>device.name),['Keyboard','Lighting Node','Mouse']);
+  engine.emit('icue-disconnected');
+  assert.match(rgb.status().message,/iCUE disconnected/);
+  assert.equal(rgb.status().connected,false);
+});
+test('a running iCUE session that denies SDK access reports the actual error',async()=>{
+  const engine={request:async()=>({running:false})};
+  assert.equal(await IcueLightingClient.connect(engine),null);
+  engine.request=async()=>{throw Error('Allow C.O.D.Y. under iCUE SDK.')};
+  const rgb=new RgbLighting({openClient:()=>IcueLightingClient.connect(engine)});
+  const state=await rgb.discover();
+  assert.equal(state.connected,false);
+  assert.match(state.message,/Allow C\.O\.D\.Y\. under iCUE SDK/);
 });
 test('RGB voice commands use the local utility path before capture',async()=>{
   const engine=new EventEmitter(),calls=[],handlers=new Map(),messages=[],colors=[];

@@ -31,12 +31,32 @@ test('updates show immediately and avoid replaying past results',t=>{
   assert.equal(updates.current.phase,'speaking');
   assert.equal(updates.current.kind,'progress');
   updates.finish('turn',{answered:true});
-  assert.equal(updates.current.text,'Reply ready');
-  assert.equal(updates.current.id,'turn');
-  assert.equal(updates.current.phase,undefined);
+  assert.equal(updates.current,null);
+  assert.equal(updates.recent,undefined);
   updates.progress('next','Working…');
   updates.finish('next',{cancelled:true});
   assert.equal(updates.current.text,'Request stopped');
+});
+
+test('successful replies leave background tasks and requests for input visible',t=>{
+  const updates=new IslandTaskUpdates(()=>{});
+  t.after(()=>updates.close());
+  const task={id:'notes',title:'Draft notes',status:'Running'};
+  updates.updateTasks({connected:true,tasks:[task]});
+  updates.progress('reply','Replying…');
+  updates.finish('reply',{answered:true});
+  assert.equal(updates.current.taskId,'notes');
+  assert.equal(updates.current.kind,'progress');
+  updates.approval('native',[{id:'permission',reason:'Save the notes?'}]);
+  updates.finish('utility',{answered:true});
+  assert.equal(updates.current.kind,'attention');
+  updates.updateTasks({connected:true,tasks:[{...task,status:'Finished'}]});
+  updates.approval('native',[]);
+  updates.finish('next',{answered:true});
+  assert.equal(updates.current.text,'Task finished');
+  updates.progress('error','Working…');
+  updates.finish('error',{error:'Could not complete the request.'});
+  assert.equal(updates.current.text,'Request failed');
 });
 
 test('task notifications carry their phase and approval intent independently of progress copy',t=>{

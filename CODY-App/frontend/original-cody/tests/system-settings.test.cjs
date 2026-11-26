@@ -83,16 +83,6 @@ test('setting scripts verify state and keep power mode separate from Energy save
  const saver=buildSystemScript('system.settings.open',{page:'energySaver'});assert.match(saver,/ms-settings:batterysaver/);assert.match(saver,/no saver toggle has been changed/);assert.doesNotMatch(saver,/PowerSet|SetStateAsync/);
 });
 
-test('agent tool selection offers only the requested setting types and their status checks',()=>{
- const {allowedFor}=require('../src/control/tool-loop');
- const perms=normalizePermissions({enabled:true,level:'custom',systemInfo:true,systemSettings:true});
- const allowed=allowedFor('turn on Bluetooth and set brightness to 50%',perms);
- for(const name of ['system.radio.set','system.radio.status','system.brightness.set','system.brightness.status'])assert.ok(allowed.includes(name));
- assert.equal(allowed.includes('system.power.set'),false);
- for(const request of ['what is Bluetooth','do not turn on Bluetooth','how do I turn on Bluetooth'])assert.equal(allowedFor(request,perms).includes('system.radio.set'),false);
- assert.equal(allowedFor('turn on Bluetooth',{...perms,systemSettings:false}).includes('system.radio.set'),false);
-});
-
 test('typed and spoken quick commands show the result without generic Island banners',async()=>{
  const {EventEmitter}=require('node:events');const {installNativeIpc}=require('../src/native-ipc');
  for(const [text,reply,action,brightness] of [

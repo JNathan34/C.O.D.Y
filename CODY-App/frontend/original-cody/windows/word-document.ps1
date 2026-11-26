@@ -234,6 +234,10 @@ function Picture($step) {
         if($null -ne $step.$key){$picture.PictureFormat.('Crop'+$edge)=[single]$step.$key}
     }
     if($picture.Width -le 0){throw 'Word could not verify the picture dimensions.'}
+    if($step.type -eq 'picture' -and $isInline){
+        $script:cursor=$picture.Range.Duplicate
+        $script:cursor.Collapse(0)
+    }
     if($step.wrap -ne 'inline' -and $picture.WrapFormat.Type -ne @{square=0;tight=1;'top-bottom'=4}[[string]$step.wrap]){
         throw 'Word could not verify picture wrapping.'
     }

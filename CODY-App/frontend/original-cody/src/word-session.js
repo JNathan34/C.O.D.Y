@@ -16,6 +16,23 @@ const TopicRequest=/^(?:tell me (?:more )?about|describe(?: to me)?|explain(?: t
 const CompoundEdit=/(?:\b(?:and|then)\s+|[,;]\s*)(?:then\s+)?(?:please\s+)?(?:save|export|format|replace|revise|insert|add|bold|underline|delete|move|open|make|use)\b|\b(?:instead of|replace|rewrite|revise|at the end|at the top|heading|page break|attached|bullet points)\b/i;
 const Introduction='Hi, I’m C.O.D.Y., a Windows desktop assistant. You can talk to me or type a request. I can help you draft text, explain what’s on your screen, and point out details with drawings.';
 
+function answerTransfer(text,wordSelected=false){
+  const command=commandText(text,{imperativeOnly:true});
+  const destination=new RegExp('\\s+(?:in|into|to|inside|onto)\\s+'+WORD_TARGET+'(?:\\s*,?\\s*please)?[.!?]*$','i');
+  if(!destination.test(command)&&!wordSelected)return null;
+  const request=command.replace(destination,'').replace(/[.!?]+$/,'').trim();
+  const match=/^(?:put|place|add|insert|copy|transfer|send|move|write|type|include)\s+(.+)$/i.exec(request);
+  if(!match||/["“”]/.test(match[1]))return null;
+  const subject=match[1].replace(/what you (?:just )?(?:said|told me|explained|showed me)/i,'the answer');
+  if(!/\b(?:it|that|this|everything|answer|response|explanation|text|words|drawings?|diagrams?|illustrations?|pictures?|photos?|images?)\b/i.test(subject))return null;
+  if(!/^(?:(?:it|that|this|everything|all|of|the|your|previous|last|whole|full|entire|just|given|above|answer|response|explanation|text|words|drawing|drawings|diagram|diagrams|illustration|illustrations|picture|pictures|photo|photos|image|images|sources|references|and|with|including|too|also|as|well|only|without|no)\s*)+$/i.test(subject))return null;
+  const visual=/\b(?:drawings?|diagrams?|illustrations?|pictures?|photos?|images?)\b/i.test(subject);
+  const words=/\b(?:answer|response|explanation|text|words)\b/i.test(subject);
+  const textOnly=/\b(?:without|no)\b/i.test(subject)||/\b(?:only|just)\b/i.test(subject)&&words||
+    /\b(?:text|words)\b/i.test(subject)&&!visual;
+  return {text:!visual||words||/\b(?:it|that|this|everything)\b/i.test(subject),visuals:!textOnly};
+}
+
 function simpleDraft(text,{explicitWord=false}={}){
   const command=commandText(text,{imperativeOnly:true});
   const request=command.replace(WordDestination,' ').replace(/ +/g,' ').trim();
@@ -37,18 +54,42 @@ function simpleDraft(text,{explicitWord=false}={}){
 }
 
 class WordSession {
-  constructor({controller,engine,localMemoryOnly=()=>false,canDraft=()=>true,readReferenceLayout=referenceLayout}){
-    Object.assign(this,{controller,engine,localMemoryOnly,canDraft,readReferenceLayout});
+  constructor({controller,engine,localMemoryOnly=()=>false,canDraft=()=>true,readReferenceLayout=referenceLayout,prepareImages=async images=>images}){
+    Object.assign(this,{controller,engine,localMemoryOnly,canDraft,readReferenceLayout,prepareImages});
     this.pending=new Map();
   }
   matches(text,chatId,capabilityId,localRoute){
     if(!this.controller||capabilityId&&capabilityId!=='plugin:word')return false;
     if(capabilityId==='plugin:word'&&parseWordCommand(text))return false;
     if(localRoute)return false;
+    if(answerTransfer(text,capabilityId==='plugin:word'))return true;
     if(parseWordInsertion(text,{wordSelected:false}))return true;
     if(simpleDraft(text,{explicitWord:true}))return true;
     if(directPlan(text))return true;
     return wordIntent(text,capabilityId==='plugin:word',this.pending.has(chatId));
+  }
+  transfer(text,messages,currentMessageId,wordSelected=false){
+    if(!this.controller)return null;
+    const requested=answerTransfer(text,wordSelected);
+    if(!requested)return null;
+    const history=Array.isArray(messages)?messages:[];
+    const currentIndex=currentMessageId?history.findIndex(message=>message.id===currentMessageId):-1;
+    const recent=history.slice(0,currentIndex<0?history.length:currentIndex);
+    let answer;
+    for(let index=recent.length-1;index>=0;index--){
+      const message=recent[index];
+      if(message.role!=='assistant'||!message.text?.trim())continue;
+      if(message.wordTransferSourceId){
+        answer=recent.find(source=>source.id===message.wordTransferSourceId);
+        break;
+      }
+      const request=recent.slice(0,index).findLast(item=>item.role==='user');
+      if(request&&answerTransfer(request.text,request.mention?.id==='plugin:word'))continue;
+      answer=message;
+      break;
+    }
+    if(!answer)return {reply:'Ask me a question first, then tell me to put the answer in Word.'};
+    return {...requested,source:answer};
   }
   followUp(text,messages,currentMessageId){
     if(!this.controller||!Array.isArray(messages))return null;
@@ -84,13 +125,38 @@ class WordSession {
     this.pending.set(chatId,{text,target,files,kind});
     return {reply:question,question:true};
   }
-  async run({chatId,text,files=[],signal,wordSelected=false,retry=null,onProgress=()=>{}}){
+  async run({chatId,text,files=[],signal,wordSelected=false,retry=null,transfer=null,onProgress=()=>{}}){
     if(/^\s*(?:cancel|never mind|stop)\s*[.!]?$/i.test(text)){
       this.pending.delete(chatId);
       return {reply:'Word request cancelled.',cancelled:true};
     }
     if(signal?.aborted)return {cancelled:true,reply:'Word request cancelled.'};
     if(retry?.reply)return {reply:retry.reply};
+    if(transfer){
+      if(transfer.reply)return {reply:transfer.reply};
+      if(files.length)throw Error('Remove attached files before copying the previous answer to Word.');
+      if(transfer.visuals&&transfer.source.wordImages===null)
+        throw Error('The drawings from that answer could not be saved. Ask Cody to redraw them before inserting the answer with its images.');
+      const images=transfer.visuals?await this.prepareImages(transfer.source.wordImages||[]):[];
+      if(!transfer.text&&!images.length)return {reply:'That answer has no saved drawings or images to insert. Ask me to include its text instead.'};
+      const steps=[];
+      if(transfer.text)steps.push({type:'paragraph',text:transfer.source.text,style:'normal'});
+      for(let image=0;image<images.length;image++){
+        if(image>0)steps.push({type:'paragraph',text:'',style:'normal'});
+        steps.push({type:'picture',image,wrap:'inline',align:'left',width:432});
+      }
+      const plan={steps};
+      validatePlan(plan,{images});
+      const snapshot=await this.controller.readWord();
+      if(signal?.aborted)return {cancelled:true,reply:'Word request cancelled.'};
+      onProgress('Inserting the answer in Word…');
+      const result=await this.controller.execute('word.document',{plan,target:snapshot.target,images,paths:[],allowSave:false},
+        {origin:'chat',signal,humanTask:text});
+      if(result.cancelled)return {cancelled:true,reply:'Word edits cancelled.'};
+      this.pending.delete(chatId);
+      return {reply:`Added ${transfer.text?'the answer':''}${transfer.text&&images.length?' and ':''}${images.length?`${images.length} ${images.length===1?'image':'images'}`:''} to ${result.result.document}.`,
+        result:result.result,sourceId:transfer.source.id};
+    }
     if(retry?.text)text=retry.text;
     const literal=parseWordInsertion(text,{wordSelected});
     if(literal){

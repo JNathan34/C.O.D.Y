@@ -10,10 +10,10 @@ class RgbLighting{
     Object.assign(this,{stopRuntime,onChange,pluginEnabled});
     this.devices=new Map();this.phase='idle';this.enabled=false;this.busy=false;
     this.color='#50dcab';this.brightness=100;
-    this.message=pluginEnabled?'Find your compatible RGB devices.':RGB_DISABLED_MESSAGE;
+    this.message=pluginEnabled?'RGB devices will be detected automatically.':RGB_DISABLED_MESSAGE;
   }
   status(){
-    return {pluginEnabled:this.pluginEnabled,enabled:this.enabled,busy:this.busy||Boolean(this.releasing),connected:Boolean(this.client),message:this.message,color:this.color,brightness:this.brightness,
+    return {pluginEnabled:this.pluginEnabled,enabled:this.enabled,busy:this.busy||Boolean(this.releasing),connected:Boolean(this.client),provider:this.client?.provider??(this.client?'OpenRGB':null),message:this.message,color:this.color,brightness:this.brightness,
       devices:[...this.devices].map(([id,{name,directIndex,selected}])=>({id,name,available:directIndex>=0,selected:Boolean(selected)}))};
   }
   requirePlugin(){
@@ -25,21 +25,23 @@ class RgbLighting{
     if(this.releasing)throw Error('Wait for RGB Lighting to finish turning off.');
     if(enabled===this.pluginEnabled)return this.status();
     this.pluginEnabled=enabled;
-    if(!enabled){
-      const release=this.release(RGB_DISABLED_MESSAGE);
-      this.update(RGB_DISABLED_MESSAGE);
-      await release;
-    }
-    return this.update(enabled?'Find your compatible RGB devices.':RGB_DISABLED_MESSAGE);
+    if(enabled)return this.discover();
+    const release=this.release(RGB_DISABLED_MESSAGE);
+    this.update(RGB_DISABLED_MESSAGE);
+    await release;
+    return this.update(RGB_DISABLED_MESSAGE);
   }
   update(message){if(message)this.message=message;const status=this.status();this.onChange(status);return status;}
   disconnect(message){
     const client=this.client;
-    this.client=null;this.enabled=false;this.devices.clear();clearTimeout(this.timer);
-    client?.close();this.update(message);
+    this.client=null;this.enabled=false;this.manualLayer=null;this.layerColor=null;this.devices.clear();clearTimeout(this.timer);
+    if(client)this.disconnecting=Promise.resolve(client.close()).catch(()=>{});
+    this.update(message);
+    return this.disconnecting;
   }
   async discover(){
     this.requirePlugin();
+    if(this.discovery){await this.discovery;return this.status();}
     if(this.enabled||this.busy)throw Error('Turn off reactive lighting before finding devices.');
     const discovery=this.discovery=this.scanDevices();
     try{await discovery;}
@@ -47,21 +49,24 @@ class RgbLighting{
     return this.update();
   }
   async scanDevices(){
-    this.busy=true;this.disconnect('Finding devices…');
+    this.busy=true;
     let client;
     let readingList=true;
     try{
+      await this.disconnect('Finding RGB devices…');
+      if(this.closed||!this.pluginEnabled)return;
       client=await this.openClient();
-      if(this.closed||!this.pluginEnabled){client.close();return;}
+      if(this.closed||!this.pluginEnabled){await client.close();return;}
       this.client=client;
       client.on('devices-changed',()=>{
         if(!readingList&&this.client===client)this.disconnect('The lighting device list changed. Find devices again.');
       });
-      client.on('closed',()=>{
-        if(this.client===client)this.disconnect('Lighting disconnected. Find devices to reconnect.');
+      client.on('closed',message=>{
+        if(this.client===client)this.disconnect(message||'Lighting disconnected. Find devices to reconnect.');
       });
       let stableList;
-      for(let attempt=0;attempt<3&&this.pluginEnabled&&!this.closed;attempt++){
+      if(client.setLayerColor)stableList=new Map(client.devices.map(({id,name})=>[id,{name,directIndex:0}]));
+      for(let attempt=0;!stableList&&attempt<3&&this.pluginEnabled&&!this.closed;attempt++){
         const revision=client.deviceRevision;
         const count=await client.count(),found=new Map();
         for(let id=0;id<count&&client.deviceRevision===revision;id++)found.set(id,await client.device(id));
@@ -70,28 +75,24 @@ class RgbLighting{
       if(this.client===client&&this.pluginEnabled&&!this.closed){
         if(stableList){
           this.devices=stableList;
-          this.message=stableList.size?'Choose the devices you want to control.':'No compatible RGB devices found.';
+          let available=0;
+          for(const device of stableList.values()){
+            device.selected=device.directIndex>=0;
+            if(device.selected)available++;
+          }
+          this.message=available?'All compatible devices are included.':'No compatible RGB devices found.';
         }else this.message='Lighting devices are still changing. Try Find devices again.';
       }
     }catch(error){
       if(this.pluginEnabled&&!this.closed&&(!client||this.client===client))this.disconnect(error?.message||'Could not read the lighting devices.');
     }finally{readingList=false;this.busy=false;}
   }
-  select(id,selected){
-    this.requirePlugin();
-    if(this.enabled||this.busy)throw Error('Turn off reactive lighting before changing devices.');
-    const device=this.devices.get(id);
-    if(!device||device.directIndex<0)throw Error('Select a device that supports Direct mode.');
-    if(selected&&!device.selected&&[...this.devices.values()].filter(item=>item.selected).length>=8)throw Error('Select up to eight devices.');
-    device.selected=selected===true;
-    return this.update();
-  }
   async enable(value){
     this.requirePlugin();
-    if(this.busy)throw Error('Wait for OpenRGB to finish.');
+    if(this.busy)throw Error('Wait for lighting to finish.');
     if(value===this.enabled)return this.status();
     if(value){
-      if(!this.client||![...this.devices.values()].some(device=>device.selected))throw Error('Find and select an OpenRGB device first.');
+      if(!this.client||![...this.devices.values()].some(device=>device.selected))throw Error('Find a compatible RGB device first.');
       this.enabled=true;this.schedule();
       return this.update('Reactive lighting is on.');
     }
@@ -104,16 +105,16 @@ class RgbLighting{
     this.requirePlugin();
     if(typeof color!=='string'||!/^#[0-9a-f]{6}$/i.test(color)||!Number.isInteger(brightness)||brightness<0||brightness>100)
       throw Error('Choose a hex color and brightness between 0 and 100.');
+    const discovery=this.discovery;
+    await discovery;
     if(this.busy)throw Error('Lighting is busy.');
-    if(!this.client||!this.devices.size)await this.discover();
+    if(!discovery&&(!this.client||!this.devices.size))await this.discover();
     signal?.throwIfAborted();
     this.requirePlugin();
     const available=[...this.devices.values()].filter(device=>device.directIndex>=0);
     if(!available.length)return this.update(this.devices.size?'No connected device supports Direct mode.':this.message);
-    if(!available.some(device=>device.selected)){
-      if(available.length!==1)return this.update('Choose the devices you want to control.');
-      available[0].selected=true;
-    }
+    const selected=available.filter(device=>device.selected).length;
+    if(!selected)return this.update('Choose Find devices to include your lights again.');
     this.busy=true;clearTimeout(this.timer);
     try{
       await this.running;
@@ -121,7 +122,6 @@ class RgbLighting{
       this.requirePlugin();
       this.enabled=false;clearTimeout(this.timer);
       const rgb=[...Buffer.from(color.slice(1),'hex')].map(channel=>Math.round(channel*brightness/100));
-      const selected=[...this.devices.values()].filter(device=>device.selected).length;
       const applied=await (this.manualWrite=this.apply(rgb,{manual:true}));
       if(applied&&this.pluginEnabled&&!this.closed){this.color=color.toLowerCase();this.brightness=brightness;this.message=`Color set on ${applied===selected?applied:`${applied} of ${selected}`} ${selected===1?'device':'devices'}.`;}
       return {...this.status(),busy:false,applied};
@@ -150,6 +150,20 @@ class RgbLighting{
     const stale=()=>this.client!==client||Boolean(color&&(!this.pluginEnabled||this.closed||!manual&&(!this.enabled||COLORS[this.phase]!==color)));
     let applied=0;
     if(!client)return applied;
+    if(client.setLayerColor){
+      if(stale())return applied;
+      try{
+        const next=color??this.manualLayer??null;
+        if(!manual&&next===(this.layerColor??null))return applied;
+        applied=await client.setLayerColor(next);
+        if(this.client===client)this.layerColor=next;
+        if(manual&&applied&&this.client===client)this.manualLayer=color;
+        if(color&&!applied&&this.client===client)this.disconnect('iCUE no longer sees those lights. Choose Find devices to scan again.');
+      }catch(error){
+        if(this.client===client)this.disconnect(error.message);
+      }
+      return applied;
+    }
     for(const [id,device] of this.devices){
       if(!device.selected||(!color&&!device.last&&!device.originalMode))continue;
       if(stale())break;
@@ -203,8 +217,8 @@ class RgbLighting{
       await this.running;
       await this.restoring;
       await this.manualWrite;
-      await this.apply(null);
-      this.disconnect(message);
+      if(!this.client?.setLayerColor)await this.apply(null);
+      await this.disconnect(message);
       this.stopRuntime(this.closed===true);
     })();
     try{await this.releasing;}

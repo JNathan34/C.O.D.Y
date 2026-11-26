@@ -125,7 +125,7 @@ function actionSummary(action,args,context={}){
     action==='keyboard.type'?`Type this text into the currently focused window (review carefully):\n${args.text.slice(0,600)}${args.text.length>600?'…':''}`:
     action==='files.write'?`Write ${Buffer.byteLength(args.text,'utf8')} bytes to ${args.path}\nPreview: ${args.text.slice(0,240)}`:
     action==='clipboard.write'?`Replace clipboard with this text:\n${args.text.slice(0,240)}`:
-    action==='screen.capture'?(context.origin==='ai-chat'&&context.deliverImage===true?'Capture your screen for the current ChatGPT visual request':'Capture your screen (image remains within C.O.D.Y until you share it)'):
+    action==='screen.capture'?(context.origin==='ai-chat'&&context.deliverImage===true?'Capture your screen for the current the assistant visual request':'Capture your screen (image remains within C.O.D.Y until you share it)'):
     action==='clipboard.read'?'Read the current contents of your clipboard':
     Object.entries(args).map(([key,value])=>`${key}: ${String(value).slice(0,90)}`).join(', ');
   return `${ACTIONS[action].description}\n\n${value}`;
@@ -225,7 +225,7 @@ class ComputerController {
     }
     if(needsApproval(action,this.permissions(),context.origin,{args:clean,humanTask:context.humanTask||''})){
       // Profile is enforced here, not by the renderer or model-generated text.
-      if(!await this.confirm({action,summary:actionSummary(action,clean,context)+(context.origin==='ai-chat'&&action==='screen.capture'&&context.deliverImage===true?'\n\nThis screenshot will be attached to the current ChatGPT request in the cloud for visual inspection.':context.origin==='ai-chat'&&(['file.read','files.read','desktop.inspect','clipboard.read'].includes(action))?'\n\nData from this action may be sent to ChatGPT in the cloud.':'')})){try{this.logAction({action,status:'denied',origin:context.origin});}catch{}return {cancelled:true};}
+      if(!await this.confirm({action,summary:actionSummary(action,clean,context)+(context.origin==='ai-chat'&&action==='screen.capture'&&context.deliverImage===true?'\n\nThis screenshot will be attached to the current the assistant request in the cloud for visual inspection.':context.origin==='ai-chat'&&(['file.read','files.read','desktop.inspect','clipboard.read'].includes(action))?'\n\nData from this action may be sent to the assistant in the cloud.':'')})){try{this.logAction({action,status:'denied',origin:context.origin});}catch{}return {cancelled:true};}
     }
     let result;
     const wordAction=action==='word.edit'||action==='word.document';
@@ -338,7 +338,7 @@ class ComputerController {
         if(action.startsWith('browser.')){
           if(!this.browserBridge)throw Error('Firefox bridge unavailable');
           const response=await this.browserBridge.execute(action,clean,context.signal);
-          // Bounded observations only: do not accidentally feed huge pages or screenshots into ChatGPT.
+          // Bounded observations only: do not accidentally feed huge pages or screenshots into the assistant.
           if(['browser.readText','browser.readComments'].includes(action)){
             result={data:response?.data?.result??null,pageState:response?.pageState??null};
           }else result=compactBrowserObservation(action,response);

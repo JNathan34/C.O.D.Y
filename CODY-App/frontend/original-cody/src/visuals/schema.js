@@ -16,7 +16,7 @@ function material(a){if(a.material!==undefined&&!MATERIALS.includes(a.material))
 function display(value){if(typeof value!=='string'&&typeof value!=='number')throw Error('display_not_found: display ID is required');const result=String(value);if(!/^[-\w]{1,64}$/.test(result))throw Error('display_not_found: invalid display ID');return result;}
 function settings(patch={},base=DEFAULTS){keys(patch,Object.keys(DEFAULTS));const result={...base};for(const [key,value]of Object.entries(patch)){
  if(['enabled','animations'].includes(key)){if(typeof value!=='boolean')throw Error('Invalid visual setting '+key);result[key]=value;}
- else if(key==='planner'){if(!['balanced','fast','quality','chatgpt'].includes(value))throw Error('Invalid visual planner');result[key]=value;}
+ else if(key==='planner'){if(!['balanced','fast','quality'].includes(value))throw Error('Invalid visual planner');result[key]=value;}
  else if(key==='displayId')result[key]=display(value);
  else {number(value,key==='maxModels'?1:key==='maxParts'?1:240,key==='maxModels'?24:key==='maxParts'?512:1000,key);if(!Number.isInteger(value))throw Error('Visual setting must be an integer');result[key]=value;}
  }return result;}

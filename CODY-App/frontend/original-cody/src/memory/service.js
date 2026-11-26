@@ -1,17 +1,23 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),{randomUUID}=require('node:crypto');
 const {rank}=require('./retrieval'),{digest}=require('./import');
-const PROVIDERS=['codex','heyclicky','chatgpt'];
+const PROVIDERS=['heyclicky'];
 const KINDS=['local-memory','imported-memory','conversation-history','project-context','codex-history'];
 const MAX_LOCAL_BACKUP_NOTES=15000;
 const secret=/(?:\bsk-(?:proj-)?[\w-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}|\bxox[baprs]-[A-Za-z0-9-]{12,}|\bBearer\s+[A-Za-z0-9._-]{16,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|client[_ -]?secret)\s*[:=]\s*\S{8,})/i;
-function grants(value={}){if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!PROVIDERS.includes(k))||Object.values(value).some(v=>typeof v!=='boolean'))throw Error('Invalid memory sharing permissions');return Object.fromEntries(PROVIDERS.map(p=>[p,value[p]===true]));}
+function grants(value={}){if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!PROVIDERS.includes(k)&&!['codex','chatgpt'].includes(k))||Object.values(value).some(v=>typeof v!=='boolean'))throw Error('Invalid memory sharing permissions');return Object.fromEntries(PROVIDERS.map(p=>[p,value[p]===true]));}
 class MemoryService{
  constructor({directory,cipher}){if(!cipher?.isEncryptionAvailable())throw Error('Windows encrypted storage is unavailable. Memory is disabled.');this.cipher=cipher;fs.mkdirSync(directory,{recursive:true});const {DatabaseSync}=require('node:sqlite');this.db=new DatabaseSync(path.join(directory,'memory.sqlite'));this.db.exec('PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,payload BLOB NOT NULL); CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,source_id TEXT NOT NULL,fingerprint TEXT NOT NULL,payload BLOB NOT NULL,UNIQUE(source_id,fingerprint));');}
  seal(value){return this.cipher.encryptString(JSON.stringify(value));}
  open(value){return JSON.parse(this.cipher.decryptString(Buffer.from(value)));}
- sources(){return this.db.prepare('SELECT id,payload FROM sources').all().map(r=>({id:r.id,...this.open(r.payload),count:this.db.prepare('SELECT count(*) AS n FROM records WHERE source_id=?').get(r.id).n}));}
- source(id){const row=this.db.prepare('SELECT payload FROM sources WHERE id=?').get(id);if(!row)throw Error('Memory source not found');return {id,...this.open(row.payload)};}
+ sources(){
+  return this.db.prepare('SELECT id,payload FROM sources').all().map(row=>{
+   const source=this.open(row.payload);
+   return {id:row.id,...source,permissions:grants(source.permissions),
+    count:this.db.prepare('SELECT count(*) AS n FROM records WHERE source_id=?').get(row.id).n};
+  });
+ }
+ source(id){const row=this.db.prepare('SELECT payload FROM sources WHERE id=?').get(id);if(!row)throw Error('Memory source not found');const value=this.open(row.payload);return {id,...value,permissions:grants(value.permissions)};}
  addSource({label,kind='imported-memory',permissions={},project=''}={}){if(typeof label!=='string'||!label.trim()||label.length>200||!KINDS.includes(kind)||typeof project!=='string'||project.length>1024)throw Error('Invalid memory source');const id=randomUUID(),now=new Date().toISOString();this.db.prepare('INSERT INTO sources VALUES(?,?)').run(id,this.seal({label:label.trim(),kind,project,permissions:grants(permissions),enabled:true,createdAt:now,updatedAt:now,live:false}));return this.source(id);}
  saveLocal(text){
   if(typeof text!=='string'||!text.trim()||text.trim().length>8000)throw Error('Enter a memory between 1 and 8,000 characters.');

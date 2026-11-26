@@ -20,11 +20,11 @@ class IslandTaskUpdates {
     this.control=value?.active?{kind:'progress',text:'Controlling your PC',detail:line(value.status),icon:'mouse-pointer-2',target:'chat'}:null;
     this.publish();
   }
-  finish(id,{error,cancelled,answered,detail}={}){
+  finish(id,{error,cancelled,detail}={}){
     if(this.foreground?.id===id)this.foreground=null;
-    if(error||cancelled||answered){
-      const [text,icon]=cancelled?['Request stopped','square']:error?['Request failed','circle-alert']:['Reply ready','check'];
-      this.remember({id,kind:error||cancelled?'outcome':'reply',text,detail:line(detail||error)||'Open chat',icon,target:'chat'});
+    if(error||cancelled){
+      const [text,icon]=cancelled?['Request stopped','square']:['Request failed','circle-alert'];
+      this.remember({id,kind:'outcome',text,detail:line(detail||error)||'Open chat',icon,target:'chat'});
     }
     this.publish();
   }
@@ -46,7 +46,6 @@ class IslandTaskUpdates {
     this.publish();
   }
   remember(card){
-    if(this.recent?.target==='tasks'&&card.kind==='reply')return;
     this.recent=card;
     clearTimeout(this.timer);
     this.timer=setTimeout(()=>{this.recent=null;this.publish();},this.linger);

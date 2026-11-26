@@ -76,16 +76,17 @@ test('rejected sends keep staged files for retry',async()=>{
     }finally{f.close();}
   }
 });
-test('a file-only message uses the selected chat provider and includes the staged batch',async()=>{
+test('file-only messages with retired provider settings use the native assistant',async()=>{
   for(const provider of ['codex','chatgpt']){
     const f=sendingFixture();try{
       f.store.data.settings.assistantProvider=provider;
       const file=f.file('presentation.pptx');await f.manager.add('one',[file]);
       assert.equal((await f.send('')).started,true);
-      assert.equal(f.external[0].mode,provider);
-      assert.match(f.external[0].text,/review the attached files/i);
-      assert.deepEqual(f.external[0].attachmentBatch.paths,[fs.realpathSync.native(file)]);
-      assert.equal(f.calls.some(call=>call.command==='submit'),false);
+      const submitted=f.calls.find(call=>call.command==='submit');
+      assert.match(submitted.args.text,/review the attached files/i);
+      assert.deepEqual(submitted.args.files,[fs.realpathSync.native(file)]);
+      assert.equal(f.external.length,0);
+      f.finish();await tick();
     }finally{f.close();}
   }
 });

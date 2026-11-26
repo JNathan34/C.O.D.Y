@@ -11,4 +11,8 @@ C.O.D.Y. ships the unmodified OpenRGB 1.1 Windows x64 portable build as a separa
 
 Qt ships as separate shared libraries in the `resources/openrgb` directory. That directory also contains copies of the GNU GPL and LGPL license texts.
 
-The built-in controller uses hardware that OpenRGB can manage with the current user’s device access. Select the devices in C.O.D.Y. before applying a color to multiple devices. The Windows ARM64 build uses Windows x64 emulation for the OpenRGB helper.
+When Corsair iCUE is running, RGB Lighting uses Corsair’s shared SDK lighting layer. C.O.D.Y. retrieves the SDK library from Corsair on first use and caches it locally. Allow software integrations in **iCUE Settings → SDK → iCUE SDK**. C.O.D.Y. can use the lights iCUE makes available. [Corsair SDK setup](https://help.corsair.com/hc/en-us/articles/4406125301005-iCUE-How-to-Set-up-software-and-game-integrations-in-iCUE)
+
+When iCUE is closed, RGB Lighting uses the included OpenRGB helper for devices that support Direct mode with the current user’s device access. The Windows ARM64 build uses Windows x64 emulation for the lighting runtimes.
+
+C.O.D.Y. scans every time RGB Lighting is turned on and automatically includes all compatible devices. Open **RGB Control** from the plugin card or say “Open RGB control” to use the color wheel, run another scan, or turn on **React to Cody’s activity**.

@@ -3,6 +3,7 @@
 const {app,BrowserWindow,screen,desktopCapturer}=require('electron');
 const {spawn}=require('node:child_process');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
+const {StickyNotes}=require('../frontend/original-cody/src/sticky-notes/manager');
 const {NativeEngine}=require('../frontend/original-cody/src/native-engine');
 const {manageWindow}=require('../frontend/original-cody/src/control/app-layout');
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'cody-drawing-owner-'));
@@ -12,7 +13,7 @@ fs.writeFileSync(path.join(profile,'native-account','settings.json'),JSON.string
 app.on('window-all-closed',()=>{});
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const handle=win=>win.getNativeWindowHandle().readBigUInt64LE().toString();
-let win,other,child,engine,chatgpt;const checks=[];
+let win,other,child,engine,chatgpt,notes;const checks=[];
 const html='<body style="margin:0;background:#eef2f7"><h1>Drawing ownership fixture</h1><button id="target" style="position:absolute;left:120px;top:200px;width:180px;height:90px">Original target</button><div style="height:2000px"></div></body>';
 async function focus(window){window.setAlwaysOnTop(true);window.show();window.moveTop();window.focus();window.webContents.focus();await window.webContents.executeJavaScript('document.getElementById("target")?.focus()');await wait(180);assert.ok(window.isFocused(),'owned fixture must receive focus');}
 app.whenReady().then(async()=>{
@@ -46,7 +47,7 @@ app.whenReady().then(async()=>{
   const ready=new Promise((resolve,reject)=>{
    const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
    child=spawn(process.execPath,[__filename,'--target'],{env,windowsHide:false,stdio:['ignore','pipe','pipe','ipc']});
-   child.on('error',reject);child.on('message',message=>{if(message.ready)resolve(message);else {const task=pending.get(message.id);if(task){pending.delete(message.id);clearTimeout(task.timer);message.error?task.reject(Error(message.error)):task.resolve(message);}}});
+   child.on('error',reject);child.once('exit',code=>reject(Error('Drawing target fixture exited before becoming ready (code '+code+').')));child.on('message',message=>{if(message.ready)resolve(message);else {const task=pending.get(message.id);if(task){pending.delete(message.id);clearTimeout(task.timer);message.error?task.reject(Error(message.error)):task.resolve(message);}}});
    child.stderr.on('data',data=>process.stderr.write(data));
   });
   const target=await ready;
@@ -73,7 +74,9 @@ app.whenReady().then(async()=>{
    if(blue<200)fs.writeFileSync(path.resolve(__dirname,'../reports/drawing-owner-screen.png'),image.toPNG());
    assert.ok(blue>=200,label+': actual desktop image contains '+blue+' blue ink pixels');checks.push(label);console.log('PASS: '+label+' ('+blue+' ink pixels)');
   }
+  try{
   await engine.request('drawing-controls-test-highlight',{window:target.handle,marks:[{x:box.x/display.size.width,y:box.y/display.size.height,width:box.width/display.size.width,height:box.height/display.size.height}]});
+  }catch(error){await engine.request('drawing-controls-test-card');console.error('Capture ownership diagnostic: '+JSON.stringify({target,state:await state()}));throw error;}
   const initial=await state();assert.equal(initial.follow?.owner,target.handle,'a request from the Island must capture the external app, not the Island');
   await until('drawing appears while the Island retains focus',s=>s.follow?.marks.some(m=>m.visible&&!m.anchored));
   assert.ok(win.isFocused(),'showing a drawing must not steal keyboard focus');
@@ -95,11 +98,56 @@ app.whenReady().then(async()=>{
   await command('minimize');await until('minimized target hides its drawing',s=>s.follow?.marks.length>0&&s.follow.marks.every(m=>!m.visible));
   await command('restore');await until('restoring the target restores its drawing',s=>s.follow?.marks.some(m=>m.visible));
   await engine.request('clear');await until('clear removes the drawing',s=>!s.showing);
+  await command('focus');await wait(300);
+  await engine.request('drawing-scope-test-request',{text:'Draw a diagram about this app'});
+  await engine.request('drawing-controls-test-card');
+  await engine.request('drawing-controls-test-finish');
+  await until('complete paper card is bound to the original app',s=>s.scopeVisible&&s.stageVisible&&s.renderedUnits>0&&s.follow?.owner===target.handle);
+  await command('other');
+  await until('app switch hides the complete paper card and its controls',s=>!s.scopeVisible&&!s.stageVisible&&s.hidden&&s.shown===0&&s.renderedUnits===0&&!s.clearVisible);
+  await command('focus');
+  await until('returning restores the finished paper card and draggable controls',s=>s.scopeVisible&&s.stageVisible&&s.renderedUnits>0&&s.shown>0);
+  await engine.request('drawing-scope',{global:true});await command('other');
+  await until('explicit global drawing remains visible over another app',s=>s.scopeVisible&&s.stageVisible&&s.renderedUnits>0&&s.follow.global);
+  await engine.request('drawing-scope',{global:false});
+  await until('rebinding a global drawing hides it over another app',s=>!s.stageVisible&&!s.scopeVisible);
+  await command('focus');await until('rebound drawing returns with its original app',s=>s.scopeVisible&&s.stageVisible);
+  notes=new StickyNotes({BrowserWindow,ipcMain:require('electron').ipcMain,file:path.join(profile,'sticky-notes.json'),displays:()=>[display],primary:()=>display,
+    neutralWindow:(window,enabled)=>engine.request('drawing-neutral-window',{window,enabled})});
+  await notes.create();const note=[...notes.windows.values()][0].window;
+  assert.ok(note.isFocused(),'new blank note takes focus for typing');
+  await engine.request('text-client',{clientPid:process.pid,islandWindow:handle(win)});
+  await until('typing in a Cody note preserves the underlying app binding',s=>s.scopeVisible&&s.follow.owner===target.handle);
+  const typedNote=['Shopping list','Milk and eggs'].join(String.fromCharCode(10));
+  await note.webContents.executeJavaScript(`(()=>{const field=document.getElementById('text');field.value=${JSON.stringify(typedNote)};field.dispatchEvent(new Event('input',{bubbles:true}));return field.value;})()`);
+  await wait(600);
+  assert.equal([...notes.notes.values()][0].text,'Shopping list\nMilk and eggs');
+  const original=note.getBounds();note.setBounds({...original,x:original.x-70,y:original.y+55});await wait(400);notes.save();
+  assert.equal(JSON.parse(fs.readFileSync(path.join(profile,'sticky-notes.json'),'utf8')).notes[0].bounds.x,original.x-70);
+  const layout=await note.webContents.executeJavaScript(`(()=>{const field=document.getElementById('text'),r=field.getBoundingClientRect();return {width:r.width,height:r.height,drag:getComputedStyle(document.querySelector('header')).webkitAppRegion,text:field.value};})()`);
+  assert.ok(layout.width>200&&layout.height>120);assert.equal(layout.drag,'drag');assert.equal(layout.text,'Shopping list\nMilk and eggs');
+  fs.writeFileSync(path.resolve(__dirname,'../reports/sticky-note.png'),(await note.webContents.capturePage()).toPNG());
+  checks.push('blank note accepts typing, saves text and moved position, and has a draggable header');
+  await command('other');await until('app drawing hides while the editable global note stays visible',s=>!s.scopeVisible&&!s.stageVisible);assert.ok(note.isVisible());
+  await engine.request('clear');
+  await command('focus');await wait(300);
+  assert.equal((await engine.request('drawing-scope-test-request',{text:'Put a post-it note in the top corner'})).global,true);
+  await engine.request('drawing-controls-test-card');await engine.request('drawing-controls-test-finish');
+  await command('other');await until('assistant sticky-note requests default to global visibility',s=>s.scopeVisible&&s.stageVisible&&s.renderedUnits>0&&s.follow.global);
+  notes.close();notes=null;
+  await engine.request('clear');await engine.request('drawing-scope-test-request',{text:'Draw a 3D model'});
+  await command('focus');await wait(300);await engine.request('model-zoom-demo');
+  await until('3D drawing is visible on its owning app',s=>s.scopeVisible&&s.stageVisible&&s.models>0);
+  await command('other');await until('3D drawing hides with its owning app',s=>!s.scopeVisible&&!s.stageVisible&&s.models===0);
+  await command('focus');await until('3D drawing returns with its owning app',s=>s.scopeVisible&&s.stageVisible&&s.models>0);
+  await engine.request('clear');await engine.request('drawing-scope-test-request',{text:'Draw around this button'});
+
  }catch(error){console.error(error.stack);process.exitCode=1;}
  finally{
   fs.mkdirSync(path.resolve(__dirname,'../reports'),{recursive:true});fs.writeFileSync(path.resolve(__dirname,'../reports/drawing-owner.json'),JSON.stringify({passed:!process.exitCode,checks},null,2));
+  notes?.close();
   if(engine){await engine.request('clear').catch(()=>{});engine.close();}
   if(child?.connected)child.send({command:'quit'});
   chatgpt?.destroy();win?.destroy();other?.destroy();await wait(600);app.exit(process.exitCode||0);
  }
-});
+}).catch(error=>{console.error(error.stack);app.exit(1);});

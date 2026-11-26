@@ -21,7 +21,7 @@ test('private notes use their own local source and remain searchable after a res
     assert.equal(memory.saveLocal('My name is Local Tester.').added,1);
     assert.equal(memory.saveLocal('My name is Local Tester.').duplicates,1);
     assert.throws(()=>memory.saveLocal('password: test-only-secret'),/credential/);
-    assert.equal(memory.context('my name','codex').records.length,0);
+    assert.throws(()=>memory.context('my name','codex'),/Unknown memory provider/);
     assert.equal(memory.context('my name','heyclicky').records.length,0);
   }finally{memory.close();}
   memory=new MemoryService({directory,cipher});
@@ -64,7 +64,7 @@ test('memory backups round-trip every local note without restoring provider acce
     restored.saveLocal(notes[0]);
     assert.deepEqual(await importBackup('import'),{added:101,duplicates:1,skippedSecrets:0});
     assert.deepEqual(await importBackup('import'),{added:0,duplicates:102,skippedSecrets:0});
-    assert.equal(restored.context('memory','codex').records.length,0);
+    assert.throws(()=>restored.context('memory','codex'),/Unknown memory provider/);
     assert.equal(restored.exportLocalNotes().length,102);
     fs.writeFileSync(file,JSON.stringify({...backup,notes:['Valid but never stored',null]}));
     await assert.rejects(importBackup('import'),/invalid notes/);
@@ -115,7 +115,7 @@ test('the switch keeps typed memories and basic commands local and pauses HeyCli
   assert.equal(messages.at(-1).text,'It is noon.');
   assert.deepEqual(calls.map(([command])=>command),['memory-mode-configure']);
   store.data.settings.assistantProvider='codex';
-  assert.deepEqual(await send('Use the other connection'),{external:true});
+  assert.match((await send('Use the other connection')).error,/Claude Code is paused/);
   assert.deepEqual(await invoke('memory-mode-configure',false),{localOnly:false});
   store.data.settings.assistantProvider='heyclicky';
   assert.equal((await send('Answer a question')).provider,'heyclicky');

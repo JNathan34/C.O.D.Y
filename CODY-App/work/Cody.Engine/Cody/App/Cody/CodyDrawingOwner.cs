@@ -15,6 +15,7 @@ internal static class CodyDrawingOwner
     private sealed record Window(nint Handle, int Pid);
     private static readonly object gate = new();
     private static readonly List<Window> recent = new();
+    private static readonly HashSet<nint> neutralWindows = new();
     private static Window client = new(0, 0);
 
     internal static void Start()
@@ -26,16 +27,35 @@ internal static class CodyDrawingOwner
     internal static void Client(int pid, nint island = 0)
     {
         var handle = Pid(island) == pid ? GetAncestor(island, 2) : 0;
-        Volatile.Write(ref client, new Window(handle, pid));
-        lock (gate) recent.RemoveAll(window => IsNeutral(window.Handle, window.Pid));
+        var previous = Interlocked.Exchange(ref client, new Window(handle, pid));
+        lock (gate)
+        {
+            if (previous.Pid != pid) neutralWindows.Clear();
+            else neutralWindows.RemoveWhere(window => Pid(window) != pid);
+            recent.RemoveAll(window => IsNeutral(window.Handle, window.Pid));
+        }
         Remember(GetForegroundWindow());
+    }
+
+    internal static bool NeutralWindow(nint handle, bool enabled)
+    {
+        if (!enabled) { lock (gate) return neutralWindows.Remove(handle); }
+        if (handle == 0 || Pid(handle) != Volatile.Read(ref client).Pid) return false;
+        handle = GetAncestor(handle, 2);
+        lock (gate)
+        {
+            if (enabled) neutralWindows.Add(handle); else neutralWindows.Remove(handle);
+            recent.RemoveAll(window => IsNeutral(window.Handle, window.Pid));
+        }
+        return true;
     }
 
     internal static bool Own(int pid) => pid == Environment.ProcessId || pid == Volatile.Read(ref client).Pid;
     private static bool IsNeutral(nint window, int pid)
     {
         var island = Volatile.Read(ref client);
-        return pid == Environment.ProcessId || pid == island.Pid && (island.Handle == 0 || window == island.Handle);
+        lock (gate) return pid == Environment.ProcessId || pid == island.Pid &&
+            (island.Handle == 0 || window == island.Handle || neutralWindows.Contains(window));
     }
 
     private static nint Root(nint window)

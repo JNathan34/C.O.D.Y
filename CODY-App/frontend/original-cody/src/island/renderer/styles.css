@@ -129,9 +129,11 @@ body[data-expression="tracking"] .original-eye{opacity:1}
 .waveform,.thinking-dots{display:flex;align-items:center;justify-content:center;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
 /* SAFE AREA: 5×1.15px + 4×.8px = 8.95px wide; full bar height is ONLY 7px at 27px icon. */
 .waveform{gap:.8px;width:10px;height:8px;overflow:hidden}
-.waveform i{width:1.15px;flex:0 0 1.15px;height:7px;border-radius:2px;background:var(--accent);transform:scaleY(.25);transform-origin:center;will-change:transform}
+.waveform i{width:1.15px;flex:0 0 1.15px;height:7px;border-radius:2px;background:var(--accent);transform:scaleY(.25);transform-origin:center}
+.symbol-layer.is-active .waveform i{will-change:transform}
 .thinking-dots{gap:.9px;width:10px;height:8px;overflow:hidden}
-.thinking-dots i{height:1.2px;width:1.2px;flex:0 0 1.2px;border-radius:100%;background:#f333c8;animation:thinking-flow 1020ms ease-in-out infinite}
+.thinking-dots i{height:1.2px;width:1.2px;flex:0 0 1.2px;border-radius:100%;background:#f333c8;animation:thinking-flow 1020ms ease-in-out infinite;animation-play-state:paused}
+.symbol-layer.is-active .thinking-dots i{animation-play-state:running}
 .thinking-dots i:nth-child(1){animation-delay:-900ms}
 .thinking-dots i:nth-child(2){animation-delay:-750ms}
 .thinking-dots i:nth-child(3){animation-delay:-600ms}

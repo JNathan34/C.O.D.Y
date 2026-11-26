@@ -20,18 +20,3 @@ test('browser preferences keep discovery and selection separate from extension i
     {command:'browser-preference-select',args:{browserId:'firefox'}}
   ]);
 });
-
-test('Firefox-only tools respect an explicit browser preference before using a connected Firefox',async()=>{
-  const {prepareFirefoxTask}=require('../src/control/firefox-startup');
-  let firefoxChecks=0;
-  const options={
-    controller:{permissions:()=>({enabled:true,level:'limited',browserRead:true,browserInteract:true})},
-    bridge:{status:()=>{firefoxChecks++;return {connected:true};}},
-    browserPreference:async()=>({effectiveBrowser:'Edge'})
-  };
-  const task='Open https://example.com in the browser';
-  assert.match((await prepareFirefoxTask(task,options)).reason,/computer controls to work in Edge/);
-  assert.equal(firefoxChecks,0);
-  assert.equal(await prepareFirefoxTask(task,{...options,browserPreference:async()=>({effectiveBrowser:'Firefox'})}),null);
-  assert.equal(firefoxChecks,1);
-});

@@ -215,10 +215,7 @@
   const note=text=>{$('integration-note').textContent=String(text||'');};
   const current=()=>app.data.chats.find(chat=>chat.id===app.data.activeChatId);
   const displayText=text=>String(text||'').replace(/\r\n/g,'\n');
-  const selectedMode=mode=>{
-    app.mode=['heyclicky','codex','chatgpt'].includes(mode)?mode:'heyclicky';
-  };
-  selectedMode(app.data.settings.assistantProvider||app.mode);window.addEventListener('cody-provider-changed',event=>selectedMode(event.detail));
+  app.mode='heyclicky';
   function renderHistory(){
     const list=$('history-list'),query=$('history-search').value.trim().toLowerCase();list.replaceChildren();
     for(const chat of [...app.data.chats].sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)))){
@@ -280,8 +277,8 @@
   }
   async function connection(){if(!$('chat-connection'))return;
     try{
-      const status=await api.webStatus();
-      $('chat-connection').textContent=status.signedIn?'ChatGPT connected':status.detail||'Sign in using Connect / repair.';
+      const status=await api.connectionStatus();
+      $('chat-connection').textContent=status.signedIn?'C.O.D.Y. connected':status.detail||'Sign in using Connect / repair.';
     }catch(error){$('chat-connection').textContent=error.message;}
   }
   async function firefox(){if(!$('core-firefox-status'))return;
@@ -331,7 +328,7 @@
     if(app.data.activeChatId&&app.data.activeChatId!==data.activeChatId)window.CODYMentions?.clear();
     app.data=data;renderMessages();renderPermissions();
   });
-  api.on('settings-changed',settings=>{app.data.settings=settings;selectedMode(settings.assistantProvider);renderPermissions();voice?.render();});
+  api.on('settings-changed',settings=>{app.data.settings=settings;app.mode='heyclicky';renderPermissions();voice?.render();});
   api.on('message-added',({chatId,message})=>{
     const chat=app.data.chats.find(item=>item.id===chatId);
     if(chat&&!chat.messages.some(item=>item.id===message.id))chat.messages.push(message);
@@ -346,7 +343,6 @@
   api.on('message-delta',({chatId,messageId,delta})=>updateMessage(chatId,messageId,delta,true));
   api.on('message-replace',({chatId,messageId,text})=>updateMessage(chatId,messageId,text));
   api.on('busy',({busy:value})=>{busy(value);renderTimer();});
-  api.on('web-status',status=>{if(!$('chat-connection'))return;$('chat-connection').textContent=status.connected?'ChatGPT connected':status.detail||'Sign-in required';});
   api.on('firefox-status',status=>{if(!$('core-firefox-status'))return;$('core-firefox-status').textContent=status.connected?'Firefox extension connected':status.error||'Extension not connected';});
   api.on('activity',event=>{activity.push(event.text);if(activity.length>60)activity.shift();if($('core-activity'))$('core-activity').textContent=activity.join('\n');});
   api.on('diagnostic',text=>note(text));
@@ -413,12 +409,10 @@
   $('history-new').addEventListener('click',()=>void island.onNewChat());
   $('history-close').addEventListener('click',()=>island.setActiveView('chat'));
   $('core-stop').addEventListener('click',async()=>{try{await voice.cancel();await api.stop();}catch(error){note(error.message);}});
-  $('core-connect')?.addEventListener('click',async()=>{try{await api.webSignIn();await connection();}catch(error){note(error.message);}});
+  $('core-connect')?.addEventListener('click',async()=>{try{await api.connectionSignIn();await connection();}catch(error){note(error.message);}});
   $('core-check')?.addEventListener('click',()=>void connection());
   $('core-firefox-check')?.addEventListener('click',()=>void firefox());
   $('core-firefox-test')?.addEventListener('click',async()=>{try{const result=await api.control.firefoxTest();note(JSON.stringify(result));}catch(error){note(error.message);}});
-  $('core-codex-connect')?.addEventListener('click',async()=>{try{await api.connect();$('core-codex-status').textContent='Your Codex account is connected';}catch(error){$('core-codex-status').textContent=error.message;}});
-  $('core-codex-signin')?.addEventListener('click',async()=>{try{await api.signIn();}catch(error){note(error.message);}});
   $('core-control-enabled').addEventListener('change',event=>void configureControl({enabled:event.target.checked}));
   $('core-control-level').addEventListener('change',event=>void configureControl({level:event.target.value}));
   for(const input of document.querySelectorAll('[data-core-permission]'))input.addEventListener('change',()=>void configureControl({[input.dataset.corePermission]:input.checked}));
@@ -429,7 +423,7 @@
   const aliases={'voice-mic':'panel-mic','voice-speaker':'core-speaker',prompt:'quick-input','voice-choice':'voice-choices','voice-test':'preview-voice'};
   voice=window.CODYVoice.attach({
     api,$:id=>$(aliases[id]||id),toast:note,send,getApp:()=>app,preview:false,bindMicrophone:false,
-    selectChatGPT:()=>selectedMode('chatgpt'),getVolume:()=>preferences.voiceVolume??1,getMicDeviceId:()=>preferences.micDeviceId||'',
+    getVolume:()=>preferences.voiceVolume??1,getMicDeviceId:()=>preferences.micDeviceId||'',
     onBeforeCapture:()=>island.stopMicTest(),
     onReview:()=>{island.togglePanel(true);island.setActiveView('chat');$('quick-input').focus();},
     onAudio:audio=>audio instanceof HTMLMediaElement?island.connectSpeakingAudio(audio,{play:false}):undefined
@@ -455,7 +449,7 @@
   busy(app.data.busy);renderMessages();renderPermissions();
   await voice.initialized;
   await api.voice.configure({speed:preferences.voiceRate});
-  await Promise.all([app.mode==='chatgpt'?connection():Promise.resolve(),firefox()]);
+  await Promise.all([connection(),firefox()]);
   const renderWake=state=>{
     const wasListening=wakeListening();wakeState=state;
     const label=$('wake-word-status');if(label){label.textContent=state.message;label.dataset.mode=state.mode;}

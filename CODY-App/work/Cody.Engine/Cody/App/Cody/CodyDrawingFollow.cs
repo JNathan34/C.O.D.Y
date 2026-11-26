@@ -18,7 +18,7 @@ internal sealed class CodyDrawingFollow : IDisposable
     // Window ownership is independent of accessibility and geometry tracking.
     internal static bool ContentTrackingEnabled => false;
     private const int TargetReadGraceMs = 1500;
-    private sealed record CaptureOrigin(ForegroundApp App, Bounds Viewport, Task<CodyDrawingTarget.Document> Document);
+    private sealed record CaptureOrigin(ForegroundApp App, Bounds Viewport, Task<CodyDrawingTarget.Document> Document, bool Global);
     private sealed record Placement(Visual Visual, Vector3 Offset, Vector3 Scale);
     private sealed class Mark
     {
@@ -74,12 +74,14 @@ internal sealed class CodyDrawingFollow : IDisposable
         if (screenshot != null && origins.TryGetValue(screenshot, out var captured))
         {
             owner = captured.App;
+            Global = captured.Global;
             origin = captured.Viewport;
             contentTracking = ContentTrackingEnabled && TracksDocument(owner);
             if (captured.Document != null) _ = UseDocument(captured.Document);
         }
         else
         {
+            Global = CodyDrawingScope.GlobalRequest;
             owner = CodyDrawingOwner.Capture();
             if (owner == null || owner.ProcessId == Environment.ProcessId || !TryClientBounds(owner.WindowHandle, out origin))
                 return;
@@ -89,6 +91,7 @@ internal sealed class CodyDrawingFollow : IDisposable
 
     internal static Action<ScreenCaptureFrame, byte[]> RememberCapture()
     {
+        bool global = CodyDrawingScope.GlobalRequest;
         var app = CodyDrawingOwner.Capture();
         if (app == null || app.ProcessId == Environment.ProcessId || !TryClientBounds(app.WindowHandle, out var bounds))
             return null;
@@ -97,7 +100,7 @@ internal sealed class CodyDrawingFollow : IDisposable
             : null;
         return (frame, original) =>
         {
-            var capture = new CaptureOrigin(app, bounds, document);
+            var capture = new CaptureOrigin(app, bounds, document, global);
             origins.GetValue(frame.Jpeg, _ => capture);
             // Highlight compositing can provide both clean and marked JPEGs.
             if (original != null) origins.GetValue(original, _ => capture);
@@ -124,6 +127,8 @@ internal sealed class CodyDrawingFollow : IDisposable
         });
     }
 
+    internal bool Global { get; set; }
+    internal bool ScopeVisible => Global || owner != null && IsOwnerForeground();
     internal bool Available => owner != null && imageWidth > 0 && imageHeight > 0 && IntersectsDisplay(origin);
     internal bool OwnerForeground => Available && IsOwnerForeground();
     internal bool Hidden => marks.Count > 0 && marks.Values.All(mark => !mark.Visible || mark.Removed);
@@ -134,7 +139,8 @@ internal sealed class CodyDrawingFollow : IDisposable
 
     internal bool CanContinue(ScreenCaptureFrame frame)
     {
-        if (!Available || (!ContentTrackingEnabled && marks.Count == 0)) return true;
+        if (!Available) return Global;
+        if (Global != CodyDrawingScope.GlobalRequest) return false;
         CaptureOrigin source = null;
         if (frame.Jpeg != null) origins.TryGetValue(frame.Jpeg, out source);
         bool sameWindow = source == null ? IsOwnerForeground() :
@@ -149,7 +155,7 @@ internal sealed class CodyDrawingFollow : IDisposable
     }
 
     internal object Inspect() => new { ownerForeground = OwnerForeground, pageCurrent = Available && IsPageCurrent(),
-        ownership = CodyDrawingOwner.Inspect(),
+        global = Global, scopeVisible = ScopeVisible, ownership = CodyDrawingOwner.Inspect(),
         owner = owner?.WindowHandle.ToString(), foreground = CodyDrawingOwner.ForegroundWindow.ToString(),
         sampling = reading, sampleCount, discardedSamples, providerReadMs,
         lastReadAgeMs = lastRead == 0 ? (long?)null : Environment.TickCount64 - lastRead,
@@ -230,7 +236,13 @@ internal sealed class CodyDrawingFollow : IDisposable
 
     internal void Tick()
     {
-        if (!Available || token.IsCancellationRequested || marks.Count == 0) return;
+        if (token.IsCancellationRequested || marks.Count == 0) return;
+        if (Global)
+        {
+            foreach (var mark in marks.Values) { mark.Visible = !mark.Removed; Paint(mark); }
+            return;
+        }
+        if (!Available) return;
         if (!IsOwnerForeground() || !TryClientBounds(owner.WindowHandle, out var viewport))
         {
             Hide();

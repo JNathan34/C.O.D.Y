@@ -3119,32 +3119,9 @@ public sealed class SettingsContent : Grid
 		return null;
 	}
 
-	private static string AgentHarnessSubtitle(bool usesCodex)
-	{
-		if (!usesCodex)
-		{
-			return "H1 on this PC: our own agent loop. Faster, fewer model rounds; steps on your PC go through HeyClicky drive. Jobs that started on Codex stay on Codex.";
-		}
-		return "Codex: the bundled Codex app-server. Steps on your PC go through HeyClicky drive.";
-	}
-
 	private FrameworkElement NewAgentFeaturesGroup()
 	{
-		bool flag = AgentHarnessPreferences.Harness == AgentHarness.Codex;
-		TextBlock subtitle = null;
-		Pressable trailing = SK.MenuPicker(new _003C_003Ez__ReadOnlyArray<string>(new string[2] { "H1 (on this PC)", "Codex" }), flag ? 1 : 0, (int index) =>
-		{
-			AgentHarness agentHarness = ((index != 1) ? AgentHarness.H1 : AgentHarness.Codex);
-			AgentHarnessPreferences.Pick(agentHarness);
-			Log.Info("settings", "agent harness: " + agentHarness.RawValue() + " (new conversations)");
-			if ((object)subtitle != null)
-			{
-				subtitle.Text = AgentHarnessSubtitle(agentHarness == AgentHarness.Codex);
-			}
-		}, new _003C_003Ez__ReadOnlyArray<string>(new string[2] { "H1", "Codex" }));
-		Grid grid = SK.Row("Agent harness", AgentHarnessSubtitle(flag), trailing);
-		StackPanel obj = grid.Children[0] as StackPanel;
-		subtitle = (((object)obj != null) ? obj.Children.OfType<TextBlock>().Skip(1).FirstOrDefault() : null);
+		Grid grid = SK.Row("Agent harness", "C.O.D.Y. uses H1 on this PC.", null);
 		List<FrameworkElement> list = new List<FrameworkElement>();
 		list.Add(grid);
 		list.AddRange(BrowserConnectionRows());

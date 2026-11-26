@@ -3,8 +3,7 @@
   const assistant=window.assistant,api=assistant?.rgb;
   if(!api)return;
   const byId=id=>document.getElementById(id);
-  const settings={enabled:byId('rgb-enabled'),discover:byId('rgb-discover'),list:byId('rgb-devices'),status:byId('rgb-status')};
-  const popup={enabled:byId('island-rgb-reactive'),discover:byId('island-rgb-discover'),list:byId('island-rgb-devices'),status:byId('island-rgb-status')};
+  const reactive=byId('island-rgb-reactive'),discover=byId('island-rgb-discover'),devices=byId('island-rgb-devices');
   const wheel=byId('island-rgb-wheel'),marker=byId('island-rgb-marker'),hex=byId('island-rgb-hex'),level=byId('island-rgb-brightness');
   const apply=byId('island-rgb-apply'),off=byId('island-rgb-off');
   const validColor=/^#[\da-f]{6}$/i;
@@ -40,7 +39,7 @@
     setWheel(Math.atan2(dy,dx)*180/Math.PI,Math.min(1,Math.hypot(dx,dy)/radius));
   }
   function renderActions(){
-    const ready=current?.pluginEnabled&&current.devices.some(device=>device.available);
+    const ready=current?.pluginEnabled&&current.devices.some(device=>device.selected);
     apply.disabled=busy||current?.busy||!ready||!validColor.test(hex.value);
     off.disabled=busy||current?.busy||!ready;
     byId('island-rgb-level').value=level.value+'%';
@@ -50,25 +49,17 @@
     if(!current)return;
     const locked=busy||current.busy||!current.pluginEnabled;
     const selected=current.devices.filter(device=>device.selected).length;
-    byId('island-rgb-device-count').textContent=selected?`Devices · ${selected} selected`:'Devices';
-    for(const view of [settings,popup]){
-      view.enabled.checked=current.enabled;
-      view.enabled.disabled=locked||(!current.enabled&&!selected);
-      view.discover.disabled=locked||current.enabled;
-      const focus=view.list.contains(document.activeElement)?document.activeElement.dataset.device:null;
-      view.list.replaceChildren(...current.devices.map(device=>{
-        const row=document.createElement('label');row.className=view===popup?'rgb-device-option':'setting-row';
-        const name=document.createElement('span');name.textContent=device.name;
-        if(!device.available){const note=document.createElement('small');note.textContent=' · Direct mode unavailable';name.append(note);}
-        const input=document.createElement('input');input.type='checkbox';input.checked=device.selected;
-        input.dataset.device=device.id;input.disabled=locked||current.enabled||!device.available;
-        input.addEventListener('change',()=>void run(()=>api.select(device.id,input.checked)));
-        row.append(name,input);return row;
-      }));
-      if(focus)view.list.querySelector(`input[data-device="${CSS.escape(focus)}"]`)?.focus({preventScroll:true});
-    }
+    byId('island-rgb-device-count').textContent=current.provider?`${current.provider} · ${selected} ${selected===1?'device':'devices'}`:'Devices';
+    reactive.checked=current.enabled;
+    reactive.disabled=locked||(!current.enabled&&!selected);
+    discover.disabled=locked||current.enabled;
+    devices.replaceChildren(...current.devices.map(device=>{
+      const row=document.createElement('li');
+      row.textContent=device.name+(device.selected?'':device.available?' · Paused':' · Unsupported');
+      return row;
+    }));
   }
-  function message(text){for(const view of [settings,popup])view.status.textContent=text;}
+  function message(text){byId('island-rgb-status').textContent=text;}
   function receive(state){
     if(state.color!==current?.color&&validColor.test(state.color))fromHex(state.color);
     if(state.brightness!==current?.brightness&&Number.isInteger(state.brightness))level.value=state.brightness;
@@ -98,12 +89,8 @@
   hex.addEventListener('keydown',event=>{if(event.key==='Enter'&&!apply.disabled){event.preventDefault();setColor();}});
   level.addEventListener('input',renderActions);
   apply.addEventListener('click',()=>setColor());off.addEventListener('click',()=>setColor('#000000'));
-  for(const view of [settings,popup]){
-    view.discover.addEventListener('click',()=>void run(api.discover));
-    view.enabled.addEventListener('change',()=>{const checked=view.enabled.checked;void run(()=>api.enable(checked));});
-  }
-  const panel=document.querySelector('[data-plugin-panel="rgb-lighting"]');
-  panel.addEventListener('toggle',()=>{if(panel.open)void run(api.state);});
+  discover.addEventListener('click',()=>void run(api.discover));
+  reactive.addEventListener('change',()=>{const checked=reactive.checked;void run(()=>api.enable(checked));});
   byId('rgb-open').addEventListener('click',()=>void run(api.open));
   assistant.on('rgb-lighting-changed',receive);
   window.CODYRgbLighting={show:()=>void run(api.state),pickAt};

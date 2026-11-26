@@ -1,11 +1,11 @@
 'use strict';
 const {contextBridge,ipcRenderer,webUtils}=require('electron');
-const allowedEvents=new Set(['updates-state','status','diagnostic','auth-changed','chats-changed','settings-changed','message-added','message-delta','message-replace','activity','usage','busy','approval','approval-resolved','window-state','quota','web-status','firefox-status','voice-hotkey','timer-changed','island-card','island-task-status','spotify-changed','native-phase','native-meter','rps-state','capture-state','monitor-state','computer-approvals','attachments-state','tasks-changed','tasks-open','browser-setup','browser-setup-open','wake-word-state']);
+const allowedEvents=new Set(['updates-state','status','diagnostic','auth-changed','chats-changed','settings-changed','message-added','message-delta','message-replace','activity','usage','busy','approval','approval-resolved','window-state','quota','firefox-status','voice-hotkey','timer-changed','island-card','island-task-status','spotify-changed','native-phase','native-meter','rps-state','capture-state','monitor-state','computer-approvals','attachments-state','tasks-changed','tasks-open','browser-setup','browser-setup-open','wake-word-state']);
 allowedEvents.add('monitor-access-changed');
 allowedEvents.add('rgb-lighting-changed');
 contextBridge.exposeInMainWorld('assistant',{
   rgb:{state:()=>ipcRenderer.invoke('rgb-lighting-state'),configure:enabled=>ipcRenderer.invoke('rgb-lighting-configure',enabled),discover:()=>ipcRenderer.invoke('rgb-lighting-discover'),
-    select:(id,value)=>ipcRenderer.invoke('rgb-lighting-select',id,value),enable:value=>ipcRenderer.invoke('rgb-lighting-enable',value),
+    enable:value=>ipcRenderer.invoke('rgb-lighting-enable',value),
     setColor:(color,brightness)=>ipcRenderer.invoke('rgb-lighting-color',color,brightness),open:()=>ipcRenderer.invoke('rgb-lighting-open'),
     dismiss:id=>ipcRenderer.invoke('rgb-lighting-dismiss',id)},
   whatsapp:{openApp:()=>ipcRenderer.invoke('whatsapp-open-app'),preview:id=>ipcRenderer.invoke('whatsapp-draft-preview',id),
@@ -29,8 +29,8 @@ contextBridge.exposeInMainWorld('assistant',{
   approvals:{state:()=>ipcRenderer.invoke('computer-approval-state'),decide:(id,decision)=>ipcRenderer.invoke('computer-approval-decision',id,decision)},
   backends:{status:()=>ipcRenderer.invoke('backend-status'),refresh:()=>ipcRenderer.invoke('backend-refresh')},
   plugins:{list:()=>ipcRenderer.invoke('plugins-list'),action:value=>ipcRenderer.invoke('plugins-action',value),add:value=>ipcRenderer.invoke('plugins-add',value)},
-  agents:{usage:()=>ipcRenderer.invoke('heyclicky-usage'),codexUsage:()=>ipcRenderer.invoke('codex-usage'),claudeAccount:action=>ipcRenderer.invoke('claude-account',action),provider:()=>ipcRenderer.invoke('agent-provider-state'),selectProvider:provider=>ipcRenderer.invoke('agent-provider-select',provider),connectProvider:()=>ipcRenderer.invoke('agent-provider-connect'),state:()=>ipcRenderer.invoke('agents-state'),configure:value=>ipcRenderer.invoke('agents-configure',value),folder:()=>ipcRenderer.invoke('agents-folder'),privacy:id=>ipcRenderer.invoke('agents-privacy',id)},
-  memory:{status:()=>ipcRenderer.invoke('memory-status'),search:(query,sourceId)=>ipcRenderer.invoke('memory-search',query,sourceId),configure:(id,patch)=>ipcRenderer.invoke('memory-source',id,patch),removeSource:id=>ipcRenderer.invoke('memory-delete-source',id),remove:id=>ipcRenderer.invoke('memory-delete-record',id),update:(id,text)=>ipcRenderer.invoke('memory-update',id,text),save:value=>ipcRenderer.invoke('memory-save',value),import:()=>ipcRenderer.invoke('memory-import'),export:()=>ipcRenderer.invoke('memory-export'),codexList:cursor=>ipcRenderer.invoke('memory-codex-list',cursor),codexImport:id=>ipcRenderer.invoke('memory-codex-import',id)},
+  agents:{usage:()=>ipcRenderer.invoke('heyclicky-usage'),claudeAccount:action=>ipcRenderer.invoke('claude-account',action),state:()=>ipcRenderer.invoke('agents-state'),configure:value=>ipcRenderer.invoke('agents-configure',value),folder:()=>ipcRenderer.invoke('agents-folder'),privacy:id=>ipcRenderer.invoke('agents-privacy',id)},
+  memory:{status:()=>ipcRenderer.invoke('memory-status'),search:(query,sourceId)=>ipcRenderer.invoke('memory-search',query,sourceId),configure:(id,patch)=>ipcRenderer.invoke('memory-source',id,patch),removeSource:id=>ipcRenderer.invoke('memory-delete-source',id),remove:id=>ipcRenderer.invoke('memory-delete-record',id),update:(id,text)=>ipcRenderer.invoke('memory-update',id,text),save:value=>ipcRenderer.invoke('memory-save',value),import:()=>ipcRenderer.invoke('memory-import'),export:()=>ipcRenderer.invoke('memory-export')},
   rps:{state:()=>ipcRenderer.invoke('rps-state'),action:value=>ipcRenderer.invoke('rps-action',value)},
   capture:{state:()=>ipcRenderer.invoke('capture-state'),action:action=>ipcRenderer.invoke('capture-action',action),reveal:kind=>ipcRenderer.invoke('capture-reveal',kind)},
   dismissTimer:()=>ipcRenderer.invoke('timer-dismiss'),
@@ -39,13 +39,8 @@ contextBridge.exposeInMainWorld('assistant',{
   deleteChat:id=>ipcRenderer.invoke('delete-chat',id),
   saveSettings:s=>ipcRenderer.invoke('save-settings',s),
   browseFolder:()=>ipcRenderer.invoke('browse-folder'),
-  connect:()=>ipcRenderer.invoke('connect'),
-  account:()=>ipcRenderer.invoke('account'),
-  signIn:()=>ipcRenderer.invoke('sign-in'),
-  rateLimits:()=>ipcRenderer.invoke('rate-limits'),
-  openChatGPT:()=>ipcRenderer.invoke('open-chatgpt'),
-  webStatus:()=>ipcRenderer.invoke('web-status'),
-  webSignIn:()=>ipcRenderer.invoke('web-sign-in'),
+  connectionStatus:()=>ipcRenderer.invoke('connection-status'),
+  connectionSignIn:()=>ipcRenderer.invoke('connection-sign-in'),
   sendMessage:args=>ipcRenderer.invoke('send-message',args),
   mentions:{list:localOnly=>ipcRenderer.invoke('mentions-list',localOnly)},
   stop:()=>ipcRenderer.invoke('stop-turn'),

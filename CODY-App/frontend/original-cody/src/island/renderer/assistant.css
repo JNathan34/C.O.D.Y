@@ -190,8 +190,10 @@ body.media-preview-layout:not(.panel-open) .island-media-preview{
 .rgb-action-row button.light-action{background:#e4eee9;color:#18251f;border-color:#e4eee9;font-weight:600}
 .rgb-action-row button:disabled{opacity:.5;cursor:default}
 .rgb-devices-menu summary{cursor:pointer;color:#e2e6ef}
-.rgb-device-option{display:flex;align-items:center;gap:4px;min-height:19px}
-.rgb-device-option input{accent-color:#86dac9}
+.rgb-device-row{display:flex;align-items:flex-start;justify-content:space-between;gap:5px;line-height:19px}
+.rgb-reactive{display:flex;align-items:center;gap:4px}
+.rgb-reactive input{margin:0;accent-color:#86dac9}
+.rgb-devices-menu ul{padding-left:15px;margin:0}
 .rgb-status{margin:0;color:#b4bccd;line-height:1.25;overflow-wrap:anywhere}
 body.media-preview-layout:not(.panel-open) #island{cursor:default}
 body.media-preview-layout:not(.panel-open) :is(.island-info,.island-timer,.media-music-notes){visibility:hidden}
